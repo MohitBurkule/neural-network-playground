@@ -929,3 +929,13 @@ footer .links a:hover {
   box-shadow: 0 0 0 10px rgba(255,255,255, 0.12);
 }
 
+#dark-mode-toggle-container i {
+  color: #fff;
+  font-size: 24px;
+  cursor: pointer;
+  transition: color 0.3s;
+}
+
+#dark-mode-toggle-container i:hover {
+  color: #ccc;
+}

@@ -16,23 +16,25 @@ limitations under the License.
 /* General Type */
 
 body {
-  font-family: "Helvetica", "Arial", sans-serif;
-  background-color: #f7f7f7;
+  font-family: 'Roboto', 'Arial', sans-serif;
+  background-color: #f0f2f5;
+  color: #333;
 }
 
 h1 {
-  font-size: 34px;
+  font-size: 32px;
+  font-weight: 500;
 }
 
 header h1 {
-  line-height: 1.45em;
-  font-weight: 300;
-  color: rgba(255, 255, 255, 0.7);
+  line-height: 1.4em;
+  font-weight: 400;
+  color: #fff;
 }
 
 h1 b {
-  font-weight: 400;
-  color: rgba(255, 255, 255, 1);
+  font-weight: 600;
+  color: #fff;
 }
 
 h2 {
@@ -187,11 +189,11 @@ body {
 }
 
 header {
-  border-bottom: solid 1px rgba(0,0,0,0.4);
-  background-color: #183D4E;
+  border-bottom: solid 1px rgba(0,0,0,0.1);
+  background: linear-gradient(to right, #183D4E, #1E4B5F);
   color: white;
   overflow: hidden;
-  box-shadow: 0 2px 4px rgba(0,0,0,0.2);
+  box-shadow: 0 1px 3px rgba(0,0,0,0.1);
   position: relative;
 }
 
@@ -231,10 +233,10 @@ header h1 .optional {
 /* Top Controls */
 
 #top-controls {
-  border-bottom: 1px solid #ddd;
-  padding: 18px 0;
-  box-shadow: 0 1px 4px rgba(0,0,0,0.08);
-  background: white;
+  border-bottom: 1px solid #e0e0e0;
+  padding: 20px 0;
+  background: #fff;
+  box-shadow: 0 1px 3px rgba(0,0,0,0.05);
 }
 
 @media (min-height: 700px) {
@@ -310,24 +312,26 @@ header h1 .optional {
   position: relative;
 }
 
+#top-controls .control input,
 #top-controls .control select {
   -webkit-appearance: none;
   -moz-appearance: none;
   appearance: none;
   display: block;
-  background: none;
-  border: none;
-  border-radius: 0;
-  padding: 6px 0;
+  background: #f7f7f7;
+  border: 1px solid #ddd;
+  border-radius: 4px;
+  padding: 8px 12px;
   width: 100%;
   font-size: 14px;
-  border-bottom: solid 1px #ccc;
   color: #333;
   outline: none;
+  transition: border-color 0.3s;
 }
 
+#top-controls .control input:focus,
 #top-controls .control select:focus {
-  border-bottom-color: #183D4E;
+  border-color: #183D4E;
 }
 
 #top-controls .control .select::after {
@@ -337,7 +341,7 @@ header h1 .optional {
   font-family: 'Material Icons';
   font-weight: normal;
   font-style: normal;
-  font-size: 18px;
+  font-size: 20px;
   line-height: 1;
   letter-spacing: normal;
   text-transform: none;
@@ -346,8 +350,8 @@ header h1 .optional {
   word-wrap: normal;
   direction: ltr;
   position: absolute;
-  right: 0;
-  top: 6px;
+  right: 8px;
+  top: 8px;
   pointer-events: none;
 }
 
@@ -991,6 +995,17 @@ footer .links a:hover {
 /* Keep grey focus circle for non-start values */
 #main-part .mdl-slider.is-upgraded:focus:not(:active)::-webkit-slider-thumb {
   box-shadow: 0 0 0 10px rgba(0,0,0, 0.12);
+}
+
+#dark-mode-toggle-container i {
+  color: #fff;
+  font-size: 24px;
+  cursor: pointer;
+  transition: color 0.3s;
+}
+
+#dark-mode-toggle-container i:hover {
+  color: #ccc;
 }
 
 /* The switch - the box around the slider */
