@@ -41,8 +41,8 @@ Modified by David Cato
     <title>A Neural Network Playground</title>
     <link rel="stylesheet" href="bundle.css" type="text/css">
     <link href="https://fonts.googleapis.com/css?family=Roboto:300,400,500|Material+Icons" rel="stylesheet" type="text/css">
-    <link rel="stylesheet" href="styles.css" id="light-style">
-    <link rel="stylesheet" href="styles_dark.css" id="dark-style" disabled>
+    <link rel="stylesheet" href="styles_modern.css" id="light-style">
+    <link rel="stylesheet" href="styles_modern_dark.css" id="dark-style" disabled>
     <script src="lib.js"></script>
 </head>
 
@@ -55,7 +55,10 @@ Modified by David Cato
         </svg>
     </a>
     <!-- Dark Mode Toggle Switch -->
-    <label class="switch" style="position: absolute; top: 10px; right: 10px; z-index: 100" title="Dark mode" data-on="Yes" data-off="No">
+    <div id="dark-mode-toggle-container" style="position: absolute; top: 10px; right: 10px; z-index: 100;">
+      <i class="material-icons" id="dark-mode-icon" style="cursor: pointer;">brightness_7</i>
+    </div>
+    <label class="switch" style="display:none" title="Dark mode" data-on="Yes" data-off="No">
         <input type="checkbox" id="dark-mode-toggle" aria-label="Dark mode toggle">
         <span class="toggler round"></span>
     </label>
@@ -488,25 +491,24 @@ Modified by David Cato
     <script>
         // Check stored preference on page load
         window.addEventListener('DOMContentLoaded', (event) => {
-            const darkModeToggle = document.getElementById('dark-mode-toggle');
+            const darkModeIcon = document.getElementById('dark-mode-icon');
             const lightStyle = document.getElementById('light-style');
             const darkStyle = document.getElementById('dark-style');
-            const darkModeEnabled = localStorage.getItem('dark-mode-enabled') === 'true';
+            let darkModeEnabled = localStorage.getItem('dark-mode-enabled') === 'true';
 
-            darkModeToggle.checked = darkModeEnabled;
-            lightStyle.disabled = darkModeEnabled;
-            darkStyle.disabled = !darkModeEnabled;
-        });
+            function setDarkMode(enabled) {
+                lightStyle.disabled = enabled;
+                darkStyle.disabled = !enabled;
+                darkModeIcon.textContent = enabled ? 'brightness_4' : 'brightness_7';
+                localStorage.setItem('dark-mode-enabled', enabled);
+            }
 
-        // Update stored preference on toggle change
-        document.getElementById('dark-mode-toggle').addEventListener('change', function() {
-            const lightStyle = document.getElementById('light-style');
-            const darkStyle = document.getElementById('dark-style');
-            const darkModeEnabled = this.checked;
+            setDarkMode(darkModeEnabled);
 
-            lightStyle.disabled = darkModeEnabled;
-            darkStyle.disabled = !darkModeEnabled;
-            localStorage.setItem('dark-mode-enabled', darkModeEnabled);
+            darkModeIcon.addEventListener('click', function() {
+                darkModeEnabled = !darkModeEnabled;
+                setDarkMode(darkModeEnabled);
+            });
         });
     </script>
     <script src="bundle.js"></script>
