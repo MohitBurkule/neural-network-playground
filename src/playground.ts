@@ -524,6 +524,9 @@ function drawNode(cx: number, cy: number, nodeId: string, isInput: boolean,
     .attr("width", RECT_SIZE)
     .attr("height", RECT_SIZE);
   let activeOrNotClass = state[nodeId] ? "active" : "inactive";
+  if (!isInput && node && node.frozen) {
+    nodeGroup.classed("frozen", true);
+  }
   if (isInput) {
     let label = INPUTS[nodeId].label != null ?
         INPUTS[nodeId].label : nodeId;
@@ -1266,6 +1269,7 @@ function reset(onStartup=false) {
       nn.Activations.LINEAR : nn.Activations.TANH;
   network = nn.buildNetwork(shape, state.activation, outputActivation,
 constructInputIds(), state.initZero);
+  applyFrozenLayers();
   lossTrain = getLoss(network, state.trainData);
   lossTest = getLoss(network, state.testData);
   drawNetwork(network);
@@ -1466,6 +1470,219 @@ function doUnlearn(forgetSet: Example2D[], label: string): void {
     `Retain acc: ${(accR0 * 100).toFixed(1)}% &rarr; ${(accR1 * 100).toFixed(1)}%`);
 }
 
+// ============================================================================
+// Layer freezing (fine-tuning) + model save/load.
+// ============================================================================
+
+/**
+ * Applies state.frozenLayers to the freshly-built network by setting the
+ * `frozen` flag on every node in the corresponding hidden layer. Hidden layer
+ * index 1 maps to network layer index 1 (network[0] is the input layer).
+ */
+function applyFrozenLayers(): void {
+  if (network == null) return;
+  let numHidden = network.length - 2;
+  // Drop any stale indices that no longer exist.
+  state.frozenLayers = state.frozenLayers.filter(
+      idx => idx >= 1 && idx <= numHidden);
+  nn.forEachNode(network, true, node => { node.frozen = false; });
+  state.frozenLayers.forEach(layerIdx => {
+    let layer = network[layerIdx];
+    if (layer) {
+      layer.forEach(n => { n.frozen = true; });
+    }
+  });
+}
+
+function isLayerFrozen(layerIdx: number): boolean {
+  return state.frozenLayers.indexOf(layerIdx) !== -1;
+}
+
+function setLayerFrozen(layerIdx: number, frozen: boolean): void {
+  let pos = state.frozenLayers.indexOf(layerIdx);
+  if (frozen && pos === -1) {
+    state.frozenLayers.push(layerIdx);
+  } else if (!frozen && pos !== -1) {
+    state.frozenLayers.splice(pos, 1);
+  }
+}
+
+/** (Re)builds the per-layer freeze checkbox list and refreshes node styles. */
+function rebuildFreezeControls(): void {
+  let numHidden = state.networkShape.length;
+  let container = d3.select("#freeze-layers-list");
+  container.selectAll("*").remove();
+  if (numHidden === 0) {
+    container.append("span").attr("class", "adv-help").text("No hidden layers.");
+    return;
+  }
+  for (let layerIdx = 1; layerIdx <= numHidden; layerIdx++) {
+    let label = container.append("label")
+      .attr("class", "freeze-layer-item")
+      .style("display", "inline-block")
+      .style("margin-right", "10px");
+    label.append("input")
+      .attr("type", "checkbox")
+      .property("checked", isLayerFrozen(layerIdx))
+      .on("change", function() {
+        setLayerFrozen(layerIdx, (this as any).checked);
+        state.serialize();
+        applyFrozenLayers();
+        drawNetwork(network);
+        updateUI();
+      });
+    label.append("span").text(" Layer " + layerIdx);
+  }
+}
+
+function exportModel(): void {
+  if (network == null) {
+    d3.select("#model-io-readout").text("No network to export.");
+    return;
+  }
+  let numInputs = constructInput(0, 0).length;
+  let shape = [numInputs].concat(state.networkShape).concat([1]);
+  let links: {[id: string]: number} = {};
+  let biases: {[id: string]: number} = {};
+  nn.forEachNode(network, true, node => {
+    biases[node.id] = node.bias;
+    node.inputLinks.forEach(link => { links[link.id] = link.weight; });
+  });
+  let model = {
+    format: "nn-playground-model",
+    version: 1,
+    networkShape: shape,
+    activationKey: getKeyFromActivation(state.activation),
+    problem: state.problem === Problem.REGRESSION ? "regression" : "classification",
+    inputIds: constructInputIds(),
+    frozenLayers: state.frozenLayers.slice(),
+    biases: biases,
+    links: links
+  };
+  let json = JSON.stringify(model, null, 2);
+  d3.select("#model-io-text").property("value", json);
+  // Offer a download via a Blob URL anchor.
+  let blob = new Blob([json], {type: "application/json"});
+  let url = URL.createObjectURL(blob);
+  let anchor = d3.select("#model-download-link");
+  anchor.attr("href", url)
+    .attr("download", "nn-playground-model.json")
+    .style("display", "inline");
+  d3.select("#model-io-readout").text(
+    "Exported model (" + shape.join("-") + "). JSON is in the textarea; " +
+    "use the download link to save it.");
+}
+
+function getKeyFromActivation(activation: nn.ActivationFunction): string {
+  let key = getKeyFromValue(activations, activation);
+  return key != null ? key : "tanh";
+}
+
+function importModel(): void {
+  let text = d3.select("#model-io-text").property("value") as string;
+  let model: any;
+  try {
+    model = JSON.parse(text);
+  } catch (e) {
+    d3.select("#model-io-readout").text("Import failed: invalid JSON.");
+    return;
+  }
+  if (!model || model.format !== "nn-playground-model" ||
+      !Array.isArray(model.networkShape) || model.networkShape.length < 2 ||
+      typeof model.links !== "object" || typeof model.biases !== "object") {
+    d3.select("#model-io-readout").text(
+      "Import failed: not a valid playground model.");
+    return;
+  }
+  let activation = activations[model.activationKey] || nn.Activations.TANH;
+  let problem = model.problem === "regression" ?
+      Problem.REGRESSION : Problem.CLASSIFICATION;
+  let outputActivation = problem === Problem.REGRESSION ?
+      nn.Activations.LINEAR : nn.Activations.TANH;
+  let inputIds: string[] = Array.isArray(model.inputIds) ?
+      model.inputIds : constructInputIds();
+  let shape: number[] = model.networkShape.map(Number);
+  let newNetwork: nn.Node[][];
+  try {
+    newNetwork = nn.buildNetwork(shape, activation, outputActivation,
+        inputIds, false);
+    // Assign saved biases and weights.
+    nn.forEachNode(newNetwork, true, node => {
+      if (model.biases[node.id] != null) {
+        node.bias = +model.biases[node.id];
+      }
+      node.inputLinks.forEach(link => {
+        if (model.links[link.id] != null) {
+          link.weight = +model.links[link.id];
+        }
+      });
+    });
+  } catch (e) {
+    d3.select("#model-io-readout").text(
+      "Import failed: could not reconstruct network (" + e.message + ").");
+    return;
+  }
+  // Update state to match the imported model.
+  state.activation = activation;
+  state.problem = problem;
+  state.networkShape = shape.slice(1, shape.length - 1);
+  state.numHiddenLayers = state.networkShape.length;
+  if (Array.isArray(model.frozenLayers)) {
+    state.frozenLayers = model.frozenLayers.map(Number);
+  }
+  // Reflect the imported input feature ids in the UI/INPUTS set.
+  for (let key in INPUTS) {
+    state[key] = inputIds.indexOf(key) !== -1;
+  }
+  network = newNetwork;
+  applyFrozenLayers();
+  iter = 0;
+  state.serialize();
+  // Sync activation dropdown if possible.
+  let actKey = getKeyFromActivation(activation);
+  d3.select("#activations").property("value", actKey);
+  d3.select("#problem").property("value",
+      problem === Problem.REGRESSION ? "regression" : "classification");
+  lossTrain = getLoss(network, state.trainData);
+  lossTest = getLoss(network, state.testData);
+  drawNetwork(network);
+  rebuildFreezeControls();
+  updateUI(true);
+  d3.select("#model-io-readout").text(
+    "Imported model (" + shape.join("-") + "). Weights kept; iter reset to 0.");
+}
+
+function makeFineTuneGUI(): void {
+  rebuildFreezeControls();
+
+  d3.select("#freeze-all-but-last").on("click", () => {
+    let numHidden = state.networkShape.length;
+    state.frozenLayers = [];
+    // Freeze every hidden layer except the last one (classic fine-tuning:
+    // train only the head, i.e. the last hidden layer + output).
+    for (let layerIdx = 1; layerIdx < numHidden; layerIdx++) {
+      state.frozenLayers.push(layerIdx);
+    }
+    state.serialize();
+    applyFrozenLayers();
+    drawNetwork(network);
+    rebuildFreezeControls();
+    updateUI();
+  });
+
+  d3.select("#unfreeze-all").on("click", () => {
+    state.frozenLayers = [];
+    state.serialize();
+    applyFrozenLayers();
+    drawNetwork(network);
+    rebuildFreezeControls();
+    updateUI();
+  });
+
+  d3.select("#export-model").on("click", () => { exportModel(); });
+  d3.select("#import-model").on("click", () => { importModel(); });
+}
+
 function makeAdvancedGUI() {
   // ---- 3D mode ----
   let threeDToggle = d3.select("#threeD-toggle").on("change", function() {
@@ -1589,6 +1806,7 @@ drawDatasetThumbnails();
 initTutorial();
 makeGUI();
 makeAdvancedGUI();
+makeFineTuneGUI();
 generateData(true);
 reset(true);
 hideControls();

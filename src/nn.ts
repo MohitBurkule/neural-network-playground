@@ -74,6 +74,11 @@ export class Node {
   activation: ActivationFunction;
   /** Per-parameter optimizer state for the bias. */
   biasOptimizerState: OptimizerState = {};
+  /**
+   * Whether this node is frozen. Frozen nodes do not have their bias or
+   * incoming link weights updated during training (used for fine-tuning).
+   */
+  frozen = false;
 
   /**
    * Creates a new node with the provided id and activation function.
@@ -542,6 +547,18 @@ export function updateWeights(network: Node[][], learningRate: number,
     let currentLayer = network[layerIdx];
     for (let i = 0; i < currentLayer.length; i++) {
       let node = currentLayer[i];
+      // Skip frozen nodes entirely: their bias and incoming link weights stay
+      // fixed during training. We still clear accumulated derivatives so they
+      // don't leak into a later update if the node is unfrozen.
+      if (node.frozen) {
+        node.accInputDer = 0;
+        node.numAccumulatedDers = 0;
+        for (let j = 0; j < node.inputLinks.length; j++) {
+          node.inputLinks[j].accErrorDer = 0;
+          node.inputLinks[j].numAccumulatedDers = 0;
+        }
+        continue;
+      }
       // Update the node's bias.
       if (node.numAccumulatedDers > 0) {
         let biasGrad = node.accInputDer / node.numAccumulatedDers;

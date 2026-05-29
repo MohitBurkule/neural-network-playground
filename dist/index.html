@@ -472,6 +472,24 @@ Modified by David Cato
             <button class="basic-button" id="custom-data-load">Load custom dataset</button>
             <div class="adv-readout" id="custom-data-readout"></div>
         </div>
+
+        <div class="adv-panel">
+            <h4>Fine-tuning: freeze layers</h4>
+            <p class="adv-help">Freeze hidden layers so their weights &amp; biases stay fixed during training. Classic fine-tuning: freeze all but the last layer, then keep training to adapt only the head.</p>
+            <div id="freeze-layers-list" style="margin-bottom:8px;"></div>
+            <button class="basic-button" id="freeze-all-but-last">Freeze all but last layer</button>
+            <button class="basic-button" id="unfreeze-all">Unfreeze all</button>
+        </div>
+
+        <div class="adv-panel">
+            <h4>Save / Load model</h4>
+            <p class="adv-help">Export the trained network (shape, weights, biases, activation, inputs, problem) to JSON, or import it back to continue fine-tuning.</p>
+            <button class="basic-button" id="export-model">Export model</button>
+            <button class="basic-button" id="import-model">Import model</button>
+            <a id="model-download-link" class="basic-button" style="display:none;text-decoration:none;" href="#">Download JSON</a>
+            <textarea id="model-io-text" rows="6" style="width:100%;box-sizing:border-box;margin-top:8px;" placeholder="Model JSON appears here on export; paste JSON here then click Import model."></textarea>
+            <div class="adv-readout" id="model-io-readout"></div>
+        </div>
     </div>
 
     <div class="l--page">

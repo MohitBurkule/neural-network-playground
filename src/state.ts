@@ -199,6 +199,11 @@ export class State {
   collectStats = false;
   numHiddenLayers = 1;
   hiddenLayerControls: any[] = [];
+  /**
+   * Indices (1-based, into the hidden layers) of layers that are frozen for
+   * fine-tuning. Persisted so reset() can reapply them after rebuilding.
+   */
+  frozenLayers: number[] = [];
   networkShape: number[] = [4, 2];
   x = true;
   y = true;

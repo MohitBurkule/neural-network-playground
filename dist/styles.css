@@ -695,6 +695,13 @@ g.column rect {
   opacity: 1.0;
 }
 
+#network .node.frozen rect {
+  stroke: #2a6cf0;
+  stroke-width: 2px;
+  stroke-dasharray: 3, 2;
+  opacity: 0.6;
+}
+
 @-webkit-keyframes flowing {
   from { stroke-dashoffset: 0; } to { stroke-dashoffset: -10; }
 }
