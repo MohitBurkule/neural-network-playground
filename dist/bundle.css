@@ -1065,3 +1065,41 @@ input:checked + .toggler:before {
 .toggler.round:before {
   border-radius: 50%;
 }
+/* Advanced features panels */
+.advanced-labs {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 18px;
+  margin-top: 20px;
+}
+.advanced-labs .adv-panel {
+  flex: 1 1 280px;
+  min-width: 260px;
+  background: #fff;
+  border: 1px solid #e0e0e0;
+  border-radius: 4px;
+  padding: 14px 16px;
+  box-shadow: 0 1px 3px rgba(0,0,0,0.08);
+}
+.advanced-labs .adv-panel h4 {
+  margin: 0 0 6px;
+}
+.advanced-labs .adv-help {
+  font-size: 12px;
+  color: #777;
+  margin: 0 0 10px;
+}
+.advanced-labs .basic-button {
+  margin: 4px 4px 0 0;
+}
+.advanced-labs .adv-readout {
+  margin-top: 10px;
+  font-size: 12px;
+  white-space: pre-line;
+  color: #333;
+  min-height: 1em;
+}
+.advanced-labs .adv-readout .err {
+  color: #c0392b;
+}
+

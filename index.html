@@ -65,13 +65,6 @@ Modified by David Cato
     <header>
         <h1 class="l--page">Tinker With a <b>Neural Network</b> <span class="optional">Right Here </span>in Your Browser.<br>Don’t Worry, You Can’t Break It. We Promise.</h1>
         <p class="l--page" style="display: flex;justify-content: center;">Made with ❤️ by Google, improved by Mohit Burkule</p>
-        <nav class="l--page" style="display:flex;justify-content:center;gap:18px;flex-wrap:wrap;margin-bottom:12px;font-size:13px;">
-            <span style="opacity:.7;">Explore the labs:</span>
-            <a href="playground3d.html">3D Datasets</a>
-            <a href="cnn.html">CNN Visualizer</a>
-            <a href="transformer.html">Transformer Attention</a>
-            <a href="security.html">Adversarial &amp; Unlearning</a>
-        </nav>
     </header>
 
     <!-- Top Controls -->
@@ -285,6 +278,20 @@ Modified by David Cato
                     Regenerate
                 </button>
             </div>
+            <div class="threed-controls" style="margin-top:14px;">
+                <label class="mdl-checkbox mdl-js-checkbox mdl-js-ripple-effect" for="threeD-toggle">
+                    <input type="checkbox" id="threeD-toggle" class="mdl-checkbox__input">
+                    <span class="mdl-checkbox__label label">3D dataset mode</span>
+                </label>
+                <div class="select" style="margin-top:6px;">
+                    <select id="threeD-dataset">
+                        <option value="blobs">Two Gaussian Blobs</option>
+                        <option value="spheres">Concentric Spheres</option>
+                        <option value="helix">Helix</option>
+                        <option value="swiss-roll">Swiss Roll</option>
+                    </select>
+                </div>
+            </div>
         </div>
 
         <!-- Features Column -->
@@ -370,6 +377,7 @@ Modified by David Cato
                 <div id="linechart"></div>
             </div>
             <div id="heatmap"></div>
+            <div id="threeview" style="display:none;width:300px;height:300px;"></div>
             <div id="select-platform" class="ui-paintPlatform">
                 <div class="label">
                     Select color that you would like to paint with.
@@ -413,7 +421,56 @@ Modified by David Cato
                         <span class="mdl-checkbox__label label">Discretize output</span>
                     </label>
                 </div>
+                <div class="adv-labs-link" style="margin-top:10px;font-size:12px;opacity:.7;">
+                    Advanced labs: <a href="cnn.html">CNN</a> &middot; <a href="transformer.html">Transformer</a>
+                </div>
             </div>
+        </div>
+    </div>
+
+    <!-- Advanced features -->
+    <div class="l--page advanced-labs">
+        <div class="adv-panel">
+            <h4>Adversarial</h4>
+            <p class="adv-help">Perturb the test set against the current model (feature-agnostic finite-difference attack).</p>
+            <label for="adv-epsilon">Epsilon:&nbsp;<span class="value" id="adv-epsilon-val">0.5</span></label>
+            <p class="slider">
+                <input class="mdl-slider mdl-js-slider" type="range" id="adv-epsilon" min="0" max="3" step="0.1">
+            </p>
+            <div class="select">
+                <select id="adv-method">
+                    <option value="fgsm">FGSM</option>
+                    <option value="pgd">PGD</option>
+                </select>
+            </div>
+            <button class="basic-button" id="adv-generate">Generate adversarial examples</button>
+            <label class="mdl-checkbox mdl-js-checkbox" for="adv-training" style="display:block;margin-top:8px;">
+                <input type="checkbox" id="adv-training" class="mdl-checkbox__input">
+                <span class="mdl-checkbox__label label">Adversarial training</span>
+            </label>
+            <div class="adv-readout" id="adv-readout"></div>
+        </div>
+
+        <div class="adv-panel">
+            <h4>Machine Unlearning</h4>
+            <p class="adv-help">Forget data from the trained model via gradient ascent, then watch the boundary change.</p>
+            <label for="unlearn-steps">Steps:&nbsp;<span class="value" id="unlearn-steps-val">100</span></label>
+            <p class="slider">
+                <input class="mdl-slider mdl-js-slider" type="range" id="unlearn-steps" min="10" max="500" step="10">
+            </p>
+            <button class="basic-button" id="forget-orange">Forget Orange</button>
+            <button class="basic-button" id="forget-blue">Forget Blue</button>
+            <button class="basic-button" id="forget-misclassified">Forget misclassified</button>
+            <button class="basic-button" id="retrain-without">Retrain without forgotten</button>
+            <div class="adv-readout" id="unlearn-readout"></div>
+        </div>
+
+        <div class="adv-panel">
+            <h4>Custom data</h4>
+            <p class="adv-help">CSV: one "x,y,label" per line. Label 1 (blue) or -1 (orange).</p>
+            <textarea id="custom-data-text" rows="6" style="width:100%;box-sizing:border-box;" placeholder="0.5,1.2,1&#10;-2.0,3.1,-1"></textarea>
+            <button class="basic-button" id="custom-data-load">Load custom dataset</button>
+            <div class="adv-readout" id="custom-data-readout"></div>
         </div>
     </div>
 
@@ -536,6 +593,7 @@ Modified by David Cato
     //     });
     // });
     </script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r134/three.min.js"></script>
     <script src="bundle.js"></script>
     <!-- Google analytics -->
     <script src="analytics.js"></script>

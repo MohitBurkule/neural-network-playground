@@ -29,6 +29,15 @@ import {
 } from "./state";
 import {Example2D, shuffle} from "./dataset";
 import {AppendingLineChart} from "./linechart";
+import {ThreeView, Point3D} from "./threeview";
+import {
+  Example3D,
+  classifyTwoGaussBlobs,
+  classifyConcentricSpheres,
+  classifyHelix,
+  classifySwissRoll
+} from "./dataset3d";
+import {parseCSV} from "./customdataset";
 import * as d3 from 'd3';
 import {compile} from 'mathjs';
 
@@ -1004,13 +1013,203 @@ function constructInput(x: number, y: number): number[] {
   return input;
 }
 
+// ============================================================================
+// Adversarial sampling (feature-agnostic, via finite differences on raw x,y).
+// ============================================================================
+
+/** Loss of the current network on a single raw (x,y) point with given label. */
+function pointLoss(x: number, y: number, label: number): number {
+  let out = nn.forwardProp(network, constructInput(x, y),
+      state.weightQuantization, state.layerNorm);
+  return nn.Errors.SQUARE.error(out, label);
+}
+
+/**
+ * Gradient of loss wrt raw (x,y) via central finite differences. This is
+ * feature-agnostic: features are recomputed through constructInput() each call,
+ * so it works regardless of which input features are enabled.
+ */
+function rawInputGradient(x: number, y: number, label: number): [number, number] {
+  let h = 1e-3;
+  let dx = (pointLoss(x + h, y, label) - pointLoss(x - h, y, label)) / (2 * h);
+  let dy = (pointLoss(x, y + h, label) - pointLoss(x, y - h, label)) / (2 * h);
+  return [dx, dy];
+}
+
+function fgsm(point: Example2D, eps: number): Example2D {
+  let [gx, gy] = rawInputGradient(point.x, point.y, point.label);
+  return {
+    x: point.x + eps * Math.sign(gx),
+    y: point.y + eps * Math.sign(gy),
+    label: point.label
+  };
+}
+
+function pgd(point: Example2D, eps: number, steps: number,
+    stepSize: number): Example2D {
+  let ax = point.x;
+  let ay = point.y;
+  for (let s = 0; s < steps; s++) {
+    let [gx, gy] = rawInputGradient(ax, ay, point.label);
+    ax += stepSize * Math.sign(gx);
+    ay += stepSize * Math.sign(gy);
+    ax = Math.max(point.x - eps, Math.min(point.x + eps, ax));
+    ay = Math.max(point.y - eps, Math.min(point.y + eps, ay));
+  }
+  return {x: ax, y: ay, label: point.label};
+}
+
+/** Perturb a point using the currently selected method/epsilon. */
+function perturb(point: Example2D): Example2D {
+  let eps = state.advEpsilon;
+  if (state.advMethod === "pgd") {
+    return pgd(point, eps, 10, eps / 4);
+  }
+  return fgsm(point, eps);
+}
+
+function accuracy(points: Example2D[]): number {
+  if (points.length === 0) return 1;
+  let correct = 0;
+  for (let p of points) {
+    let out = nn.forwardProp(network, constructInput(p.x, p.y),
+        state.weightQuantization, state.layerNorm);
+    if (Math.sign(out) === Math.sign(p.label)) correct++;
+  }
+  return correct / points.length;
+}
+
+// ============================================================================
+// In-place 3D mode.
+// ============================================================================
+
+let threeView: ThreeView = null;
+let threeData: Example3D[] = [];
+const THREE_GENERATORS: {[k: string]: (n: number, noise: number) => Example3D[]} = {
+  "blobs": classifyTwoGaussBlobs,
+  "spheres": classifyConcentricSpheres,
+  "helix": classifyHelix,
+  "swiss-roll": classifySwissRoll
+};
+
+function construct3DInput(x: number, y: number, z: number): number[] {
+  return [x, y, z];
+}
+
+function generate3DData(): void {
+  Math.seedrandom(state.seed);
+  let gen = THREE_GENERATORS[state.threeDDataset] || classifyTwoGaussBlobs;
+  threeData = gen(NUM_SAMPLES_CLASSIFY, state.noise / 100);
+  if (threeView) {
+    threeView.setDataPoints(threeData as Point3D[]);
+    threeView.render();
+  }
+}
+
+function get3DLoss(net: nn.Node[][], points: Example3D[]): number {
+  let loss = 0;
+  for (let p of points) {
+    let out = nn.forwardProp(net, construct3DInput(p.x, p.y, p.z),
+        state.weightQuantization, state.layerNorm);
+    loss += nn.Errors.SQUARE.error(out, p.label);
+  }
+  return points.length ? loss / points.length : 0;
+}
+
+function update3DBoundary(): void {
+  if (!threeView) return;
+  let N = 10;
+  let voxels: {x: number, y: number, z: number, value: number}[] = [];
+  let scale = (i: number) => -5 + (10 * i) / (N - 1);
+  for (let i = 0; i < N; i++) {
+    for (let j = 0; j < N; j++) {
+      for (let k = 0; k < N; k++) {
+        let x = scale(i), y = scale(j), z = scale(k);
+        let v = nn.forwardProp(network, construct3DInput(x, y, z),
+            state.weightQuantization, state.layerNorm);
+        voxels.push({x, y, z, value: Math.max(-1, Math.min(1, v))});
+      }
+    }
+  }
+  threeView.setBoundary(voxels);
+  threeView.render();
+}
+
+function oneStep3D(): void {
+  let optimizerType = optimizers[state.optimizer] || nn.OptimizerType.SGD;
+  threeData.forEach((point, i) => {
+    nn.forwardProp(network, construct3DInput(point.x, point.y, point.z),
+        state.weightQuantization, state.layerNorm);
+    nn.backProp(network, point.label, nn.Errors.SQUARE);
+    if ((i + 1) % state.batchSize === 0) {
+      nn.updateWeights(network, state.learningRate, state.regularization,
+          state.regularizationRate, optimizerType);
+    }
+  });
+  lossTrain = get3DLoss(network, threeData);
+  lossTest = lossTrain;
+  d3.select("#loss-train").text(lossTrain.toFixed(3));
+  d3.select("#loss-test").text(lossTest.toFixed(3));
+  d3.select("#iter-number").text(iter);
+  lineChart.addDataPoint([lossTrain, lossTest]);
+  if (iter % 5 === 0) {
+    update3DBoundary();
+  }
+}
+
+function reset3D(): void {
+  iter = 0;
+  let shape = [3].concat(state.networkShape).concat([1]);
+  network = nn.buildNetwork(shape, state.activation, nn.Activations.TANH,
+      ["x", "y", "z"], state.initZero);
+  generate3DData();
+  lossTrain = get3DLoss(network, threeData);
+  lossTest = lossTrain;
+  drawNetwork(network);
+  d3.select("#loss-train").text(lossTrain.toFixed(3));
+  d3.select("#loss-test").text(lossTest.toFixed(3));
+  update3DBoundary();
+}
+
+function enterThreeD(): void {
+  d3.select("#heatmap").style("display", "none");
+  let container = document.getElementById("threeview");
+  container.style.display = "block";
+  if (!threeView) {
+    threeView = new ThreeView(container, 300, 300);
+    threeView.enableControls();
+  }
+  reset3D();
+}
+
+function exitThreeD(): void {
+  if (threeView) {
+    threeView.dispose();
+    threeView = null;
+  }
+  d3.select("#threeview").style("display", "none");
+  d3.select("#heatmap").style("display", null);
+  reset();
+}
+
 function oneStep(): void {
   iter++;
+  if (state.threeD) {
+    oneStep3D();
+    return;
+  }
   let optimizerType = optimizers[state.optimizer] || nn.OptimizerType.SGD;
   state.trainData.forEach((point, i) => {
     let input = constructInput(point.x, point.y);
     nn.forwardProp(network, input, state.weightQuantization, state.layerNorm);
     nn.backProp(network, point.label, nn.Errors.SQUARE);
+    if (state.adversarialTraining) {
+      // Train also on an on-the-fly adversarial perturbation of this point.
+      let adv = perturb(point);
+      nn.forwardProp(network, constructInput(adv.x, adv.y),
+          state.weightQuantization, state.layerNorm);
+      nn.backProp(network, point.label, nn.Errors.SQUARE);
+    }
     if ((i + 1) % state.batchSize === 0) {
       nn.updateWeights(network, state.learningRate, state.regularization,
           state.regularizationRate, optimizerType);
@@ -1044,6 +1243,11 @@ function reset(onStartup=false) {
     userHasInteracted();
   }
   player.pause();
+
+  if (state.threeD && threeView) {
+    reset3D();
+    return;
+  }
 
   let suffix = state.numHiddenLayers !== 1 ? "s" : "";
   d3.select("#layers-label").text("Hidden layer" + suffix);
@@ -1220,9 +1424,171 @@ function simulationStarted() {
   parametersChanged = false;
 }
 
+// ============================================================================
+// Machine unlearning (gradient ascent on a forget set).
+// ============================================================================
+
+function unlearn(forgetSet: Example2D[], steps: number): void {
+  if (forgetSet.length === 0) return;
+  let optimizerType = optimizers[state.optimizer] || nn.OptimizerType.SGD;
+  for (let s = 0; s < steps; s++) {
+    forgetSet.forEach(point => {
+      nn.forwardProp(network, constructInput(point.x, point.y),
+          state.weightQuantization, state.layerNorm);
+      nn.backProp(network, point.label, nn.Errors.SQUARE);
+      // Gradient ASCENT: negative learning rate.
+      nn.updateWeights(network, -state.learningRate, state.regularization,
+          state.regularizationRate, optimizerType);
+    });
+  }
+}
+
+function misclassified(points: Example2D[]): Example2D[] {
+  return points.filter(p => {
+    let out = nn.forwardProp(network, constructInput(p.x, p.y),
+        state.weightQuantization, state.layerNorm);
+    return Math.sign(out) !== Math.sign(p.label);
+  });
+}
+
+function doUnlearn(forgetSet: Example2D[], label: string): void {
+  let retainSet = state.trainData.filter(p => forgetSet.indexOf(p) === -1);
+  let accF0 = accuracy(forgetSet);
+  let accR0 = accuracy(retainSet);
+  let steps = +(d3.select("#unlearn-steps").property("value") || 100);
+  unlearn(forgetSet, steps);
+  let accF1 = accuracy(forgetSet);
+  let accR1 = accuracy(retainSet);
+  updateUI();
+  d3.select("#unlearn-readout").html(
+    `${label} (${forgetSet.length} pts, ${steps} steps)<br>` +
+    `Forget acc: ${(accF0 * 100).toFixed(1)}% &rarr; ${(accF1 * 100).toFixed(1)}%<br>` +
+    `Retain acc: ${(accR0 * 100).toFixed(1)}% &rarr; ${(accR1 * 100).toFixed(1)}%`);
+}
+
+function makeAdvancedGUI() {
+  // ---- 3D mode ----
+  let threeDToggle = d3.select("#threeD-toggle").on("change", function() {
+    state.threeD = (this as any).checked;
+    state.serialize();
+    if (state.threeD) {
+      enterThreeD();
+    } else {
+      exitThreeD();
+    }
+  });
+  threeDToggle.property("checked", state.threeD);
+
+  let threeDDataset = d3.select("#threeD-dataset").on("change", function() {
+    state.threeDDataset = (this as any).value;
+    state.serialize();
+    if (state.threeD) {
+      reset3D();
+    }
+  });
+  threeDDataset.property("value", state.threeDDataset);
+
+  // ---- Adversarial ----
+  let advEps = d3.select("#adv-epsilon").on("input", function() {
+    state.advEpsilon = +(this as any).value;
+    d3.select("#adv-epsilon-val").text((this as any).value);
+    state.serialize();
+  });
+  advEps.property("value", state.advEpsilon);
+  d3.select("#adv-epsilon-val").text(state.advEpsilon);
+
+  let advMethod = d3.select("#adv-method").on("change", function() {
+    state.advMethod = (this as any).value;
+    state.serialize();
+  });
+  advMethod.property("value", state.advMethod);
+
+  let advTraining = d3.select("#adv-training").on("change", function() {
+    state.adversarialTraining = (this as any).checked;
+    state.serialize();
+  });
+  advTraining.property("checked", state.adversarialTraining);
+
+  d3.select("#adv-generate").on("click", () => {
+    let clean = state.testData;
+    let cleanAcc = accuracy(clean);
+    let perturbed = clean.map(p => perturb(p));
+    let advAcc = accuracy(perturbed);
+    let flipped = 0;
+    for (let i = 0; i < clean.length; i++) {
+      let oc = nn.forwardProp(network, constructInput(clean[i].x, clean[i].y),
+          state.weightQuantization, state.layerNorm);
+      let op = nn.forwardProp(network,
+          constructInput(perturbed[i].x, perturbed[i].y),
+          state.weightQuantization, state.layerNorm);
+      if (Math.sign(oc) !== Math.sign(op)) flipped++;
+    }
+    heatMap.updateTestPoints(perturbed);
+    d3.select("#adv-readout").html(
+      `Method: ${state.advMethod.toUpperCase()}, &epsilon;=${state.advEpsilon}<br>` +
+      `Clean acc: ${(cleanAcc * 100).toFixed(1)}%<br>` +
+      `Adversarial acc: ${(advAcc * 100).toFixed(1)}%<br>` +
+      `Predictions flipped: ${flipped}/${clean.length}`);
+  });
+
+  // ---- Unlearning ----
+  let unlearnSteps = d3.select("#unlearn-steps").on("input", function() {
+    d3.select("#unlearn-steps-val").text((this as any).value);
+  });
+  unlearnSteps.property("value", 100);
+  d3.select("#unlearn-steps-val").text(100);
+
+  d3.select("#forget-orange").on("click", () => {
+    doUnlearn(state.trainData.filter(p => p.label < 0), "Forgot Orange");
+  });
+  d3.select("#forget-blue").on("click", () => {
+    doUnlearn(state.trainData.filter(p => p.label > 0), "Forgot Blue");
+  });
+  d3.select("#forget-misclassified").on("click", () => {
+    doUnlearn(misclassified(state.trainData), "Forgot misclassified");
+  });
+  d3.select("#retrain-without").on("click", () => {
+    let forget = misclassified(state.trainData);
+    let retain = state.trainData.filter(p => forget.indexOf(p) === -1);
+    state.trainData = retain;
+    heatMap.updatePoints(state.trainData);
+    reset();
+    // Train the fresh network on the retained set only.
+    for (let e = 0; e < 100; e++) oneStep();
+    player.pause();
+    d3.select("#unlearn-readout").html(
+      `Retrained from scratch without ${forget.length} forgotten points ` +
+      `(100 epochs).`);
+  });
+
+  // ---- Custom data ----
+  d3.select("#custom-data-load").on("click", () => {
+    let text = d3.select("#custom-data-text").property("value") as string;
+    let result = parseCSV(text);
+    if (result.examples.length === 0) {
+      d3.select("#custom-data-readout").html(
+        `No valid examples parsed.` +
+        (result.errors.length ? `<br>${result.errors.slice(0, 5).join("<br>")}` : ""));
+      return;
+    }
+    let split = Math.floor(result.examples.length * state.percTrainData / 100);
+    state.trainData = result.examples.slice(0, split);
+    state.testData = result.examples.slice(split);
+    heatMap.updatePoints(state.trainData);
+    heatMap.updateTestPoints(state.showTestData ? state.testData : []);
+    reset();
+    d3.select("#custom-data-readout").html(
+      `Loaded ${result.examples.length} examples ` +
+      `(${state.trainData.length} train / ${state.testData.length} test).` +
+      (result.errors.length ?
+        `<br>${result.errors.length} bad line(s) skipped.` : ""));
+  });
+}
+
 drawDatasetThumbnails();
 initTutorial();
 makeGUI();
+makeAdvancedGUI();
 generateData(true);
 reset(true);
 hideControls();

@@ -171,7 +171,12 @@ export class State {
     {name: "problem", type: Type.OBJECT, keyMap: problems},
     {name: "initZero", type: Type.BOOLEAN},
     {name: "hideText", type: Type.BOOLEAN},
-    {name: "editColor", type: Type.NUMBER}
+    {name: "editColor", type: Type.NUMBER},
+    {name: "adversarialTraining", type: Type.BOOLEAN},
+    {name: "advEpsilon", type: Type.NUMBER},
+    {name: "advMethod", type: Type.STRING},
+    {name: "threeD", type: Type.BOOLEAN},
+    {name: "threeDDataset", type: Type.STRING}
   ];
 
   [key: string]: any;
@@ -207,6 +212,11 @@ export class State {
   absx_y_add= false;
   absx_y=false
   editColor = -1;
+  adversarialTraining = false;
+  advEpsilon = 0.5;
+  advMethod: string = "fgsm";
+  threeD = false;
+  threeDDataset: string = "blobs";
   dataset: dataset.DataGenerator = dataset.classifyCircleData;
   regDataset: dataset.DataGenerator = dataset.regressPlane;
   trainData: dataset.Example2D[] = [];

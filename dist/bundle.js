@@ -1497,10 +1497,10 @@ module.exports = _typeof, module.exports.__esModule = true, module.exports["defa
 
 
   /*!
-   *  decimal.js v10.4.3
+   *  decimal.js v10.6.0
    *  An arbitrary-precision Decimal type for JavaScript.
    *  https://github.com/MikeMcl/decimal.js
-   *  Copyright (c) 2022 Michael Mclaughlin <M8ch88l@gmail.com>
+   *  Copyright (c) 2025 Michael Mclaughlin <M8ch88l@gmail.com>
    *  MIT Licence
    */
 
@@ -1712,8 +1712,8 @@ module.exports = _typeof, module.exports.__esModule = true, module.exports["defa
    * Return a new Decimal whose value is the value of this Decimal clamped to the range
    * delineated by `min` and `max`.
    *
-   * min {number|string|Decimal}
-   * max {number|string|Decimal}
+   * min {number|string|bigint|Decimal}
+   * max {number|string|bigint|Decimal}
    *
    */
   P.clampedTo = P.clamp = function (min, max) {
@@ -2217,8 +2217,7 @@ module.exports = _typeof, module.exports.__esModule = true, module.exports["defa
    *
    */
   P.inverseCosine = P.acos = function () {
-    var halfPi,
-      x = this,
+    var x = this,
       Ctor = x.constructor,
       k = x.abs().cmp(1),
       pr = Ctor.precision,
@@ -2239,13 +2238,13 @@ module.exports = _typeof, module.exports.__esModule = true, module.exports["defa
     Ctor.precision = pr + 6;
     Ctor.rounding = 1;
 
-    x = x.asin();
-    halfPi = getPi(Ctor, pr + 4, rm).times(0.5);
+    // See https://github.com/MikeMcl/decimal.js/pull/217
+    x = new Ctor(1).minus(x).div(x.plus(1)).sqrt().atan();
 
     Ctor.precision = pr;
     Ctor.rounding = rm;
 
-    return halfPi.minus(x);
+    return x.times(2);
   };
 
 
@@ -2619,7 +2618,7 @@ module.exports = _typeof, module.exports.__esModule = true, module.exports["defa
    * log[b](Infinity) = Infinity
    * log[b](NaN)      = NaN
    *
-   * [base] {number|string|Decimal} The base of the logarithm.
+   * [base] {number|string|bigint|Decimal} The base of the logarithm.
    *
    */
   P.logarithm = P.log = function (base) {
@@ -2713,11 +2712,11 @@ module.exports = _typeof, module.exports.__esModule = true, module.exports["defa
   /*
    * Return a new Decimal whose value is the maximum of the arguments and the value of this Decimal.
    *
-   * arguments {number|string|Decimal}
+   * arguments {number|string|bigint|Decimal}
    *
   P.max = function () {
     Array.prototype.push.call(arguments, this);
-    return maxOrMin(this.constructor, arguments, 'lt');
+    return maxOrMin(this.constructor, arguments, -1);
   };
    */
 
@@ -2725,11 +2724,11 @@ module.exports = _typeof, module.exports.__esModule = true, module.exports["defa
   /*
    * Return a new Decimal whose value is the minimum of the arguments and the value of this Decimal.
    *
-   * arguments {number|string|Decimal}
+   * arguments {number|string|bigint|Decimal}
    *
   P.min = function () {
     Array.prototype.push.call(arguments, this);
-    return maxOrMin(this.constructor, arguments, 'gt');
+    return maxOrMin(this.constructor, arguments, 1);
   };
    */
 
@@ -3548,7 +3547,7 @@ module.exports = _typeof, module.exports.__esModule = true, module.exports["defa
    * denominator. If a maximum denominator is not specified, the denominator will be the lowest
    * value necessary to represent the number exactly.
    *
-   * [maxD] {number|string|Decimal} Maximum denominator. Integer >= 1 and < Infinity.
+   * [maxD] {number|string|bigint|Decimal} Maximum denominator. Integer >= 1 and < Infinity.
    *
    */
   P.toFraction = function (maxD) {
@@ -3636,7 +3635,7 @@ module.exports = _typeof, module.exports.__esModule = true, module.exports["defa
    *
    * The return value is not affected by the value of `precision`.
    *
-   * y {number|string|Decimal} The magnitude to round to a multiple of.
+   * y {number|string|bigint|Decimal} The magnitude to round to a multiple of.
    * [rm] {number} Rounding mode. Integer, 0 to 8 inclusive.
    *
    * 'toNearest() rounding mode not an integer: {rm}'
@@ -3756,7 +3755,7 @@ module.exports = _typeof, module.exports.__esModule = true, module.exports["defa
    *
    * If a result is incorrectly rounded the maximum error will be 1 ulp (unit in last place).
    *
-   * y {number|string|Decimal} The power to which to raise this Decimal.
+   * y {number|string|bigint|Decimal} The power to which to raise this Decimal.
    *
    */
   P.toPower = P.pow = function (y) {
@@ -4740,19 +4739,25 @@ module.exports = _typeof, module.exports.__esModule = true, module.exports["defa
 
 
   /*
-   * Handle `max` and `min`. `ltgt` is 'lt' or 'gt'.
+   * Handle `max` (`n` is -1) and `min` (`n` is 1).
    */
-  function maxOrMin(Ctor, args, ltgt) {
-    var y,
+  function maxOrMin(Ctor, args, n) {
+    var k, y,
       x = new Ctor(args[0]),
       i = 0;
 
     for (; ++i < args.length;) {
       y = new Ctor(args[i]);
+
+      // NaN?
       if (!y.s) {
         x = y;
         break;
-      } else if (x[ltgt](y)) {
+      }
+
+      k = x.cmp(y);
+
+      if (k === n || k === 0 && x.s === n) {
         x = y;
       }
     }
@@ -5010,6 +5015,8 @@ module.exports = _typeof, module.exports.__esModule = true, module.exports["defa
    */
   function parseDecimal(x, str) {
     var e, i, len;
+
+    // TODO BigInt str: no need to check for decimal point, exponential form or leading zeros.
 
     // Decimal point?
     if ((e = str.indexOf('.')) > -1) str = str.replace('.', '');
@@ -5478,7 +5485,7 @@ module.exports = _typeof, module.exports.__esModule = true, module.exports["defa
   /*
    * Return a new Decimal whose value is the absolute value of `x`.
    *
-   * x {number|string|Decimal}
+   * x {number|string|bigint|Decimal}
    *
    */
   function abs(x) {
@@ -5489,7 +5496,7 @@ module.exports = _typeof, module.exports.__esModule = true, module.exports["defa
   /*
    * Return a new Decimal whose value is the arccosine in radians of `x`.
    *
-   * x {number|string|Decimal}
+   * x {number|string|bigint|Decimal}
    *
    */
   function acos(x) {
@@ -5501,7 +5508,7 @@ module.exports = _typeof, module.exports.__esModule = true, module.exports["defa
    * Return a new Decimal whose value is the inverse of the hyperbolic cosine of `x`, rounded to
    * `precision` significant digits using rounding mode `rounding`.
    *
-   * x {number|string|Decimal} A value in radians.
+   * x {number|string|bigint|Decimal} A value in radians.
    *
    */
   function acosh(x) {
@@ -5513,8 +5520,8 @@ module.exports = _typeof, module.exports.__esModule = true, module.exports["defa
    * Return a new Decimal whose value is the sum of `x` and `y`, rounded to `precision` significant
    * digits using rounding mode `rounding`.
    *
-   * x {number|string|Decimal}
-   * y {number|string|Decimal}
+   * x {number|string|bigint|Decimal}
+   * y {number|string|bigint|Decimal}
    *
    */
   function add(x, y) {
@@ -5526,7 +5533,7 @@ module.exports = _typeof, module.exports.__esModule = true, module.exports["defa
    * Return a new Decimal whose value is the arcsine in radians of `x`, rounded to `precision`
    * significant digits using rounding mode `rounding`.
    *
-   * x {number|string|Decimal}
+   * x {number|string|bigint|Decimal}
    *
    */
   function asin(x) {
@@ -5538,7 +5545,7 @@ module.exports = _typeof, module.exports.__esModule = true, module.exports["defa
    * Return a new Decimal whose value is the inverse of the hyperbolic sine of `x`, rounded to
    * `precision` significant digits using rounding mode `rounding`.
    *
-   * x {number|string|Decimal} A value in radians.
+   * x {number|string|bigint|Decimal} A value in radians.
    *
    */
   function asinh(x) {
@@ -5550,7 +5557,7 @@ module.exports = _typeof, module.exports.__esModule = true, module.exports["defa
    * Return a new Decimal whose value is the arctangent in radians of `x`, rounded to `precision`
    * significant digits using rounding mode `rounding`.
    *
-   * x {number|string|Decimal}
+   * x {number|string|bigint|Decimal}
    *
    */
   function atan(x) {
@@ -5562,7 +5569,7 @@ module.exports = _typeof, module.exports.__esModule = true, module.exports["defa
    * Return a new Decimal whose value is the inverse of the hyperbolic tangent of `x`, rounded to
    * `precision` significant digits using rounding mode `rounding`.
    *
-   * x {number|string|Decimal} A value in radians.
+   * x {number|string|bigint|Decimal} A value in radians.
    *
    */
   function atanh(x) {
@@ -5577,8 +5584,8 @@ module.exports = _typeof, module.exports.__esModule = true, module.exports["defa
    * Domain: [-Infinity, Infinity]
    * Range: [-pi, pi]
    *
-   * y {number|string|Decimal} The y-coordinate.
-   * x {number|string|Decimal} The x-coordinate.
+   * y {number|string|bigint|Decimal} The y-coordinate.
+   * x {number|string|bigint|Decimal} The x-coordinate.
    *
    * atan2(±0, -0)               = ±pi
    * atan2(±0, +0)               = ±0
@@ -5643,7 +5650,7 @@ module.exports = _typeof, module.exports.__esModule = true, module.exports["defa
    * Return a new Decimal whose value is the cube root of `x`, rounded to `precision` significant
    * digits using rounding mode `rounding`.
    *
-   * x {number|string|Decimal}
+   * x {number|string|bigint|Decimal}
    *
    */
   function cbrt(x) {
@@ -5654,7 +5661,7 @@ module.exports = _typeof, module.exports.__esModule = true, module.exports["defa
   /*
    * Return a new Decimal whose value is `x` rounded to an integer using `ROUND_CEIL`.
    *
-   * x {number|string|Decimal}
+   * x {number|string|bigint|Decimal}
    *
    */
   function ceil(x) {
@@ -5665,9 +5672,9 @@ module.exports = _typeof, module.exports.__esModule = true, module.exports["defa
   /*
    * Return a new Decimal whose value is `x` clamped to the range delineated by `min` and `max`.
    *
-   * x {number|string|Decimal}
-   * min {number|string|Decimal}
-   * max {number|string|Decimal}
+   * x {number|string|bigint|Decimal}
+   * min {number|string|bigint|Decimal}
+   * max {number|string|bigint|Decimal}
    *
    */
   function clamp(x, min, max) {
@@ -5741,7 +5748,7 @@ module.exports = _typeof, module.exports.__esModule = true, module.exports["defa
    * Return a new Decimal whose value is the cosine of `x`, rounded to `precision` significant
    * digits using rounding mode `rounding`.
    *
-   * x {number|string|Decimal} A value in radians.
+   * x {number|string|bigint|Decimal} A value in radians.
    *
    */
   function cos(x) {
@@ -5753,7 +5760,7 @@ module.exports = _typeof, module.exports.__esModule = true, module.exports["defa
    * Return a new Decimal whose value is the hyperbolic cosine of `x`, rounded to precision
    * significant digits using rounding mode `rounding`.
    *
-   * x {number|string|Decimal} A value in radians.
+   * x {number|string|bigint|Decimal} A value in radians.
    *
    */
   function cosh(x) {
@@ -5773,7 +5780,7 @@ module.exports = _typeof, module.exports.__esModule = true, module.exports["defa
      * The Decimal constructor and exported function.
      * Return a new Decimal instance.
      *
-     * v {number|string|Decimal} A numeric value.
+     * v {number|string|bigint|Decimal} A numeric value.
      *
      */
     function Decimal(v) {
@@ -5787,7 +5794,6 @@ module.exports = _typeof, module.exports.__esModule = true, module.exports["defa
       // which points to Object.
       x.constructor = Decimal;
 
-      // Duplicate.
       if (isDecimalInstance(v)) {
         x.s = v.s;
 
@@ -5852,9 +5858,10 @@ module.exports = _typeof, module.exports.__esModule = true, module.exports["defa
           }
 
           return;
+        }
 
-        // Infinity, NaN.
-        } else if (v * 0 !== 0) {
+        // Infinity or NaN?
+        if (v * 0 !== 0) {
           if (!v) x.s = NaN;
           x.e = NaN;
           x.d = null;
@@ -5862,22 +5869,32 @@ module.exports = _typeof, module.exports.__esModule = true, module.exports["defa
         }
 
         return parseDecimal(x, v.toString());
-
-      } else if (t !== 'string') {
-        throw Error(invalidArgument + v);
       }
 
-      // Minus sign?
-      if ((i = v.charCodeAt(0)) === 45) {
-        v = v.slice(1);
-        x.s = -1;
-      } else {
-        // Plus sign?
-        if (i === 43) v = v.slice(1);
-        x.s = 1;
+      if (t === 'string') {
+        if ((i = v.charCodeAt(0)) === 45) {  // minus sign
+          v = v.slice(1);
+          x.s = -1;
+        } else {
+          if (i === 43) v = v.slice(1);  // plus sign
+          x.s = 1;
+        }
+
+        return isDecimal.test(v) ? parseDecimal(x, v) : parseOther(x, v);
       }
 
-      return isDecimal.test(v) ? parseDecimal(x, v) : parseOther(x, v);
+      if (t === 'bigint') {
+        if (v < 0) {
+          v = -v;
+          x.s = -1;
+        } else {
+          x.s = 1;
+        }
+
+        return parseDecimal(x, v.toString());
+      }
+
+      throw Error(invalidArgument + v);
     }
 
     Decimal.prototype = P;
@@ -5954,8 +5971,8 @@ module.exports = _typeof, module.exports.__esModule = true, module.exports["defa
    * Return a new Decimal whose value is `x` divided by `y`, rounded to `precision` significant
    * digits using rounding mode `rounding`.
    *
-   * x {number|string|Decimal}
-   * y {number|string|Decimal}
+   * x {number|string|bigint|Decimal}
+   * y {number|string|bigint|Decimal}
    *
    */
   function div(x, y) {
@@ -5967,7 +5984,7 @@ module.exports = _typeof, module.exports.__esModule = true, module.exports["defa
    * Return a new Decimal whose value is the natural exponential of `x`, rounded to `precision`
    * significant digits using rounding mode `rounding`.
    *
-   * x {number|string|Decimal} The power to which to raise the base of the natural log.
+   * x {number|string|bigint|Decimal} The power to which to raise the base of the natural log.
    *
    */
   function exp(x) {
@@ -5978,7 +5995,7 @@ module.exports = _typeof, module.exports.__esModule = true, module.exports["defa
   /*
    * Return a new Decimal whose value is `x` round to an integer using `ROUND_FLOOR`.
    *
-   * x {number|string|Decimal}
+   * x {number|string|bigint|Decimal}
    *
    */
   function floor(x) {
@@ -5992,7 +6009,7 @@ module.exports = _typeof, module.exports.__esModule = true, module.exports["defa
    *
    * hypot(a, b, ...) = sqrt(a^2 + b^2 + ...)
    *
-   * arguments {number|string|Decimal}
+   * arguments {number|string|bigint|Decimal}
    *
    */
   function hypot() {
@@ -6034,7 +6051,7 @@ module.exports = _typeof, module.exports.__esModule = true, module.exports["defa
    * Return a new Decimal whose value is the natural logarithm of `x`, rounded to `precision`
    * significant digits using rounding mode `rounding`.
    *
-   * x {number|string|Decimal}
+   * x {number|string|bigint|Decimal}
    *
    */
   function ln(x) {
@@ -6048,8 +6065,8 @@ module.exports = _typeof, module.exports.__esModule = true, module.exports["defa
    *
    * log[y](x)
    *
-   * x {number|string|Decimal} The argument of the logarithm.
-   * y {number|string|Decimal} The base of the logarithm.
+   * x {number|string|bigint|Decimal} The argument of the logarithm.
+   * y {number|string|bigint|Decimal} The base of the logarithm.
    *
    */
   function log(x, y) {
@@ -6061,7 +6078,7 @@ module.exports = _typeof, module.exports.__esModule = true, module.exports["defa
    * Return a new Decimal whose value is the base 2 logarithm of `x`, rounded to `precision`
    * significant digits using rounding mode `rounding`.
    *
-   * x {number|string|Decimal}
+   * x {number|string|bigint|Decimal}
    *
    */
   function log2(x) {
@@ -6073,7 +6090,7 @@ module.exports = _typeof, module.exports.__esModule = true, module.exports["defa
    * Return a new Decimal whose value is the base 10 logarithm of `x`, rounded to `precision`
    * significant digits using rounding mode `rounding`.
    *
-   * x {number|string|Decimal}
+   * x {number|string|bigint|Decimal}
    *
    */
   function log10(x) {
@@ -6084,22 +6101,22 @@ module.exports = _typeof, module.exports.__esModule = true, module.exports["defa
   /*
    * Return a new Decimal whose value is the maximum of the arguments.
    *
-   * arguments {number|string|Decimal}
+   * arguments {number|string|bigint|Decimal}
    *
    */
   function max() {
-    return maxOrMin(this, arguments, 'lt');
+    return maxOrMin(this, arguments, -1);
   }
 
 
   /*
    * Return a new Decimal whose value is the minimum of the arguments.
    *
-   * arguments {number|string|Decimal}
+   * arguments {number|string|bigint|Decimal}
    *
    */
   function min() {
-    return maxOrMin(this, arguments, 'gt');
+    return maxOrMin(this, arguments, 1);
   }
 
 
@@ -6107,8 +6124,8 @@ module.exports = _typeof, module.exports.__esModule = true, module.exports["defa
    * Return a new Decimal whose value is `x` modulo `y`, rounded to `precision` significant digits
    * using rounding mode `rounding`.
    *
-   * x {number|string|Decimal}
-   * y {number|string|Decimal}
+   * x {number|string|bigint|Decimal}
+   * y {number|string|bigint|Decimal}
    *
    */
   function mod(x, y) {
@@ -6120,8 +6137,8 @@ module.exports = _typeof, module.exports.__esModule = true, module.exports["defa
    * Return a new Decimal whose value is `x` multiplied by `y`, rounded to `precision` significant
    * digits using rounding mode `rounding`.
    *
-   * x {number|string|Decimal}
-   * y {number|string|Decimal}
+   * x {number|string|bigint|Decimal}
+   * y {number|string|bigint|Decimal}
    *
    */
   function mul(x, y) {
@@ -6133,8 +6150,8 @@ module.exports = _typeof, module.exports.__esModule = true, module.exports["defa
    * Return a new Decimal whose value is `x` raised to the power `y`, rounded to precision
    * significant digits using rounding mode `rounding`.
    *
-   * x {number|string|Decimal} The base.
-   * y {number|string|Decimal} The exponent.
+   * x {number|string|bigint|Decimal} The base.
+   * y {number|string|bigint|Decimal} The exponent.
    *
    */
   function pow(x, y) {
@@ -6252,7 +6269,7 @@ module.exports = _typeof, module.exports.__esModule = true, module.exports["defa
    *
    * To emulate `Math.round`, set rounding to 7 (ROUND_HALF_CEIL).
    *
-   * x {number|string|Decimal}
+   * x {number|string|bigint|Decimal}
    *
    */
   function round(x) {
@@ -6268,7 +6285,7 @@ module.exports = _typeof, module.exports.__esModule = true, module.exports["defa
    *  -0    if x is -0,
    *   NaN  otherwise
    *
-   * x {number|string|Decimal}
+   * x {number|string|bigint|Decimal}
    *
    */
   function sign(x) {
@@ -6281,7 +6298,7 @@ module.exports = _typeof, module.exports.__esModule = true, module.exports["defa
    * Return a new Decimal whose value is the sine of `x`, rounded to `precision` significant digits
    * using rounding mode `rounding`.
    *
-   * x {number|string|Decimal} A value in radians.
+   * x {number|string|bigint|Decimal} A value in radians.
    *
    */
   function sin(x) {
@@ -6293,7 +6310,7 @@ module.exports = _typeof, module.exports.__esModule = true, module.exports["defa
    * Return a new Decimal whose value is the hyperbolic sine of `x`, rounded to `precision`
    * significant digits using rounding mode `rounding`.
    *
-   * x {number|string|Decimal} A value in radians.
+   * x {number|string|bigint|Decimal} A value in radians.
    *
    */
   function sinh(x) {
@@ -6305,7 +6322,7 @@ module.exports = _typeof, module.exports.__esModule = true, module.exports["defa
    * Return a new Decimal whose value is the square root of `x`, rounded to `precision` significant
    * digits using rounding mode `rounding`.
    *
-   * x {number|string|Decimal}
+   * x {number|string|bigint|Decimal}
    *
    */
   function sqrt(x) {
@@ -6317,8 +6334,8 @@ module.exports = _typeof, module.exports.__esModule = true, module.exports["defa
    * Return a new Decimal whose value is `x` minus `y`, rounded to `precision` significant digits
    * using rounding mode `rounding`.
    *
-   * x {number|string|Decimal}
-   * y {number|string|Decimal}
+   * x {number|string|bigint|Decimal}
+   * y {number|string|bigint|Decimal}
    *
    */
   function sub(x, y) {
@@ -6332,7 +6349,7 @@ module.exports = _typeof, module.exports.__esModule = true, module.exports["defa
    *
    * Only the result is rounded, not the intermediate calculations.
    *
-   * arguments {number|string|Decimal}
+   * arguments {number|string|bigint|Decimal}
    *
    */
   function sum() {
@@ -6352,7 +6369,7 @@ module.exports = _typeof, module.exports.__esModule = true, module.exports["defa
    * Return a new Decimal whose value is the tangent of `x`, rounded to `precision` significant
    * digits using rounding mode `rounding`.
    *
-   * x {number|string|Decimal} A value in radians.
+   * x {number|string|bigint|Decimal} A value in radians.
    *
    */
   function tan(x) {
@@ -6364,7 +6381,7 @@ module.exports = _typeof, module.exports.__esModule = true, module.exports["defa
    * Return a new Decimal whose value is the hyperbolic tangent of `x`, rounded to `precision`
    * significant digits using rounding mode `rounding`.
    *
-   * x {number|string|Decimal} A value in radians.
+   * x {number|string|bigint|Decimal} A value in radians.
    *
    */
   function tanh(x) {
@@ -6375,7 +6392,7 @@ module.exports = _typeof, module.exports.__esModule = true, module.exports["defa
   /*
    * Return a new Decimal whose value is `x` truncated to an integer.
    *
-   * x {number|string|Decimal}
+   * x {number|string|bigint|Decimal}
    *
    */
   function trunc(x) {
@@ -87147,6 +87164,84 @@ module.exports.TinyEmitter = E;
 },{}],1030:[function(require,module,exports){
 "use strict";
 Object.defineProperty(exports, "__esModule", { value: true });
+exports.parseCSV = parseCSV;
+exports.serializeCSV = serializeCSV;
+exports.validateExample = validateExample;
+exports.trainTestSplit = trainTestSplit;
+function parseCSV(text) {
+    var examples = [];
+    var errors = [];
+    var lines = text.split(/\r?\n/);
+    var lineNum = 0;
+    for (var _i = 0, lines_1 = lines; _i < lines_1.length; _i++) {
+        var rawLine = lines_1[_i];
+        lineNum++;
+        var line = rawLine.trim();
+        if (line === '' || line.startsWith('#'))
+            continue;
+        var parts = line.split(',');
+        if (parts.length < 3) {
+            errors.push("Line ".concat(lineNum, ": expected 3 columns (x,y,label), got ").concat(parts.length, " \u2014 \"").concat(line, "\""));
+            continue;
+        }
+        var xStr = parts[0].trim();
+        var yStr = parts[1].trim();
+        var lStr = parts[2].trim();
+        if (lineNum === 1 && isNaN(Number(xStr))) {
+            continue;
+        }
+        var x = Number(xStr);
+        var y = Number(yStr);
+        var labelRaw = Number(lStr);
+        if (isNaN(x)) {
+            errors.push("Line ".concat(lineNum, ": x=\"").concat(xStr, "\" is not a number"));
+            continue;
+        }
+        if (isNaN(y)) {
+            errors.push("Line ".concat(lineNum, ": y=\"").concat(yStr, "\" is not a number"));
+            continue;
+        }
+        if (isNaN(labelRaw)) {
+            errors.push("Line ".concat(lineNum, ": label=\"").concat(lStr, "\" is not a number"));
+            continue;
+        }
+        var label = labelRaw === 0 ? -1 : (labelRaw > 0 ? 1 : -1);
+        examples.push({ x: x, y: y, label: label });
+    }
+    return { examples: examples, errors: errors };
+}
+function serializeCSV(examples) {
+    var lines = ['x,y,label'];
+    for (var _i = 0, examples_1 = examples; _i < examples_1.length; _i++) {
+        var ex = examples_1[_i];
+        lines.push("".concat(ex.x, ",").concat(ex.y, ",").concat(ex.label));
+    }
+    return lines.join('\n');
+}
+function validateExample(x, y, label) {
+    if (typeof x !== 'number' || isNaN(x))
+        return 'x must be a finite number';
+    if (typeof y !== 'number' || isNaN(y))
+        return 'y must be a finite number';
+    if (label !== 1 && label !== -1)
+        return 'label must be 1 or -1';
+    return null;
+}
+function trainTestSplit(examples, trainRatio) {
+    var _a;
+    if (trainRatio === void 0) { trainRatio = 0.8; }
+    var arr = examples.slice();
+    for (var i = arr.length - 1; i > 0; i--) {
+        var j = Math.floor(Math.random() * (i + 1));
+        _a = [arr[j], arr[i]], arr[i] = _a[0], arr[j] = _a[1];
+    }
+    var cutoff = Math.floor(arr.length * trainRatio);
+    return { train: arr.slice(0, cutoff), test: arr.slice(cutoff) };
+}
+
+},{}],1031:[function(require,module,exports){
+"use strict";
+Object.defineProperty(exports, "__esModule", { value: true });
 exports.shuffle = shuffle;
 exports.classifyHashData = classifyHashData;
 exports.classifyTwoGaussData = classifyTwoGaussData;
@@ -87482,7 +87577,102 @@ function dist(a, b) {
     return Math.sqrt(dx * dx + dy * dy);
 }
 
-},{"d3":9}],1031:[function(require,module,exports){
+},{"d3":9}],1032:[function(require,module,exports){
+"use strict";
+Object.defineProperty(exports, "__esModule", { value: true });
+exports.classifyTwoGaussBlobs = classifyTwoGaussBlobs;
+exports.classifyConcentricSpheres = classifyConcentricSpheres;
+exports.classifyHelix = classifyHelix;
+exports.classifySwissRoll = classifySwissRoll;
+function randNormal(mean, stddev) {
+    var u = 0, v = 0;
+    while (u === 0)
+        u = Math.random();
+    while (v === 0)
+        v = Math.random();
+    return mean + stddev * Math.sqrt(-2 * Math.log(u)) * Math.cos(2 * Math.PI * v);
+}
+function randUniform(a, b) {
+    return Math.random() * (b - a) + a;
+}
+function classifyTwoGaussBlobs(numSamples, noise) {
+    var points = [];
+    var variance = 0.5 + noise * 3;
+    var half = Math.floor(numSamples / 2);
+    for (var i = 0; i < half; i++) {
+        points.push({
+            x: randNormal(-2, variance),
+            y: randNormal(-2, variance),
+            z: randNormal(-2, variance),
+            label: 1
+        });
+    }
+    for (var i = half; i < numSamples; i++) {
+        points.push({
+            x: randNormal(2, variance),
+            y: randNormal(2, variance),
+            z: randNormal(2, variance),
+            label: -1
+        });
+    }
+    return points;
+}
+function classifyConcentricSpheres(numSamples, noise) {
+    var points = [];
+    for (var i = 0; i < numSamples; i++) {
+        var theta = randUniform(0, 2 * Math.PI);
+        var phi = Math.acos(randUniform(-1, 1));
+        var isInner = i % 2 === 0;
+        var r = isInner
+            ? randUniform(0.3, 1.5) + randUniform(-1, 1) * noise
+            : randUniform(2.5, 4.0) + randUniform(-1, 1) * noise;
+        var x = r * Math.sin(phi) * Math.cos(theta);
+        var y = r * Math.sin(phi) * Math.sin(theta);
+        var z = r * Math.cos(phi);
+        points.push({ x: x, y: y, z: z, label: isInner ? 1 : -1 });
+    }
+    return points;
+}
+function classifyHelix(numSamples, noise) {
+    var points = [];
+    var half = Math.floor(numSamples / 2);
+    for (var i = 0; i < half; i++) {
+        var t = (i / half) * 4 * Math.PI;
+        var r = 2;
+        points.push({
+            x: r * Math.cos(t) + randNormal(0, noise),
+            y: t * 0.5 - Math.PI * 2 + randNormal(0, noise),
+            z: r * Math.sin(t) + randNormal(0, noise),
+            label: 1
+        });
+    }
+    for (var i = 0; i < numSamples - half; i++) {
+        var t = (i / (numSamples - half)) * 4 * Math.PI;
+        var r = 2;
+        points.push({
+            x: r * Math.cos(t + Math.PI) + randNormal(0, noise),
+            y: t * 0.5 - Math.PI * 2 + randNormal(0, noise),
+            z: r * Math.sin(t + Math.PI) + randNormal(0, noise),
+            label: -1
+        });
+    }
+    return points;
+}
+function classifySwissRoll(numSamples, noise) {
+    var points = [];
+    for (var i = 0; i < numSamples; i++) {
+        var t = 1.5 * Math.PI * (1 + 2 * Math.random());
+        var height = randUniform(-3, 3);
+        var x = (t * Math.cos(t) / 5) + randNormal(0, noise);
+        var y = height + randNormal(0, noise);
+        var z = (t * Math.sin(t) / 5) + randNormal(0, noise);
+        var label = Math.cos(t) > 0 ? 1 : -1;
+        points.push({ x: x, y: y, z: z, label: label });
+    }
+    return points;
+}
+
+},{}],1033:[function(require,module,exports){
 "use strict";
 Object.defineProperty(exports, "__esModule", { value: true });
 exports.HeatMap = void 0;
@@ -87638,7 +87828,7 @@ function reduceMatrix(matrix, factor) {
     return result;
 }
 
-},{"d3":9}],1032:[function(require,module,exports){
+},{"d3":9}],1034:[function(require,module,exports){
 "use strict";
 Object.defineProperty(exports, "__esModule", { value: true });
 exports.AppendingLineChart = void 0;
@@ -87711,7 +87901,7 @@ var AppendingLineChart = (function () {
 }());
 exports.AppendingLineChart = AppendingLineChart;
 
-},{"d3":9}],1033:[function(require,module,exports){
+},{"d3":9}],1035:[function(require,module,exports){
 "use strict";
 Object.defineProperty(exports, "__esModule", { value: true });
 exports.OPTIMIZER_EPSILON = exports.OPTIMIZER_BETA2 = exports.OPTIMIZER_BETA1 = exports.OptimizerType = exports.Link = exports.WeightQuantizationFunction = exports.RegularizationFunction = exports.Activations = exports.Errors = exports.Node = void 0;
@@ -88141,7 +88331,7 @@ function compileNetworkToJs(network) {
     return js;
 }
 
-},{}],1034:[function(require,module,exports){
+},{}],1036:[function(require,module,exports){
 "use strict";
 Object.defineProperty(exports, "__esModule", { value: true });
 exports.getOutputWeights = getOutputWeights;
@@ -88150,6 +88340,9 @@ var heatmap_1 = require("./heatmap");
 var state_1 = require("./state");
 var dataset_1 = require("./dataset");
 var linechart_1 = require("./linechart");
+var threeview_1 = require("./threeview");
+var dataset3d_1 = require("./dataset3d");
+var customdataset_1 = require("./customdataset");
 var d3 = require("d3");
 var mathjs_1 = require("mathjs");
 var mainWidth;
@@ -88958,13 +89151,168 @@ function constructInput(x, y) {
     }
     return input;
 }
+function pointLoss(x, y, label) {
+    var out = nn.forwardProp(network, constructInput(x, y), state.weightQuantization, state.layerNorm);
+    return nn.Errors.SQUARE.error(out, label);
+}
+function rawInputGradient(x, y, label) {
+    var h = 1e-3;
+    var dx = (pointLoss(x + h, y, label) - pointLoss(x - h, y, label)) / (2 * h);
+    var dy = (pointLoss(x, y + h, label) - pointLoss(x, y - h, label)) / (2 * h);
+    return [dx, dy];
+}
+function fgsm(point, eps) {
+    var _a = rawInputGradient(point.x, point.y, point.label), gx = _a[0], gy = _a[1];
+    return {
+        x: point.x + eps * Math.sign(gx),
+        y: point.y + eps * Math.sign(gy),
+        label: point.label
+    };
+}
+function pgd(point, eps, steps, stepSize) {
+    var ax = point.x;
+    var ay = point.y;
+    for (var s = 0; s < steps; s++) {
+        var _a = rawInputGradient(ax, ay, point.label), gx = _a[0], gy = _a[1];
+        ax += stepSize * Math.sign(gx);
+        ay += stepSize * Math.sign(gy);
+        ax = Math.max(point.x - eps, Math.min(point.x + eps, ax));
+        ay = Math.max(point.y - eps, Math.min(point.y + eps, ay));
+    }
+    return { x: ax, y: ay, label: point.label };
+}
+function perturb(point) {
+    var eps = state.advEpsilon;
+    if (state.advMethod === "pgd") {
+        return pgd(point, eps, 10, eps / 4);
+    }
+    return fgsm(point, eps);
+}
+function accuracy(points) {
+    if (points.length === 0)
+        return 1;
+    var correct = 0;
+    for (var _i = 0, points_1 = points; _i < points_1.length; _i++) {
+        var p = points_1[_i];
+        var out = nn.forwardProp(network, constructInput(p.x, p.y), state.weightQuantization, state.layerNorm);
+        if (Math.sign(out) === Math.sign(p.label))
+            correct++;
+    }
+    return correct / points.length;
+}
+var threeView = null;
+var threeData = [];
+var THREE_GENERATORS = {
+    "blobs": dataset3d_1.classifyTwoGaussBlobs,
+    "spheres": dataset3d_1.classifyConcentricSpheres,
+    "helix": dataset3d_1.classifyHelix,
+    "swiss-roll": dataset3d_1.classifySwissRoll
+};
+function construct3DInput(x, y, z) {
+    return [x, y, z];
+}
+function generate3DData() {
+    Math.seedrandom(state.seed);
+    var gen = THREE_GENERATORS[state.threeDDataset] || dataset3d_1.classifyTwoGaussBlobs;
+    threeData = gen(NUM_SAMPLES_CLASSIFY, state.noise / 100);
+    if (threeView) {
+        threeView.setDataPoints(threeData);
+        threeView.render();
+    }
+}
+function get3DLoss(net, points) {
+    var loss = 0;
+    for (var _i = 0, points_2 = points; _i < points_2.length; _i++) {
+        var p = points_2[_i];
+        var out = nn.forwardProp(net, construct3DInput(p.x, p.y, p.z), state.weightQuantization, state.layerNorm);
+        loss += nn.Errors.SQUARE.error(out, p.label);
+    }
+    return points.length ? loss / points.length : 0;
+}
+function update3DBoundary() {
+    if (!threeView)
+        return;
+    var N = 10;
+    var voxels = [];
+    var scale = function (i) { return -5 + (10 * i) / (N - 1); };
+    for (var i = 0; i < N; i++) {
+        for (var j = 0; j < N; j++) {
+            for (var k = 0; k < N; k++) {
+                var x = scale(i), y = scale(j), z = scale(k);
+                var v = nn.forwardProp(network, construct3DInput(x, y, z), state.weightQuantization, state.layerNorm);
+                voxels.push({ x: x, y: y, z: z, value: Math.max(-1, Math.min(1, v)) });
+            }
+        }
+    }
+    threeView.setBoundary(voxels);
+    threeView.render();
+}
+function oneStep3D() {
+    var optimizerType = state_1.optimizers[state.optimizer] || nn.OptimizerType.SGD;
+    threeData.forEach(function (point, i) {
+        nn.forwardProp(network, construct3DInput(point.x, point.y, point.z), state.weightQuantization, state.layerNorm);
+        nn.backProp(network, point.label, nn.Errors.SQUARE);
+        if ((i + 1) % state.batchSize === 0) {
+            nn.updateWeights(network, state.learningRate, state.regularization, state.regularizationRate, optimizerType);
+        }
+    });
+    lossTrain = get3DLoss(network, threeData);
+    lossTest = lossTrain;
+    d3.select("#loss-train").text(lossTrain.toFixed(3));
+    d3.select("#loss-test").text(lossTest.toFixed(3));
+    d3.select("#iter-number").text(iter);
+    lineChart.addDataPoint([lossTrain, lossTest]);
+    if (iter % 5 === 0) {
+        update3DBoundary();
+    }
+}
+function reset3D() {
+    iter = 0;
+    var shape = [3].concat(state.networkShape).concat([1]);
+    network = nn.buildNetwork(shape, state.activation, nn.Activations.TANH, ["x", "y", "z"], state.initZero);
+    generate3DData();
+    lossTrain = get3DLoss(network, threeData);
+    lossTest = lossTrain;
+    drawNetwork(network);
+    d3.select("#loss-train").text(lossTrain.toFixed(3));
+    d3.select("#loss-test").text(lossTest.toFixed(3));
+    update3DBoundary();
+}
+function enterThreeD() {
+    d3.select("#heatmap").style("display", "none");
+    var container = document.getElementById("threeview");
+    container.style.display = "block";
+    if (!threeView) {
+        threeView = new threeview_1.ThreeView(container, 300, 300);
+        threeView.enableControls();
+    }
+    reset3D();
+}
+function exitThreeD() {
+    if (threeView) {
+        threeView.dispose();
+        threeView = null;
+    }
+    d3.select("#threeview").style("display", "none");
+    d3.select("#heatmap").style("display", null);
+    reset();
+}
 function oneStep() {
     iter++;
+    if (state.threeD) {
+        oneStep3D();
+        return;
+    }
     var optimizerType = state_1.optimizers[state.optimizer] || nn.OptimizerType.SGD;
     state.trainData.forEach(function (point, i) {
         var input = constructInput(point.x, point.y);
         nn.forwardProp(network, input, state.weightQuantization, state.layerNorm);
         nn.backProp(network, point.label, nn.Errors.SQUARE);
+        if (state.adversarialTraining) {
+            var adv = perturb(point);
+            nn.forwardProp(network, constructInput(adv.x, adv.y), state.weightQuantization, state.layerNorm);
+            nn.backProp(network, point.label, nn.Errors.SQUARE);
+        }
         if ((i + 1) % state.batchSize === 0) {
             nn.updateWeights(network, state.learningRate, state.regularization, state.regularizationRate, optimizerType);
         }
@@ -88995,6 +89343,10 @@ function reset(onStartup) {
         userHasInteracted();
     }
     player.pause();
+    if (state.threeD && threeView) {
+        reset3D();
+        return;
+    }
     var suffix = state.numHiddenLayers !== 1 ? "s" : "";
     d3.select("#layers-label").text("Hidden layer" + suffix);
     d3.select("#num-layers").text(state.numHiddenLayers);
@@ -89146,9 +89498,142 @@ function simulationStarted() {
     });
     parametersChanged = false;
 }
+function unlearn(forgetSet, steps) {
+    if (forgetSet.length === 0)
+        return;
+    var optimizerType = state_1.optimizers[state.optimizer] || nn.OptimizerType.SGD;
+    for (var s = 0; s < steps; s++) {
+        forgetSet.forEach(function (point) {
+            nn.forwardProp(network, constructInput(point.x, point.y), state.weightQuantization, state.layerNorm);
+            nn.backProp(network, point.label, nn.Errors.SQUARE);
+            nn.updateWeights(network, -state.learningRate, state.regularization, state.regularizationRate, optimizerType);
+        });
+    }
+}
+function misclassified(points) {
+    return points.filter(function (p) {
+        var out = nn.forwardProp(network, constructInput(p.x, p.y), state.weightQuantization, state.layerNorm);
+        return Math.sign(out) !== Math.sign(p.label);
+    });
+}
+function doUnlearn(forgetSet, label) {
+    var retainSet = state.trainData.filter(function (p) { return forgetSet.indexOf(p) === -1; });
+    var accF0 = accuracy(forgetSet);
+    var accR0 = accuracy(retainSet);
+    var steps = +(d3.select("#unlearn-steps").property("value") || 100);
+    unlearn(forgetSet, steps);
+    var accF1 = accuracy(forgetSet);
+    var accR1 = accuracy(retainSet);
+    updateUI();
+    d3.select("#unlearn-readout").html("".concat(label, " (").concat(forgetSet.length, " pts, ").concat(steps, " steps)<br>") +
+        "Forget acc: ".concat((accF0 * 100).toFixed(1), "% &rarr; ").concat((accF1 * 100).toFixed(1), "%<br>") +
+        "Retain acc: ".concat((accR0 * 100).toFixed(1), "% &rarr; ").concat((accR1 * 100).toFixed(1), "%"));
+}
+function makeAdvancedGUI() {
+    var threeDToggle = d3.select("#threeD-toggle").on("change", function () {
+        state.threeD = this.checked;
+        state.serialize();
+        if (state.threeD) {
+            enterThreeD();
+        }
+        else {
+            exitThreeD();
+        }
+    });
+    threeDToggle.property("checked", state.threeD);
+    var threeDDataset = d3.select("#threeD-dataset").on("change", function () {
+        state.threeDDataset = this.value;
+        state.serialize();
+        if (state.threeD) {
+            reset3D();
+        }
+    });
+    threeDDataset.property("value", state.threeDDataset);
+    var advEps = d3.select("#adv-epsilon").on("input", function () {
+        state.advEpsilon = +this.value;
+        d3.select("#adv-epsilon-val").text(this.value);
+        state.serialize();
+    });
+    advEps.property("value", state.advEpsilon);
+    d3.select("#adv-epsilon-val").text(state.advEpsilon);
+    var advMethod = d3.select("#adv-method").on("change", function () {
+        state.advMethod = this.value;
+        state.serialize();
+    });
+    advMethod.property("value", state.advMethod);
+    var advTraining = d3.select("#adv-training").on("change", function () {
+        state.adversarialTraining = this.checked;
+        state.serialize();
+    });
+    advTraining.property("checked", state.adversarialTraining);
+    d3.select("#adv-generate").on("click", function () {
+        var clean = state.testData;
+        var cleanAcc = accuracy(clean);
+        var perturbed = clean.map(function (p) { return perturb(p); });
+        var advAcc = accuracy(perturbed);
+        var flipped = 0;
+        for (var i = 0; i < clean.length; i++) {
+            var oc = nn.forwardProp(network, constructInput(clean[i].x, clean[i].y), state.weightQuantization, state.layerNorm);
+            var op = nn.forwardProp(network, constructInput(perturbed[i].x, perturbed[i].y), state.weightQuantization, state.layerNorm);
+            if (Math.sign(oc) !== Math.sign(op))
+                flipped++;
+        }
+        heatMap.updateTestPoints(perturbed);
+        d3.select("#adv-readout").html("Method: ".concat(state.advMethod.toUpperCase(), ", &epsilon;=").concat(state.advEpsilon, "<br>") +
+            "Clean acc: ".concat((cleanAcc * 100).toFixed(1), "%<br>") +
+            "Adversarial acc: ".concat((advAcc * 100).toFixed(1), "%<br>") +
+            "Predictions flipped: ".concat(flipped, "/").concat(clean.length));
+    });
+    var unlearnSteps = d3.select("#unlearn-steps").on("input", function () {
+        d3.select("#unlearn-steps-val").text(this.value);
+    });
+    unlearnSteps.property("value", 100);
+    d3.select("#unlearn-steps-val").text(100);
+    d3.select("#forget-orange").on("click", function () {
+        doUnlearn(state.trainData.filter(function (p) { return p.label < 0; }), "Forgot Orange");
+    });
+    d3.select("#forget-blue").on("click", function () {
+        doUnlearn(state.trainData.filter(function (p) { return p.label > 0; }), "Forgot Blue");
+    });
+    d3.select("#forget-misclassified").on("click", function () {
+        doUnlearn(misclassified(state.trainData), "Forgot misclassified");
+    });
+    d3.select("#retrain-without").on("click", function () {
+        var forget = misclassified(state.trainData);
+        var retain = state.trainData.filter(function (p) { return forget.indexOf(p) === -1; });
+        state.trainData = retain;
+        heatMap.updatePoints(state.trainData);
+        reset();
+        for (var e = 0; e < 100; e++)
+            oneStep();
+        player.pause();
+        d3.select("#unlearn-readout").html("Retrained from scratch without ".concat(forget.length, " forgotten points ") +
+            "(100 epochs).");
+    });
+    d3.select("#custom-data-load").on("click", function () {
+        var text = d3.select("#custom-data-text").property("value");
+        var result = (0, customdataset_1.parseCSV)(text);
+        if (result.examples.length === 0) {
+            d3.select("#custom-data-readout").html("No valid examples parsed." +
+                (result.errors.length ? "<br>".concat(result.errors.slice(0, 5).join("<br>")) : ""));
+            return;
+        }
+        var split = Math.floor(result.examples.length * state.percTrainData / 100);
+        state.trainData = result.examples.slice(0, split);
+        state.testData = result.examples.slice(split);
+        heatMap.updatePoints(state.trainData);
+        heatMap.updateTestPoints(state.showTestData ? state.testData : []);
+        reset();
+        d3.select("#custom-data-readout").html("Loaded ".concat(result.examples.length, " examples ") +
+            "(".concat(state.trainData.length, " train / ").concat(state.testData.length, " test).") +
+            (result.errors.length ?
+                "<br>".concat(result.errors.length, " bad line(s) skipped.") : ""));
+    });
+}
 drawDatasetThumbnails();
 initTutorial();
 makeGUI();
+makeAdvancedGUI();
 generateData(true);
 reset(true);
 hideControls();
@@ -89201,7 +89686,7 @@ document.querySelector("#add-activation").addEventListener("click", function () 
     reset();
 });
 
-},{"./dataset":1030,"./heatmap":1031,"./linechart":1032,"./nn":1033,"./state":1035,"d3":9,"mathjs":937}],1035:[function(require,module,exports){
+},{"./customdataset":1030,"./dataset":1031,"./dataset3d":1032,"./heatmap":1033,"./linechart":1034,"./nn":1035,"./state":1037,"./threeview":1038,"d3":9,"mathjs":937}],1037:[function(require,module,exports){
 "use strict";
 Object.defineProperty(exports, "__esModule", { value: true });
 exports.State = exports.problems = exports.Problem = exports.Type = exports.regDatasets = exports.datasets = exports.weightQuantizations = exports.regularizations = exports.activations = exports.optimizers = void 0;
@@ -89333,6 +89818,11 @@ var State = (function () {
         this.absx_y_add = false;
         this.absx_y = false;
         this.editColor = -1;
+        this.adversarialTraining = false;
+        this.advEpsilon = 0.5;
+        this.advMethod = "fgsm";
+        this.threeD = false;
+        this.threeDDataset = "blobs";
         this.dataset = dataset.classifyCircleData;
         this.regDataset = dataset.regressPlane;
         this.trainData = [];
@@ -89471,10 +89961,208 @@ var State = (function () {
         { name: "problem", type: Type.OBJECT, keyMap: exports.problems },
         { name: "initZero", type: Type.BOOLEAN },
         { name: "hideText", type: Type.BOOLEAN },
-        { name: "editColor", type: Type.NUMBER }
+        { name: "editColor", type: Type.NUMBER },
+        { name: "adversarialTraining", type: Type.BOOLEAN },
+        { name: "advEpsilon", type: Type.NUMBER },
+        { name: "advMethod", type: Type.STRING },
+        { name: "threeD", type: Type.BOOLEAN },
+        { name: "threeDDataset", type: Type.STRING }
     ];
     return State;
 }());
 exports.State = State;
 
-},{"./dataset":1030,"./nn":1033}]},{},[1034]);
+},{"./dataset":1031,"./nn":1035}],1038:[function(require,module,exports){
+"use strict";
+Object.defineProperty(exports, "__esModule", { value: true });
+exports.ThreeView = void 0;
+var ThreeView = (function () {
+    function ThreeView(container, width, height) {
+        var _this = this;
+        this.dataPointsMesh = null;
+        this.boundaryMesh = null;
+        this.rotX = 0.3;
+        this.rotY = 0.5;
+        this.isDragging = false;
+        this.prevMouse = { x: 0, y: 0 };
+        this.controlsEnabled = false;
+        this.renderer = new THREE.WebGLRenderer({ antialias: true, alpha: true });
+        this.renderer.setPixelRatio(window.devicePixelRatio);
+        this.renderer.setSize(width, height);
+        container.appendChild(this.renderer.domElement);
+        this.scene = new THREE.Scene();
+        this.scene.background = new THREE.Color(0x1a1a2e);
+        this.camera = new THREE.PerspectiveCamera(50, width / height, 0.1, 100);
+        this.camera.position.set(0, 0, 14);
+        var ambient = new THREE.AmbientLight(0xffffff, 0.6);
+        this.scene.add(ambient);
+        var dirLight = new THREE.DirectionalLight(0xffffff, 0.8);
+        dirLight.position.set(5, 10, 7);
+        this.scene.add(dirLight);
+        var gridHelper = new THREE.GridHelper(12, 12, 0x333355, 0x222244);
+        this.scene.add(gridHelper);
+        this.rotGroup = new THREE.Group();
+        this.scene.add(this.rotGroup);
+        this._applyRotation();
+        this._onMouseDown = function (e) {
+            _this.isDragging = true;
+            _this.prevMouse = { x: e.clientX, y: e.clientY };
+        };
+        this._onMouseUp = function () { _this.isDragging = false; };
+        this._onMouseMove = function (e) {
+            if (!_this.isDragging)
+                return;
+            _this.rotY += (e.clientX - _this.prevMouse.x) * 0.01;
+            _this.rotX += (e.clientY - _this.prevMouse.y) * 0.01;
+            _this._applyRotation();
+            _this.prevMouse = { x: e.clientX, y: e.clientY };
+        };
+        this._onTouchStart = function (e) {
+            _this.isDragging = true;
+            _this.prevMouse = { x: e.touches[0].clientX, y: e.touches[0].clientY };
+        };
+        this._onTouchEnd = function () { _this.isDragging = false; };
+        this._onTouchMove = function (e) {
+            if (!_this.isDragging)
+                return;
+            _this.rotY += (e.touches[0].clientX - _this.prevMouse.x) * 0.01;
+            _this.rotX += (e.touches[0].clientY - _this.prevMouse.y) * 0.01;
+            _this._applyRotation();
+            _this.prevMouse = { x: e.touches[0].clientX, y: e.touches[0].clientY };
+        };
+        this._onWheel = function (e) {
+            _this.camera.position.z = Math.max(4, Math.min(30, _this.camera.position.z + e.deltaY * 0.02));
+            e.preventDefault();
+        };
+    }
+    ThreeView.prototype._applyRotation = function () {
+        this.rotGroup.rotation.x = this.rotX;
+        this.rotGroup.rotation.y = this.rotY;
+    };
+    ThreeView.prototype.setDataPoints = function (points) {
+        if (this.dataPointsMesh) {
+            this.rotGroup.remove(this.dataPointsMesh);
+            this.dataPointsMesh.geometry.dispose();
+            this.dataPointsMesh.material.dispose();
+            this.dataPointsMesh = null;
+        }
+        if (points.length === 0)
+            return;
+        var positions = [];
+        var colors = [];
+        var pos = ThreeView.POS_COLOR;
+        var neg = ThreeView.NEG_COLOR;
+        for (var _i = 0, points_1 = points; _i < points_1.length; _i++) {
+            var pt = points_1[_i];
+            positions.push(pt.x, pt.y, pt.z);
+            var c = pt.label >= 0 ? pos : neg;
+            colors.push(c.r, c.g, c.b);
+        }
+        var geo = new THREE.BufferGeometry();
+        geo.setAttribute('position', new THREE.Float32BufferAttribute(positions, 3));
+        geo.setAttribute('color', new THREE.Float32BufferAttribute(colors, 3));
+        var mat = new THREE.PointsMaterial({
+            size: 0.18,
+            vertexColors: true,
+            sizeAttenuation: true
+        });
+        this.dataPointsMesh = new THREE.Points(geo, mat);
+        this.rotGroup.add(this.dataPointsMesh);
+    };
+    ThreeView.prototype.setBoundary = function (voxels) {
+        if (this.boundaryMesh) {
+            this.rotGroup.remove(this.boundaryMesh);
+            this.boundaryMesh.geometry.dispose();
+            this.boundaryMesh.material.dispose();
+            this.boundaryMesh = null;
+        }
+        if (voxels.length === 0)
+            return;
+        var positions = [];
+        var colors = [];
+        var opacities = [];
+        var pos = ThreeView.POS_COLOR;
+        var neg = ThreeView.NEG_COLOR;
+        for (var _i = 0, voxels_1 = voxels; _i < voxels_1.length; _i++) {
+            var v = voxels_1[_i];
+            positions.push(v.x, v.y, v.z);
+            var t = (v.value + 1) / 2;
+            var r = pos.r * t + neg.r * (1 - t);
+            var g = pos.g * t + neg.g * (1 - t);
+            var b = pos.b * t + neg.b * (1 - t);
+            colors.push(r, g, b);
+            var conf = Math.abs(v.value);
+            opacities.push(Math.max(0.08, 0.55 * (1 - conf)));
+        }
+        var geo = new THREE.BufferGeometry();
+        geo.setAttribute('position', new THREE.Float32BufferAttribute(positions, 3));
+        geo.setAttribute('color', new THREE.Float32BufferAttribute(colors, 3));
+        var mat = new THREE.PointsMaterial({
+            size: 0.30,
+            vertexColors: true,
+            sizeAttenuation: true,
+            transparent: true,
+            opacity: 0.45,
+            depthWrite: false
+        });
+        this.boundaryMesh = new THREE.Points(geo, mat);
+        this.rotGroup.add(this.boundaryMesh);
+    };
+    ThreeView.prototype.render = function () {
+        this.renderer.render(this.scene, this.camera);
+    };
+    ThreeView.prototype.enableControls = function () {
+        if (this.controlsEnabled)
+            return;
+        this.controlsEnabled = true;
+        var canvas = this.renderer.domElement;
+        canvas.addEventListener('mousedown', this._onMouseDown);
+        window.addEventListener('mouseup', this._onMouseUp);
+        window.addEventListener('mousemove', this._onMouseMove);
+        canvas.addEventListener('touchstart', this._onTouchStart);
+        window.addEventListener('touchend', this._onTouchEnd);
+        window.addEventListener('touchmove', this._onTouchMove);
+        canvas.addEventListener('wheel', this._onWheel, { passive: false });
+    };
+    ThreeView.prototype.resize = function (width, height) {
+        this.camera.aspect = width / height;
+        this.camera.updateProjectionMatrix();
+        this.renderer.setSize(width, height);
+    };
+    ThreeView.prototype.dispose = function () {
+        if (this.controlsEnabled) {
+            var canvas_1 = this.renderer.domElement;
+            canvas_1.removeEventListener('mousedown', this._onMouseDown);
+            window.removeEventListener('mouseup', this._onMouseUp);
+            window.removeEventListener('mousemove', this._onMouseMove);
+            canvas_1.removeEventListener('touchstart', this._onTouchStart);
+            window.removeEventListener('touchend', this._onTouchEnd);
+            window.removeEventListener('touchmove', this._onTouchMove);
+            canvas_1.removeEventListener('wheel', this._onWheel);
+            this.controlsEnabled = false;
+        }
+        if (this.dataPointsMesh) {
+            this.rotGroup.remove(this.dataPointsMesh);
+            this.dataPointsMesh.geometry.dispose();
+            this.dataPointsMesh.material.dispose();
+            this.dataPointsMesh = null;
+        }
+        if (this.boundaryMesh) {
+            this.rotGroup.remove(this.boundaryMesh);
+            this.boundaryMesh.geometry.dispose();
+            this.boundaryMesh.material.dispose();
+            this.boundaryMesh = null;
+        }
+        this.renderer.dispose();
+        var canvas = this.renderer.domElement;
+        if (canvas.parentNode) {
+            canvas.parentNode.removeChild(canvas);
+        }
+    };
+    ThreeView.POS_COLOR = { r: 1.0, g: 0.302, b: 0.427 };
+    ThreeView.NEG_COLOR = { r: 0.302, g: 0.624, b: 1.0 };
+    return ThreeView;
+}());
+exports.ThreeView = ThreeView;
+
+},{}]},{},[1036]);
