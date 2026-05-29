@@ -1,0 +1,416 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>CNN Learning Lab</title>
+  <style>
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+
+    body {
+      font-family: 'Segoe UI', Arial, sans-serif;
+      background: #1a1a2e;
+      color: #e0e0f0;
+      min-height: 100vh;
+      padding: 16px;
+    }
+
+    h1 {
+      font-size: 1.6rem;
+      font-weight: 700;
+      color: #a78bfa;
+      margin-bottom: 4px;
+      letter-spacing: 0.5px;
+    }
+
+    .subtitle {
+      font-size: 0.85rem;
+      color: #8888aa;
+      margin-bottom: 16px;
+    }
+
+    .layout {
+      display: grid;
+      grid-template-columns: 220px 1fr;
+      gap: 12px;
+      align-items: start;
+    }
+
+    /* ── Controls panel ── */
+    .controls {
+      background: #16213e;
+      border: 1px solid #2a2a5a;
+      border-radius: 10px;
+      padding: 14px;
+      display: flex;
+      flex-direction: column;
+      gap: 14px;
+    }
+
+    .controls h2 {
+      font-size: 0.78rem;
+      text-transform: uppercase;
+      letter-spacing: 1px;
+      color: #7777aa;
+    }
+
+    .btn-row {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 6px;
+    }
+
+    button {
+      padding: 7px 14px;
+      border: none;
+      border-radius: 6px;
+      font-size: 0.82rem;
+      font-weight: 600;
+      cursor: pointer;
+      transition: opacity 0.15s;
+    }
+    button:hover { opacity: 0.85; }
+
+    #btn-play  { background: #27ae60; color: #fff; }
+    #btn-pause { background: #e67e22; color: #fff; }
+    #btn-step  { background: #3498db; color: #fff; }
+    #btn-reset { background: #e74c3c; color: #fff; }
+
+    label {
+      font-size: 0.8rem;
+      color: #aaa;
+      display: block;
+      margin-bottom: 4px;
+    }
+
+    input[type=range] {
+      width: 100%;
+      accent-color: #a78bfa;
+    }
+
+    select {
+      width: 100%;
+      background: #0f3460;
+      color: #e0e0f0;
+      border: 1px solid #3a3a6a;
+      border-radius: 6px;
+      padding: 6px 8px;
+      font-size: 0.82rem;
+    }
+
+    .stat-box {
+      background: #0f3460;
+      border-radius: 8px;
+      padding: 10px 12px;
+    }
+
+    .stat-box p {
+      font-size: 0.8rem;
+      color: #aac;
+      margin-bottom: 6px;
+    }
+
+    #step-count {
+      font-size: 1.1rem;
+      font-weight: 700;
+      color: #a78bfa;
+    }
+
+    svg text { fill: #aaa; }
+    svg .domain, svg .tick line { stroke: #444; }
+
+    /* ── Main visualization ── */
+    .viz {
+      display: flex;
+      flex-direction: column;
+      gap: 12px;
+    }
+
+    .section {
+      background: #16213e;
+      border: 1px solid #2a2a5a;
+      border-radius: 10px;
+      padding: 14px;
+    }
+
+    .section h3 {
+      font-size: 0.8rem;
+      text-transform: uppercase;
+      letter-spacing: 1px;
+      color: #7777bb;
+      margin-bottom: 10px;
+    }
+
+    .flow-row {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      flex-wrap: wrap;
+    }
+
+    .flow-block {
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      gap: 4px;
+    }
+
+    .flow-block .block-title {
+      font-size: 0.7rem;
+      color: #888;
+      text-align: center;
+      white-space: nowrap;
+    }
+
+    .block-inner {
+      display: flex;
+      gap: 4px;
+      flex-wrap: wrap;
+      justify-content: center;
+    }
+
+    .arrow {
+      color: #555;
+      font-size: 1.4rem;
+      flex-shrink: 0;
+      align-self: center;
+    }
+
+    /* Kernel and feature map wrappers */
+    .kernel-wrap, .fmap-wrap {
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      gap: 2px;
+    }
+
+    .kernel-label {
+      font-size: 0.65rem;
+      color: #888;
+    }
+
+    canvas {
+      display: block;
+      image-rendering: pixelated;
+      border-radius: 3px;
+      border: 1px solid #2a2a4a;
+    }
+
+    /* True label display */
+    #true-label {
+      font-size: 0.82rem;
+      color: #e0e0f0;
+      margin-top: 4px;
+      text-align: center;
+    }
+
+    /* Probabilities */
+    #prob-bars {
+      display: flex;
+      flex-direction: column;
+      gap: 6px;
+      min-width: 180px;
+    }
+
+    .prob-row {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+    }
+
+    .prob-label {
+      font-size: 0.78rem;
+      width: 52px;
+      flex-shrink: 0;
+      color: #ccc;
+    }
+
+    .prob-bar-wrap {
+      flex: 1;
+      background: #0f3460;
+      border-radius: 4px;
+      height: 14px;
+      overflow: hidden;
+    }
+
+    .prob-bar {
+      height: 100%;
+      background: #3498db;
+      border-radius: 4px;
+      transition: width 0.15s;
+      min-width: 0;
+    }
+
+    .prob-bar.correct {
+      background: #27ae60;
+    }
+
+    .prob-pct {
+      font-size: 0.72rem;
+      color: #aaa;
+      width: 38px;
+      text-align: right;
+      flex-shrink: 0;
+    }
+
+    /* Charts row */
+    .charts-row {
+      display: flex;
+      gap: 12px;
+      flex-wrap: wrap;
+    }
+
+    .chart-block {
+      display: flex;
+      flex-direction: column;
+      gap: 4px;
+    }
+
+    .chart-block label {
+      font-size: 0.72rem;
+      color: #888;
+    }
+
+    /* Architecture legend */
+    .arch-label {
+      font-size: 0.68rem;
+      color: #666;
+      font-style: italic;
+      margin-top: 4px;
+    }
+
+    @media (max-width: 700px) {
+      .layout { grid-template-columns: 1fr; }
+    }
+  </style>
+</head>
+<body>
+
+<h1>CNN Learning Lab</h1>
+<p class="subtitle">
+  A minimal Convolutional Neural Network trained from scratch on tiny 8×8 shape images.
+  Watch the filters and feature maps evolve as it learns!
+</p>
+
+<div class="layout">
+
+  <!-- ── Controls ── -->
+  <div class="controls">
+    <div>
+      <h2>Training</h2>
+      <div class="btn-row">
+        <button id="btn-play">▶ Play</button>
+        <button id="btn-pause">⏸ Pause</button>
+        <button id="btn-step">⏭ Step</button>
+        <button id="btn-reset">↺ Reset</button>
+      </div>
+    </div>
+
+    <div>
+      <label>Learning rate: <strong id="lr-display">0.0100</strong></label>
+      <input type="range" id="lr-slider" min="0.0005" max="0.05" step="0.0005" value="0.01">
+    </div>
+
+    <div>
+      <label>Display example</label>
+      <select id="example-select"></select>
+    </div>
+
+    <div class="stat-box">
+      <p>Training progress</p>
+      <div id="step-count">Step: 0</div>
+    </div>
+
+    <div>
+      <h2>Loss (train)</h2>
+      <div class="chart-block">
+        <svg id="loss-chart"></svg>
+      </div>
+    </div>
+
+    <div>
+      <h2>Accuracy (test)</h2>
+      <div class="chart-block">
+        <svg id="acc-chart"></svg>
+      </div>
+    </div>
+
+    <div class="arch-label">
+      Architecture:<br>
+      Conv1 (1→4 ch, 3×3) → ReLU → Pool2×2<br>
+      Conv2 (4→8 ch, 3×3) → ReLU → Pool2×2<br>
+      FC (32→3) → Softmax
+    </div>
+  </div>
+
+  <!-- ── Visualization ── -->
+  <div class="viz">
+
+    <!-- Input image -->
+    <div class="section">
+      <h3>Input Image (8×8 grayscale)</h3>
+      <div class="flow-row">
+        <div class="flow-block">
+          <canvas id="input-canvas"></canvas>
+          <div id="true-label"></div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Conv1 stage -->
+    <div class="section">
+      <h3>Conv Layer 1 — 4 filters (3×3), same padding → ReLU → MaxPool 2×2</h3>
+      <div class="flow-row">
+        <div class="flow-block">
+          <div class="block-title">Learned filters</div>
+          <div class="block-inner" id="conv1-kernels"></div>
+        </div>
+        <div class="arrow">→</div>
+        <div class="flow-block">
+          <div class="block-title">Feature maps (after ReLU, 8×8)</div>
+          <div class="block-inner" id="conv1-fmaps"></div>
+        </div>
+        <div class="arrow">→</div>
+        <div class="flow-block">
+          <div class="block-title">After MaxPool (4×4)</div>
+          <div class="block-inner" id="pool1-fmaps"></div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Conv2 stage -->
+    <div class="section">
+      <h3>Conv Layer 2 — 8 filters (3×3), same padding → ReLU → MaxPool 2×2</h3>
+      <div class="flow-row">
+        <div class="flow-block">
+          <div class="block-title">Learned filters</div>
+          <div class="block-inner" id="conv2-kernels"></div>
+        </div>
+        <div class="arrow">→</div>
+        <div class="flow-block">
+          <div class="block-title">Feature maps (after ReLU, 4×4)</div>
+          <div class="block-inner" id="conv2-fmaps"></div>
+        </div>
+        <div class="arrow">→</div>
+        <div class="flow-block">
+          <div class="block-title">After MaxPool (2×2)</div>
+          <div class="block-inner" id="pool2-fmaps"></div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Output -->
+    <div class="section">
+      <h3>Output — Fully Connected (32→3) + Softmax</h3>
+      <p style="font-size:0.78rem;color:#888;margin-bottom:10px;">
+        Green bar = correct class. Bars show predicted probabilities.
+      </p>
+      <div id="prob-bars"></div>
+    </div>
+
+  </div><!-- /.viz -->
+</div><!-- /.layout -->
+
+<script src="../dist/bundlecnn.js"></script>
+</body>
+</html>
