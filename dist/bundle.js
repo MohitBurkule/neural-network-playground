@@ -89113,6 +89113,61 @@ function getLoss(network, dataPoints) {
     }
     return loss / dataPoints.length;
 }
+function predSign(v) {
+    return v >= 0 ? 1 : -1;
+}
+function computeClassMetrics(network, dataPoints) {
+    var matrix = [[0, 0], [0, 0]];
+    var correct = 0;
+    for (var i = 0; i < dataPoints.length; i++) {
+        var dataPoint = dataPoints[i];
+        var input = constructInput(dataPoint.x, dataPoint.y);
+        var output = nn.forwardProp(network, input, state.weightQuantization, state.layerNorm);
+        var predicted = predSign(output);
+        var actual = predSign(dataPoint.label);
+        if (predicted === actual) {
+            correct++;
+        }
+        var row = actual === 1 ? 0 : 1;
+        var col = predicted === 1 ? 0 : 1;
+        matrix[row][col]++;
+    }
+    return {
+        accuracy: dataPoints.length ? correct / dataPoints.length : 0,
+        matrix: matrix
+    };
+}
+function updateConfusionMatrix(metrics) {
+    var container = d3.select("#confusion-matrix");
+    container.style("display", null);
+    var m = metrics.matrix;
+    var maxCell = Math.max(1, m[0][0], m[0][1], m[1][0], m[1][1]);
+    var labels = ["Orange", "Blue"];
+    var colorFor = function (actualIdx, count) {
+        var base = actualIdx === 0 ? [255, 117, 84] : [0, 124, 197];
+        var t = count / maxCell;
+        var r = Math.round(255 + (base[0] - 255) * t);
+        var g = Math.round(255 + (base[1] - 255) * t);
+        var b = Math.round(255 + (base[2] - 255) * t);
+        return "rgb(" + r + "," + g + "," + b + ")";
+    };
+    var html = "<div class=\"cm-title\">Confusion matrix (test)</div>";
+    html += "<table class=\"cm-table\"><thead><tr>" +
+        "<th class=\"cm-corner\"></th>" +
+        "<th colspan=\"2\" class=\"cm-predhead\">Predicted</th></tr>" +
+        "<tr><th class=\"cm-corner\">Actual</th>" +
+        "<th>Orange</th><th>Blue</th></tr></thead><tbody>";
+    for (var r = 0; r < 2; r++) {
+        html += "<tr><th>" + labels[r] + "</th>";
+        for (var c = 0; c < 2; c++) {
+            html += "<td style=\"background:" + colorFor(r, m[r][c]) + "\">" +
+                m[r][c] + "</td>";
+        }
+        html += "</tr>";
+    }
+    html += "</tbody></table>";
+    container.html(html);
+}
 function updateUI(firstStep) {
     if (firstStep === void 0) { firstStep = false; }
     updateWeightsUI(network, d3.select("g.core"));
@@ -89139,7 +89194,56 @@ function updateUI(firstStep) {
     d3.select("#loss-test").text(humanReadable(lossTest));
     d3.select("#iter-number").text(addCommas(zeroPad(iter)));
     lineChart.addDataPoint([lossTrain, lossTest]);
+    updateClassificationMetricsUI();
     d3.select("#network-as-javascript").text(nn.compileNetworkToJs(network));
+}
+function pct(v) {
+    return (v * 100).toFixed(1) + "%";
+}
+function updateClassificationMetricsUI() {
+    var accTrain = d3.select("#acc-train");
+    var accTest = d3.select("#acc-test");
+    var cm = d3.select("#confusion-matrix");
+    if (state.problem !== state_1.Problem.CLASSIFICATION) {
+        d3.selectAll(".acc-stat").style("display", "none");
+        cm.style("display", "none");
+        return;
+    }
+    d3.selectAll(".acc-stat").style("display", null);
+    if (state.threeD) {
+        if (threeData && threeData.length) {
+            var m3d = compute3DClassMetrics(network, threeData);
+            accTrain.text(pct(m3d.accuracy));
+            accTest.text(pct(m3d.accuracy));
+            updateConfusionMatrix(m3d);
+        }
+        else {
+            accTrain.text("—");
+            accTest.text("—");
+            cm.style("display", "none");
+        }
+        return;
+    }
+    var mTrain = computeClassMetrics(network, state.trainData);
+    var mTest = computeClassMetrics(network, state.testData);
+    accTrain.text(pct(mTrain.accuracy));
+    accTest.text(pct(mTest.accuracy));
+    updateConfusionMatrix(mTest);
+}
+function compute3DClassMetrics(net, points) {
+    var matrix = [[0, 0], [0, 0]];
+    var correct = 0;
+    for (var _i = 0, points_1 = points; _i < points_1.length; _i++) {
+        var p = points_1[_i];
+        var output = nn.forwardProp(net, construct3DInput(p.x, p.y, p.z), state.weightQuantization, state.layerNorm);
+        var predicted = predSign(output);
+        var actual = predSign(p.label);
+        if (predicted === actual) {
+            correct++;
+        }
+        matrix[actual === 1 ? 0 : 1][predicted === 1 ? 0 : 1]++;
+    }
+    return { accuracy: points.length ? correct / points.length : 0, matrix: matrix };
 }
 function constructInputIds() {
     var result = [];
@@ -89205,8 +89309,8 @@ function accuracy(points) {
     if (points.length === 0)
         return 1;
     var correct = 0;
-    for (var _i = 0, points_1 = points; _i < points_1.length; _i++) {
-        var p = points_1[_i];
+    for (var _i = 0, points_2 = points; _i < points_2.length; _i++) {
+        var p = points_2[_i];
         var out = nn.forwardProp(network, constructInput(p.x, p.y), state.weightQuantization, state.layerNorm);
         if (Math.sign(out) === Math.sign(p.label))
             correct++;
@@ -89235,8 +89339,8 @@ function generate3DData() {
 }
 function get3DLoss(net, points) {
     var loss = 0;
-    for (var _i = 0, points_2 = points; _i < points_2.length; _i++) {
-        var p = points_2[_i];
+    for (var _i = 0, points_3 = points; _i < points_3.length; _i++) {
+        var p = points_3[_i];
         var out = nn.forwardProp(net, construct3DInput(p.x, p.y, p.z), state.weightQuantization, state.layerNorm);
         loss += nn.Errors.SQUARE.error(out, p.label);
     }
@@ -89273,6 +89377,7 @@ function oneStep3D() {
     lossTest = lossTrain;
     d3.select("#loss-train").text(lossTrain.toFixed(3));
     d3.select("#loss-test").text(lossTest.toFixed(3));
+    updateClassificationMetricsUI();
     d3.select("#iter-number").text(iter);
     lineChart.addDataPoint([lossTrain, lossTest]);
     if (iter % 5 === 0) {
@@ -89289,6 +89394,7 @@ function reset3D() {
     drawNetwork(network);
     d3.select("#loss-train").text(lossTrain.toFixed(3));
     d3.select("#loss-test").text(lossTest.toFixed(3));
+    updateClassificationMetricsUI();
     update3DBoundary();
 }
 function enterThreeD() {

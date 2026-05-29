@@ -951,6 +951,77 @@ function getLoss(network: nn.Node[][], dataPoints: Example2D[]): number {
   return loss / dataPoints.length;
 }
 
+// Confusion matrix: [actualOrange][predictedOrange|predictedBlue], etc.
+// Rows = actual (Orange=+1, Blue=-1), cols = predicted.
+interface ClassMetrics {
+  accuracy: number;
+  // matrix[0] = actual Orange, matrix[1] = actual Blue.
+  // each row: [predicted Orange, predicted Blue].
+  matrix: number[][];
+}
+
+// Treat 0 as positive consistently.
+function predSign(v: number): number {
+  return v >= 0 ? 1 : -1;
+}
+
+function computeClassMetrics(network: nn.Node[][],
+    dataPoints: Example2D[]): ClassMetrics {
+  let matrix = [[0, 0], [0, 0]];
+  let correct = 0;
+  for (let i = 0; i < dataPoints.length; i++) {
+    let dataPoint = dataPoints[i];
+    let input = constructInput(dataPoint.x, dataPoint.y);
+    let output = nn.forwardProp(network, input, state.weightQuantization,
+        state.layerNorm);
+    let predicted = predSign(output);
+    let actual = predSign(dataPoint.label);
+    if (predicted === actual) {
+      correct++;
+    }
+    let row = actual === 1 ? 0 : 1;
+    let col = predicted === 1 ? 0 : 1;
+    matrix[row][col]++;
+  }
+  return {
+    accuracy: dataPoints.length ? correct / dataPoints.length : 0,
+    matrix
+  };
+}
+
+function updateConfusionMatrix(metrics: ClassMetrics): void {
+  let container = d3.select("#confusion-matrix");
+  container.style("display", null);
+  let m = metrics.matrix;
+  let maxCell = Math.max(1, m[0][0], m[0][1], m[1][0], m[1][1]);
+  let labels = ["Orange", "Blue"];
+  let colorFor = (actualIdx: number, count: number) => {
+    let base = actualIdx === 0 ? [255, 117, 84] : [0, 124, 197];
+    let t = count / maxCell;
+    let r = Math.round(255 + (base[0] - 255) * t);
+    let g = Math.round(255 + (base[1] - 255) * t);
+    let b = Math.round(255 + (base[2] - 255) * t);
+    return "rgb(" + r + "," + g + "," + b + ")";
+  };
+
+  let html = "<div class=\"cm-title\">Confusion matrix (test)</div>";
+  html += "<table class=\"cm-table\"><thead><tr>" +
+      "<th class=\"cm-corner\"></th>" +
+      "<th colspan=\"2\" class=\"cm-predhead\">Predicted</th></tr>" +
+      "<tr><th class=\"cm-corner\">Actual</th>" +
+      "<th>Orange</th><th>Blue</th></tr></thead><tbody>";
+  for (let r = 0; r < 2; r++) {
+    html += "<tr><th>" + labels[r] + "</th>";
+    for (let c = 0; c < 2; c++) {
+      html += "<td style=\"background:" + colorFor(r, m[r][c]) + "\">" +
+          m[r][c] + "</td>";
+    }
+    html += "</tr>";
+  }
+  html += "</tbody></table>";
+  container.html(html);
+}
+
 function updateUI(firstStep = false) {
   // Update the links visually.
   updateWeightsUI(network, d3.select("g.core"));
@@ -987,9 +1058,66 @@ function updateUI(firstStep = false) {
   d3.select("#loss-test").text(humanReadable(lossTest));
   d3.select("#iter-number").text(addCommas(zeroPad(iter)));
   lineChart.addDataPoint([lossTrain, lossTest]);
+  updateClassificationMetricsUI();
 
   // Now "draw" it as JavaScript
   d3.select("#network-as-javascript").text(nn.compileNetworkToJs(network));
+}
+
+function pct(v: number): string {
+  return (v * 100).toFixed(1) + "%";
+}
+
+// Refresh the accuracy readouts and confusion matrix. Only meaningful for
+// classification problems; hidden entirely for regression.
+function updateClassificationMetricsUI(): void {
+  let accTrain = d3.select("#acc-train");
+  let accTest = d3.select("#acc-test");
+  let cm = d3.select("#confusion-matrix");
+
+  if (state.problem !== Problem.CLASSIFICATION) {
+    d3.selectAll(".acc-stat").style("display", "none");
+    cm.style("display", "none");
+    return;
+  }
+  d3.selectAll(".acc-stat").style("display", null);
+
+  if (state.threeD) {
+    if (threeData && threeData.length) {
+      let m3d = compute3DClassMetrics(network, threeData as Example3D[]);
+      accTrain.text(pct(m3d.accuracy));
+      accTest.text(pct(m3d.accuracy));
+      updateConfusionMatrix(m3d);
+    } else {
+      accTrain.text("—");
+      accTest.text("—");
+      cm.style("display", "none");
+    }
+    return;
+  }
+
+  let mTrain = computeClassMetrics(network, state.trainData);
+  let mTest = computeClassMetrics(network, state.testData);
+  accTrain.text(pct(mTrain.accuracy));
+  accTest.text(pct(mTest.accuracy));
+  updateConfusionMatrix(mTest);
+}
+
+function compute3DClassMetrics(net: nn.Node[][],
+    points: Example3D[]): ClassMetrics {
+  let matrix = [[0, 0], [0, 0]];
+  let correct = 0;
+  for (let p of points) {
+    let output = nn.forwardProp(net, construct3DInput(p.x, p.y, p.z),
+        state.weightQuantization, state.layerNorm);
+    let predicted = predSign(output);
+    let actual = predSign(p.label);
+    if (predicted === actual) {
+      correct++;
+    }
+    matrix[actual === 1 ? 0 : 1][predicted === 1 ? 0 : 1]++;
+  }
+  return { accuracy: points.length ? correct / points.length : 0, matrix };
 }
 
 function constructInputIds(): string[] {
@@ -1153,6 +1281,7 @@ function oneStep3D(): void {
   lossTest = lossTrain;
   d3.select("#loss-train").text(lossTrain.toFixed(3));
   d3.select("#loss-test").text(lossTest.toFixed(3));
+  updateClassificationMetricsUI();
   d3.select("#iter-number").text(iter);
   lineChart.addDataPoint([lossTrain, lossTest]);
   if (iter % 5 === 0) {
@@ -1171,6 +1300,7 @@ function reset3D(): void {
   drawNetwork(network);
   d3.select("#loss-train").text(lossTrain.toFixed(3));
   d3.select("#loss-test").text(lossTest.toFixed(3));
+  updateClassificationMetricsUI();
   update3DBoundary();
 }
 
