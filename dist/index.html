@@ -125,6 +125,21 @@ Modified by David Cato
                     </select>
                 </div>
             </div>
+            <div class="control ui-optimizer">
+                <label for="optimizer">Optimizer</label>
+                <div class="select">
+                    <select id="optimizer">
+                        <option value="sgd">SGD</option>
+                        <option value="momentum">Momentum</option>
+                        <option value="rmsprop">RMSProp</option>
+                        <option value="adam">Adam</option>
+                    </select>
+                </div>
+            </div>
+            <div class="control ui-layerNorm">
+                <label for="layer-norm">Layer Norm</label>
+                <input type="checkbox" id="layer-norm">
+            </div>
             <div class="control ui-regularization">
                 <label for="regularizations">Regularization</label>
                 <div class="select">
@@ -310,6 +325,7 @@ Modified by David Cato
                     </div>
                 </div>
                 <button id="addinput" class="basic-button">Custom feature</button>
+                <button id="add-activation" class="basic-button">Add custom activation</button>
             </div>
 
         

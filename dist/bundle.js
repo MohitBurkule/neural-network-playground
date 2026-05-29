@@ -87714,7 +87714,7 @@ exports.AppendingLineChart = AppendingLineChart;
 },{"d3":9}],1033:[function(require,module,exports){
 "use strict";
 Object.defineProperty(exports, "__esModule", { value: true });
-exports.Link = exports.WeightQuantizationFunction = exports.RegularizationFunction = exports.Activations = exports.Errors = exports.Node = void 0;
+exports.OPTIMIZER_EPSILON = exports.OPTIMIZER_BETA2 = exports.OPTIMIZER_BETA1 = exports.OptimizerType = exports.Link = exports.WeightQuantizationFunction = exports.RegularizationFunction = exports.Activations = exports.Errors = exports.Node = void 0;
 exports.buildNetwork = buildNetwork;
 exports.forwardProp = forwardProp;
 exports.backProp = backProp;
@@ -87731,6 +87731,7 @@ var Node = (function () {
         this.inputDer = 0;
         this.accInputDer = 0;
         this.numAccumulatedDers = 0;
+        this.biasOptimizerState = {};
         this.id = id;
         this.activation = activation;
         if (initZero) {
@@ -87906,6 +87907,7 @@ var Link = (function () {
         this.errorDer = 0;
         this.accErrorDer = 0;
         this.numAccumulatedDers = 0;
+        this.optimizerState = {};
         this.id = source.id + "-" + dest.id;
         this.source = source;
         this.dest = dest;
@@ -87948,7 +87950,8 @@ function buildNetwork(networkShape, activation, outputActivation, inputIds, init
     }
     return network;
 }
-function forwardProp(network, inputs, weightQuantizationFunction) {
+function forwardProp(network, inputs, weightQuantizationFunction, layerNorm) {
+    if (layerNorm === void 0) { layerNorm = false; }
     var inputLayer = network[0];
     if (inputs.length !== inputLayer.length) {
         throw new Error("The number of inputs must match the number of nodes in" +
@@ -87958,11 +87961,40 @@ function forwardProp(network, inputs, weightQuantizationFunction) {
         var node = inputLayer[i];
         node.output = inputs[i];
     }
+    var isOutputLayer;
     for (var layerIdx = 1; layerIdx < network.length; layerIdx++) {
         var currentLayer = network[layerIdx];
+        isOutputLayer = layerIdx === network.length - 1;
         for (var i = 0; i < currentLayer.length; i++) {
             var node = currentLayer[i];
-            node.updateOutput(weightQuantizationFunction);
+            node.totalInput = node.bias;
+            for (var j = 0; j < node.inputLinks.length; j++) {
+                var link = node.inputLinks[j];
+                var weight = weightQuantizationFunction ?
+                    weightQuantizationFunction.output(link.weight) : link.weight;
+                node.totalInput += weight * link.source.output;
+            }
+        }
+        if (layerNorm && !isOutputLayer && currentLayer.length > 1) {
+            var mean = 0;
+            for (var i = 0; i < currentLayer.length; i++) {
+                mean += currentLayer[i].totalInput;
+            }
+            mean /= currentLayer.length;
+            var variance = 0;
+            for (var i = 0; i < currentLayer.length; i++) {
+                var diff = currentLayer[i].totalInput - mean;
+                variance += diff * diff;
+            }
+            variance /= currentLayer.length;
+            var std = Math.sqrt(variance + 1e-8);
+            for (var i = 0; i < currentLayer.length; i++) {
+                currentLayer[i].totalInput = (currentLayer[i].totalInput - mean) / std;
+            }
+        }
+        for (var i = 0; i < currentLayer.length; i++) {
+            var node = currentLayer[i];
+            node.output = node.activation.output(node.totalInput);
         }
     }
     return network[network.length - 1][0].output;
@@ -88004,13 +88036,54 @@ function backProp(network, target, errorFunc) {
         }
     }
 }
-function updateWeights(network, learningRate, regularization, regularizationRate) {
+var OptimizerType;
+(function (OptimizerType) {
+    OptimizerType["SGD"] = "sgd";
+    OptimizerType["MOMENTUM"] = "momentum";
+    OptimizerType["RMSPROP"] = "rmsprop";
+    OptimizerType["ADAM"] = "adam";
+})(OptimizerType || (exports.OptimizerType = OptimizerType = {}));
+exports.OPTIMIZER_BETA1 = 0.9;
+exports.OPTIMIZER_BETA2 = 0.999;
+exports.OPTIMIZER_EPSILON = 1e-8;
+function optimizerDelta(grad, learningRate, optimizerType, state) {
+    switch (optimizerType) {
+        case OptimizerType.SGD:
+            return learningRate * grad;
+        case OptimizerType.MOMENTUM: {
+            state.m = state.m == null ? 0 : state.m;
+            state.m = exports.OPTIMIZER_BETA1 * state.m + (1 - exports.OPTIMIZER_BETA1) * grad;
+            return learningRate * state.m;
+        }
+        case OptimizerType.RMSPROP: {
+            state.v = state.v == null ? 0 : state.v;
+            state.v = exports.OPTIMIZER_BETA2 * state.v + (1 - exports.OPTIMIZER_BETA2) * grad * grad;
+            return learningRate * grad / (Math.sqrt(state.v) + exports.OPTIMIZER_EPSILON);
+        }
+        case OptimizerType.ADAM: {
+            state.m = state.m == null ? 0 : state.m;
+            state.v = state.v == null ? 0 : state.v;
+            state.t = state.t == null ? 0 : state.t;
+            state.t += 1;
+            state.m = exports.OPTIMIZER_BETA1 * state.m + (1 - exports.OPTIMIZER_BETA1) * grad;
+            state.v = exports.OPTIMIZER_BETA2 * state.v + (1 - exports.OPTIMIZER_BETA2) * grad * grad;
+            var mHat = state.m / (1 - Math.pow(exports.OPTIMIZER_BETA1, state.t));
+            var vHat = state.v / (1 - Math.pow(exports.OPTIMIZER_BETA2, state.t));
+            return learningRate * mHat / (Math.sqrt(vHat) + exports.OPTIMIZER_EPSILON);
+        }
+        default:
+            return learningRate * grad;
+    }
+}
+function updateWeights(network, learningRate, regularization, regularizationRate, optimizerType) {
+    if (optimizerType === void 0) { optimizerType = OptimizerType.SGD; }
     for (var layerIdx = 1; layerIdx < network.length; layerIdx++) {
         var currentLayer = network[layerIdx];
         for (var i = 0; i < currentLayer.length; i++) {
             var node = currentLayer[i];
             if (node.numAccumulatedDers > 0) {
-                node.bias -= learningRate * node.accInputDer / node.numAccumulatedDers;
+                var biasGrad = node.accInputDer / node.numAccumulatedDers;
+                node.bias -= optimizerDelta(biasGrad, learningRate, optimizerType, node.biasOptimizerState);
                 node.accInputDer = 0;
                 node.numAccumulatedDers = 0;
             }
@@ -88022,8 +88095,8 @@ function updateWeights(network, learningRate, regularization, regularizationRate
                 var regulDer = regularization ?
                     regularization.der(link.weight) : 0;
                 if (link.numAccumulatedDers > 0) {
-                    link.weight = link.weight -
-                        (learningRate / link.numAccumulatedDers) * link.accErrorDer;
+                    var grad = link.accErrorDer / link.numAccumulatedDers;
+                    link.weight -= optimizerDelta(grad, learningRate, optimizerType, link.optimizerState);
                     var newLinkWeight = link.weight -
                         (learningRate * regularizationRate) * regulDer;
                     if (regularization === RegularizationFunction.L1 &&
@@ -88382,6 +88455,22 @@ function makeGUI() {
         parametersChanged = true;
     });
     learningRate.property("value", state.learningRate);
+    var optimizerDropdown = d3.select("#optimizer").on("change", function () {
+        state.optimizer = this.value;
+        state.serialize();
+        userHasInteracted();
+        parametersChanged = true;
+        reset();
+    });
+    optimizerDropdown.property("value", state.optimizer);
+    var layerNormCheckbox = d3.select("#layer-norm").on("change", function () {
+        state.layerNorm = this.checked;
+        state.serialize();
+        userHasInteracted();
+        parametersChanged = true;
+        reset();
+    });
+    layerNormCheckbox.property("checked", state.layerNorm);
     var regularDropdown = d3.select("#regularizations").on("change", function () {
         state.regularization = state_1.regularizations[this.value];
         parametersChanged = true;
@@ -88791,7 +88880,7 @@ function updateDecisionBoundary(network, firstTime) {
             var x = xScale(i);
             var y = yScale(j);
             var input = constructInput(x, y);
-            nn.forwardProp(network, input, state.weightQuantization);
+            nn.forwardProp(network, input, state.weightQuantization, state.layerNorm);
             nn.forEachNode(network, true, function (node) {
                 boundary[node.id][i][j] = node.output;
             });
@@ -88813,7 +88902,7 @@ function getLoss(network, dataPoints) {
     for (var i = 0; i < dataPoints.length; i++) {
         var dataPoint = dataPoints[i];
         var input = constructInput(dataPoint.x, dataPoint.y);
-        var output = nn.forwardProp(network, input, state.weightQuantization);
+        var output = nn.forwardProp(network, input, state.weightQuantization, state.layerNorm);
         loss += nn.Errors.SQUARE.error(output, dataPoint.label);
     }
     return loss / dataPoints.length;
@@ -88871,12 +88960,13 @@ function constructInput(x, y) {
 }
 function oneStep() {
     iter++;
+    var optimizerType = state_1.optimizers[state.optimizer] || nn.OptimizerType.SGD;
     state.trainData.forEach(function (point, i) {
         var input = constructInput(point.x, point.y);
-        nn.forwardProp(network, input, state.weightQuantization);
+        nn.forwardProp(network, input, state.weightQuantization, state.layerNorm);
         nn.backProp(network, point.label, nn.Errors.SQUARE);
         if ((i + 1) % state.batchSize === 0) {
-            nn.updateWeights(network, state.learningRate, state.regularization, state.regularizationRate);
+            nn.updateWeights(network, state.learningRate, state.regularization, state.regularizationRate, optimizerType);
         }
     });
     lossTrain = getLoss(network, state.trainData);
@@ -89080,15 +89170,51 @@ document.querySelector("#addinput").addEventListener("click", function () {
     INPUTS[makeid(8)] = { f: (0, mathjs_1.compile)(form), label: form };
     reset();
 });
+document.querySelector("#add-activation").addEventListener("click", function () {
+    var formula = prompt("Enter activation formula in terms of x (e.g. tanh(x)*x):");
+    if (!formula)
+        return;
+    var compiled;
+    try {
+        compiled = (0, mathjs_1.compile)(formula);
+    }
+    catch (e) {
+        alert("Could not compile formula: " + e.message);
+        return;
+    }
+    var h = 1e-4;
+    var customActivation = {
+        output: function (x) { return compiled.evaluate({ x: x }); },
+        der: function (x) { return (compiled.evaluate({ x: x + h }) - compiled.evaluate({ x: x - h })) / (2 * h); },
+        compileToJs: function (arg) { return "/* custom: ".concat(formula, " */ (function(x){return ").concat(formula, ";})(").concat(arg, ")"); }
+    };
+    var key = "custom_" + makeid(4);
+    state_1.activations[key] = customActivation;
+    var sel = document.querySelector("#activations");
+    var opt = document.createElement("option");
+    opt.value = key;
+    opt.text = formula;
+    sel.appendChild(opt);
+    state.activation = customActivation;
+    sel.value = key;
+    parametersChanged = true;
+    reset();
+});
 
 },{"./dataset":1030,"./heatmap":1031,"./linechart":1032,"./nn":1033,"./state":1035,"d3":9,"mathjs":937}],1035:[function(require,module,exports){
 "use strict";
 Object.defineProperty(exports, "__esModule", { value: true });
-exports.State = exports.problems = exports.Problem = exports.Type = exports.regDatasets = exports.datasets = exports.weightQuantizations = exports.regularizations = exports.activations = void 0;
+exports.State = exports.problems = exports.Problem = exports.Type = exports.regDatasets = exports.datasets = exports.weightQuantizations = exports.regularizations = exports.activations = exports.optimizers = void 0;
 exports.getKeyFromValue = getKeyFromValue;
 var nn = require("./nn");
 var dataset = require("./dataset");
 var HIDE_STATE_SUFFIX = "_hide";
+exports.optimizers = {
+    "sgd": nn.OptimizerType.SGD,
+    "momentum": nn.OptimizerType.MOMENTUM,
+    "rmsprop": nn.OptimizerType.RMSPROP,
+    "adam": nn.OptimizerType.ADAM
+};
 exports.activations = {
     "relu": nn.Activations.RELU,
     "tanh": nn.Activations.TANH,
@@ -89184,6 +89310,8 @@ var State = (function () {
         this.tutorial = null;
         this.percTrainData = 50;
         this.activation = nn.Activations.TANH;
+        this.optimizer = "sgd";
+        this.layerNorm = false;
         this.regularization = null;
         this.weightQuantization = null;
         this.problem = Problem.CLASSIFICATION;
@@ -89312,6 +89440,8 @@ var State = (function () {
     };
     State.PROPS = [
         { name: "activation", type: Type.OBJECT, keyMap: exports.activations },
+        { name: "optimizer", type: Type.STRING },
+        { name: "layerNorm", type: Type.BOOLEAN },
         { name: "regularization", type: Type.OBJECT, keyMap: exports.regularizations },
         { name: "weightQuantization", type: Type.OBJECT, keyMap: exports.weightQuantizations },
         { name: "batchSize", type: Type.NUMBER },

@@ -21,6 +21,14 @@ import * as dataset from "./dataset";
 /** Suffix added to the state when storing if a control is hidden or not. */
 const HIDE_STATE_SUFFIX = "_hide";
 
+/** A map between names and optimizer types. */
+export let optimizers: {[key: string]: nn.OptimizerType} = {
+  "sgd": nn.OptimizerType.SGD,
+  "momentum": nn.OptimizerType.MOMENTUM,
+  "rmsprop": nn.OptimizerType.RMSPROP,
+  "adam": nn.OptimizerType.ADAM,
+};
+
 /** A map between names and activation functions. */
 export let activations: {[key: string]: nn.ActivationFunction} = {
   "relu": nn.Activations.RELU,
@@ -132,6 +140,8 @@ export class State {
 
   private static PROPS: Property[] = [
     {name: "activation", type: Type.OBJECT, keyMap: activations},
+    {name: "optimizer", type: Type.STRING},
+    {name: "layerNorm", type: Type.BOOLEAN},
     {name: "regularization", type: Type.OBJECT, keyMap: regularizations},
     {name: "weightQuantization", type: Type.OBJECT, keyMap: weightQuantizations},
     {name: "batchSize", type: Type.NUMBER},
@@ -174,6 +184,8 @@ export class State {
   tutorial: string = null;
   percTrainData = 50;
   activation = nn.Activations.TANH;
+  optimizer: string = "sgd";
+  layerNorm: boolean = false;
   regularization: nn.RegularizationFunction = null;
   weightQuantization: nn.WeightQuantizationFunction = null;
   problem = Problem.CLASSIFICATION;

@@ -72,6 +72,8 @@ export class Node {
   numAccumulatedDers = 0;
   /** Activation function that takes total input and returns node's output */
   activation: ActivationFunction;
+  /** Per-parameter optimizer state for the bias. */
+  biasOptimizerState: OptimizerState = {};
 
   /**
    * Creates a new node with the provided id and activation function.
@@ -279,6 +281,8 @@ export class Link {
   accErrorDer = 0;
   /** Number of accumulated derivatives since the last update. */
   numAccumulatedDers = 0;
+  /** Per-parameter optimizer state. */
+  optimizerState: OptimizerState = {};
 //   regularization: RegularizationFunction;
 
   /**
@@ -360,8 +364,9 @@ export function buildNetwork(
  *     nodes in the network.
  * @return The final output of the network.
  */
-export function forwardProp(network: Node[][], inputs: number[], 
-    weightQuantizationFunction: WeightQuantizationFunction): number {
+export function forwardProp(network: Node[][], inputs: number[],
+    weightQuantizationFunction: WeightQuantizationFunction,
+    layerNorm: boolean = false): number {
   let inputLayer = network[0];
   if (inputs.length !== inputLayer.length) {
     throw new Error("The number of inputs must match the number of nodes in" +
@@ -372,12 +377,43 @@ export function forwardProp(network: Node[][], inputs: number[],
     let node = inputLayer[i];
     node.output = inputs[i];
   }
+  let isOutputLayer: boolean;
   for (let layerIdx = 1; layerIdx < network.length; layerIdx++) {
     let currentLayer = network[layerIdx];
-    // Update all the nodes in this layer.
+    isOutputLayer = layerIdx === network.length - 1;
+    // Compute totalInput for all nodes in this layer.
     for (let i = 0; i < currentLayer.length; i++) {
       let node = currentLayer[i];
-      node.updateOutput(weightQuantizationFunction);
+      node.totalInput = node.bias;
+      for (let j = 0; j < node.inputLinks.length; j++) {
+        let link = node.inputLinks[j];
+        let weight = weightQuantizationFunction ?
+            weightQuantizationFunction.output(link.weight) : link.weight;
+        node.totalInput += weight * link.source.output;
+      }
+    }
+    // Apply layer normalization to hidden layers if enabled.
+    if (layerNorm && !isOutputLayer && currentLayer.length > 1) {
+      let mean = 0;
+      for (let i = 0; i < currentLayer.length; i++) {
+        mean += currentLayer[i].totalInput;
+      }
+      mean /= currentLayer.length;
+      let variance = 0;
+      for (let i = 0; i < currentLayer.length; i++) {
+        let diff = currentLayer[i].totalInput - mean;
+        variance += diff * diff;
+      }
+      variance /= currentLayer.length;
+      let std = Math.sqrt(variance + 1e-8);
+      for (let i = 0; i < currentLayer.length; i++) {
+        currentLayer[i].totalInput = (currentLayer[i].totalInput - mean) / std;
+      }
+    }
+    // Apply activation.
+    for (let i = 0; i < currentLayer.length; i++) {
+      let node = currentLayer[i];
+      node.output = node.activation.output(node.totalInput);
     }
   }
   return network[network.length - 1][0].output;
@@ -439,19 +475,77 @@ export function backProp(network: Node[][], target: number,
   }
 }
 
+/** Optimizer state stored per-parameter (Link or Node bias). */
+export interface OptimizerState {
+  m?: number;  // first moment (momentum / Adam m)
+  v?: number;  // second moment (RMSProp / Adam v)
+  t?: number;  // step count (Adam)
+}
+
+/** Optimizer types. */
+export enum OptimizerType {
+  SGD = "sgd",
+  MOMENTUM = "momentum",
+  RMSPROP = "rmsprop",
+  ADAM = "adam"
+}
+
+/** Hyperparameters for optimizers. */
+export const OPTIMIZER_BETA1 = 0.9;
+export const OPTIMIZER_BETA2 = 0.999;
+export const OPTIMIZER_EPSILON = 1e-8;
+
+/**
+ * Applies an optimizer update step to a single parameter.
+ * Returns the delta to subtract from the parameter.
+ */
+function optimizerDelta(
+    grad: number, learningRate: number,
+    optimizerType: OptimizerType, state: OptimizerState): number {
+  switch (optimizerType) {
+    case OptimizerType.SGD:
+      return learningRate * grad;
+    case OptimizerType.MOMENTUM: {
+      state.m = state.m == null ? 0 : state.m;
+      state.m = OPTIMIZER_BETA1 * state.m + (1 - OPTIMIZER_BETA1) * grad;
+      return learningRate * state.m;
+    }
+    case OptimizerType.RMSPROP: {
+      state.v = state.v == null ? 0 : state.v;
+      state.v = OPTIMIZER_BETA2 * state.v + (1 - OPTIMIZER_BETA2) * grad * grad;
+      return learningRate * grad / (Math.sqrt(state.v) + OPTIMIZER_EPSILON);
+    }
+    case OptimizerType.ADAM: {
+      state.m = state.m == null ? 0 : state.m;
+      state.v = state.v == null ? 0 : state.v;
+      state.t = state.t == null ? 0 : state.t;
+      state.t += 1;
+      state.m = OPTIMIZER_BETA1 * state.m + (1 - OPTIMIZER_BETA1) * grad;
+      state.v = OPTIMIZER_BETA2 * state.v + (1 - OPTIMIZER_BETA2) * grad * grad;
+      let mHat = state.m / (1 - Math.pow(OPTIMIZER_BETA1, state.t));
+      let vHat = state.v / (1 - Math.pow(OPTIMIZER_BETA2, state.t));
+      return learningRate * mHat / (Math.sqrt(vHat) + OPTIMIZER_EPSILON);
+    }
+    default:
+      return learningRate * grad;
+  }
+}
+
 /**
  * Updates the weights of the network using the previously accumulated error
  * derivatives.
  */
 export function updateWeights(network: Node[][], learningRate: number,
-    regularization: RegularizationFunction, regularizationRate: number) {
+    regularization: RegularizationFunction, regularizationRate: number,
+    optimizerType: OptimizerType = OptimizerType.SGD) {
   for (let layerIdx = 1; layerIdx < network.length; layerIdx++) {
     let currentLayer = network[layerIdx];
     for (let i = 0; i < currentLayer.length; i++) {
       let node = currentLayer[i];
       // Update the node's bias.
       if (node.numAccumulatedDers > 0) {
-        node.bias -= learningRate * node.accInputDer / node.numAccumulatedDers;
+        let biasGrad = node.accInputDer / node.numAccumulatedDers;
+        node.bias -= optimizerDelta(biasGrad, learningRate, optimizerType, node.biasOptimizerState);
         node.accInputDer = 0;
         node.numAccumulatedDers = 0;
       }
@@ -464,9 +558,9 @@ export function updateWeights(network: Node[][], learningRate: number,
         let regulDer = regularization ?
             regularization.der(link.weight) : 0;
         if (link.numAccumulatedDers > 0) {
+          let grad = link.accErrorDer / link.numAccumulatedDers;
           // Update the weight based on dE/dw.
-          link.weight = link.weight -
-              (learningRate / link.numAccumulatedDers) * link.accErrorDer;
+          link.weight -= optimizerDelta(grad, learningRate, optimizerType, link.optimizerState);
           // Further update the weight based on regularization.
           let newLinkWeight = link.weight -
               (learningRate * regularizationRate) * regulDer;

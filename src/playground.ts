@@ -20,6 +20,7 @@ import {
   datasets,
   regDatasets,
   activations,
+  optimizers,
   problems,
   regularizations,
   weightQuantizations,
@@ -386,6 +387,24 @@ function makeGUI() {
     parametersChanged = true;
   });
   learningRate.property("value", state.learningRate);
+
+  let optimizerDropdown = d3.select("#optimizer").on("change", function() {
+    state.optimizer = (this as any).value;
+    state.serialize();
+    userHasInteracted();
+    parametersChanged = true;
+    reset();
+  });
+  optimizerDropdown.property("value", state.optimizer);
+
+  let layerNormCheckbox = d3.select("#layer-norm").on("change", function() {
+    state.layerNorm = (this as any).checked;
+    state.serialize();
+    userHasInteracted();
+    parametersChanged = true;
+    reset();
+  });
+  layerNormCheckbox.property("checked", state.layerNorm);
 
   let regularDropdown = d3.select("#regularizations").on("change",
       function() {
@@ -891,7 +910,7 @@ function updateDecisionBoundary(network: nn.Node[][], firstTime: boolean) {
       let x = xScale(i);
       let y = yScale(j);
       let input = constructInput(x, y);
-      nn.forwardProp(network, input, state.weightQuantization);
+      nn.forwardProp(network, input, state.weightQuantization, state.layerNorm);
       nn.forEachNode(network, true, node => {
         boundary[node.id][i][j] = node.output;
       });
@@ -914,7 +933,7 @@ function getLoss(network: nn.Node[][], dataPoints: Example2D[]): number {
   for (let i = 0; i < dataPoints.length; i++) {
     let dataPoint = dataPoints[i];
     let input = constructInput(dataPoint.x, dataPoint.y);
-    let output = nn.forwardProp(network, input, state.weightQuantization);
+    let output = nn.forwardProp(network, input, state.weightQuantization, state.layerNorm);
     loss += nn.Errors.SQUARE.error(output, dataPoint.label);
   }
   return loss / dataPoints.length;
@@ -987,12 +1006,14 @@ function constructInput(x: number, y: number): number[] {
 
 function oneStep(): void {
   iter++;
+  let optimizerType = optimizers[state.optimizer] || nn.OptimizerType.SGD;
   state.trainData.forEach((point, i) => {
     let input = constructInput(point.x, point.y);
-    nn.forwardProp(network, input, state.weightQuantization);
+    nn.forwardProp(network, input, state.weightQuantization, state.layerNorm);
     nn.backProp(network, point.label, nn.Errors.SQUARE);
     if ((i + 1) % state.batchSize === 0) {
-      nn.updateWeights(network, state.learningRate, state.regularization, state.regularizationRate);
+      nn.updateWeights(network, state.learningRate, state.regularization,
+          state.regularizationRate, optimizerType);
     }
   });
   // Compute the loss.
@@ -1220,8 +1241,41 @@ function makeid(length) {
 }
 
 document.querySelector("#addinput").addEventListener("click", () => {
-  const form = prompt("enter formula:") 
+  const form = prompt("enter formula:")
   if(!form) return;
   INPUTS[makeid(8)] = {f: compile(form), label: form}
   reset()
+})
+
+document.querySelector("#add-activation").addEventListener("click", () => {
+  const formula = prompt("Enter activation formula in terms of x (e.g. tanh(x)*x):");
+  if (!formula) return;
+  let compiled: any;
+  try {
+    compiled = compile(formula);
+  } catch (e) {
+    alert("Could not compile formula: " + e.message);
+    return;
+  }
+  // Build activation using compiled mathjs expression; derivative via finite differences.
+  const h = 1e-4;
+  const customActivation: nn.ActivationFunction = {
+    output: (x: number) => compiled.evaluate({x}),
+    der: (x: number) => (compiled.evaluate({x: x + h}) - compiled.evaluate({x: x - h})) / (2 * h),
+    compileToJs: (arg: string) => `/* custom: ${formula} */ (function(x){return ${formula};})(${arg})`
+  };
+  // Register in global activations map.
+  const key = "custom_" + makeid(4);
+  activations[key] = customActivation;
+  // Add option to the activations dropdown.
+  const sel = document.querySelector("#activations") as HTMLSelectElement;
+  const opt = document.createElement("option");
+  opt.value = key;
+  opt.text = formula;
+  sel.appendChild(opt);
+  // Select the new activation.
+  state.activation = customActivation;
+  sel.value = key;
+  parametersChanged = true;
+  reset();
 })
