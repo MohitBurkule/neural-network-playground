@@ -1,0 +1,447 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>ML Security Lab — Neural Network Playground</title>
+  <style>
+    /* ---- Base ---- */
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+    body {
+      font-family: "Roboto", Arial, sans-serif;
+      font-size: 14px;
+      background: #f5f5f5;
+      color: #222;
+      line-height: 1.5;
+    }
+    h1 { font-size: 22px; font-weight: 600; margin-bottom: 4px; }
+    h2 { font-size: 16px; font-weight: 600; margin: 12px 0 6px; color: #333; border-bottom: 1px solid #ddd; padding-bottom: 4px; }
+    h3 { font-size: 13px; font-weight: 600; color: #555; margin: 8px 0 4px; }
+    p  { margin-bottom: 6px; }
+    a  { color: #1565c0; text-decoration: none; }
+    a:hover { text-decoration: underline; }
+
+    /* ---- Layout ---- */
+    #app {
+      display: grid;
+      grid-template-columns: 440px 1fr;
+      grid-template-rows: auto 1fr;
+      gap: 0;
+      min-height: 100vh;
+    }
+    #header {
+      grid-column: 1 / -1;
+      background: #1565c0;
+      color: #fff;
+      padding: 12px 20px;
+    }
+    #header h1 { color: #fff; }
+    #header p  { color: #cce0ff; font-size: 12px; margin: 0; }
+
+    /* ---- Left panel (canvas + controls) ---- */
+    #left-panel {
+      background: #fff;
+      border-right: 1px solid #ddd;
+      padding: 14px;
+      display: flex;
+      flex-direction: column;
+      gap: 10px;
+    }
+
+    /* ---- Canvas ---- */
+    #canvasWrap {
+      position: relative;
+      width: 400px;
+      height: 400px;
+      flex-shrink: 0;
+      border: 1px solid #ccc;
+      cursor: default;
+    }
+    #mainCanvas {
+      display: block;
+      width: 400px;
+      height: 400px;
+    }
+    #canvasWrap.brush-mode #mainCanvas { cursor: crosshair; }
+
+    /* ---- Status bar ---- */
+    #statusBar {
+      font-size: 12px;
+      color: #555;
+      background: #f0f4ff;
+      border: 1px solid #c5cae9;
+      border-radius: 3px;
+      padding: 5px 8px;
+      min-height: 26px;
+    }
+
+    /* ---- Controls row ---- */
+    .ctrl-row {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 6px;
+      align-items: center;
+    }
+    .ctrl-row label { font-size: 12px; color: #555; }
+    select, input[type="number"], input[type="range"] {
+      font-size: 13px;
+      border: 1px solid #bbb;
+      border-radius: 3px;
+      padding: 2px 4px;
+      height: 26px;
+    }
+    select { padding: 2px 6px; }
+    input[type="range"] {
+      height: 18px;
+      padding: 0;
+      border: none;
+      width: 90px;
+      vertical-align: middle;
+    }
+
+    /* ---- Buttons ---- */
+    button {
+      font-size: 12px;
+      padding: 4px 10px;
+      border: 1px solid #999;
+      border-radius: 3px;
+      background: #eee;
+      cursor: pointer;
+      height: 26px;
+      white-space: nowrap;
+    }
+    button:hover { background: #ddd; }
+    button.primary {
+      background: #1565c0;
+      color: #fff;
+      border-color: #1565c0;
+    }
+    button.primary:hover { background: #0d47a1; }
+    button.danger {
+      background: #c62828;
+      color: #fff;
+      border-color: #c62828;
+    }
+    button.danger:hover { background: #b71c1c; }
+    button.warn {
+      background: #e65100;
+      color: #fff;
+      border-color: #e65100;
+    }
+    button.warn:hover { background: #bf360c; }
+
+    /* ---- Legend ---- */
+    #legend {
+      display: flex;
+      gap: 14px;
+      flex-wrap: wrap;
+      font-size: 11px;
+      color: #555;
+    }
+    .legend-item { display: flex; align-items: center; gap: 4px; }
+    .dot { width: 10px; height: 10px; border-radius: 50%; display: inline-block; }
+    .dot.pos { background: #ff6666; border: 1px solid #990000; }
+    .dot.neg { background: #6666ff; border: 1px solid #000099; }
+    .dot.forget { background: transparent; border: 2px solid #cc0000; }
+    .arrow-swatch { width: 20px; height: 2px; background: #ff9900; display: inline-block; vertical-align: middle; }
+
+    /* ---- Right panel (sections) ---- */
+    #right-panel {
+      padding: 14px;
+      overflow-y: auto;
+      display: flex;
+      flex-direction: column;
+      gap: 14px;
+    }
+
+    /* ---- Section cards ---- */
+    .section-card {
+      background: #fff;
+      border: 1px solid #ddd;
+      border-radius: 4px;
+      padding: 12px;
+    }
+    .section-card h2 { margin-top: 0; }
+    .section-intro {
+      font-size: 12px;
+      color: #666;
+      margin-bottom: 8px;
+    }
+
+    /* ---- Results ---- */
+    .results-box {
+      font-size: 12px;
+      background: #f9f9f9;
+      border: 1px solid #e0e0e0;
+      border-radius: 3px;
+      padding: 6px 8px;
+      margin-top: 6px;
+      min-height: 28px;
+      white-space: pre-wrap;
+    }
+    .results-box table { border-collapse: collapse; margin-top: 4px; }
+    .results-box th, .results-box td {
+      border: 1px solid #ccc;
+      padding: 2px 8px;
+      font-size: 12px;
+    }
+    .results-box th { background: #e8eaf6; font-weight: 600; }
+
+    /* ---- CSV area ---- */
+    textarea {
+      font-family: monospace;
+      font-size: 12px;
+      width: 100%;
+      border: 1px solid #bbb;
+      border-radius: 3px;
+      padding: 6px;
+      resize: vertical;
+    }
+    #csvErrors {
+      font-size: 11px;
+      color: #b71c1c;
+      white-space: pre-wrap;
+      margin-top: 4px;
+    }
+
+    /* ---- Checkbox ---- */
+    .check-label {
+      display: flex;
+      align-items: center;
+      gap: 5px;
+      font-size: 12px;
+      color: #444;
+      cursor: pointer;
+      user-select: none;
+    }
+
+    /* ---- Separator ---- */
+    hr { border: none; border-top: 1px solid #eee; margin: 6px 0; }
+  </style>
+</head>
+<body>
+<div id="app">
+
+  <!-- Header -->
+  <div id="header">
+    <h1>ML Security Lab</h1>
+    <p>Adversarial attacks · Machine unlearning · Custom datasets — built on the Neural Network Playground engine</p>
+  </div>
+
+  <!-- Left panel: canvas + global controls -->
+  <div id="left-panel">
+
+    <h2 style="margin-top:0">Visualization</h2>
+
+    <!-- Dataset + hyper-param controls -->
+    <div class="ctrl-row">
+      <label>Dataset</label>
+      <select id="datasetSelect">
+        <option value="circle">Circle</option>
+        <option value="xor" selected>XOR</option>
+        <option value="spiral">Spiral</option>
+        <option value="gauss">Two Gaussians</option>
+      </select>
+      <label>N=</label>
+      <input type="number" id="numSamples" value="200" min="40" max="600" style="width:56px" />
+      <label>Noise</label>
+      <input type="number" id="noiseLevel" value="0.05" min="0" max="0.5" step="0.01" style="width:50px" />
+    </div>
+
+    <div class="ctrl-row">
+      <label>LR</label>
+      <input type="number" id="learningRate" value="0.03" min="0.001" max="1" step="0.001" style="width:60px" />
+      <button id="btnGenData">New Data</button>
+      <button id="btnTrain" class="primary">Train</button>
+      <button id="btnReset">Reset Net</button>
+    </div>
+
+    <!-- Status bar -->
+    <div id="statusBar"><span id="status">Dataset loaded. Press "Train" to start.</span></div>
+
+    <!-- Canvas -->
+    <div id="canvasWrap">
+      <canvas id="mainCanvas" width="400" height="400"></canvas>
+    </div>
+
+    <!-- Legend -->
+    <div id="legend">
+      <div class="legend-item"><span class="dot pos"></span> Class +1</div>
+      <div class="legend-item"><span class="dot neg"></span> Class −1</div>
+      <div class="legend-item"><span class="dot forget"></span> Forget set</div>
+      <div class="legend-item"><span class="arrow-swatch"></span> Adv. perturb.</div>
+      <div class="legend-item" style="color:#888">&nbsp;Background: predicted class confidence</div>
+    </div>
+
+    <!-- Brush mode toggle -->
+    <label class="check-label">
+      <input type="checkbox" id="brushMode" />
+      Brush Mode (drag on canvas to select forget region)
+    </label>
+
+  </div><!-- /left-panel -->
+
+  <!-- Right panel: sections A, B, C -->
+  <div id="right-panel">
+
+    <!-- ============================================================
+         Section A: Adversarial Examples
+    ============================================================ -->
+    <div class="section-card">
+      <h2>A — Adversarial Examples</h2>
+      <p class="section-intro">
+        Generate adversarial perturbations of the training data using
+        <strong>FGSM</strong> (Fast Gradient Sign Method) or
+        <strong>PGD</strong> (Projected Gradient Descent).
+        The gradient of the loss w.r.t. the raw (x,&nbsp;y) inputs is
+        computed analytically by back-propagating through the network to
+        the input layer. Orange arrows show each original → perturbed point;
+        the table reports how many predictions flip.
+      </p>
+
+      <div class="ctrl-row">
+        <label>Method</label>
+        <select id="attackMethod">
+          <option value="fgsm">FGSM</option>
+          <option value="pgd">PGD</option>
+        </select>
+        <label>ε</label>
+        <input type="number" id="epsilon" value="0.5" min="0.01" max="3" step="0.05" style="width:56px" />
+        <label>PGD steps</label>
+        <input type="number" id="pgdSteps" value="10" min="1" max="100" style="width:50px" />
+      </div>
+
+      <div class="ctrl-row" style="margin-top:6px">
+        <button id="btnAttack" class="warn">Run Attack</button>
+        <button id="btnClearAdv">Clear</button>
+      </div>
+
+      <div class="results-box" id="advResults">Run an attack to see results.</div>
+
+      <hr />
+      <h3>How it works</h3>
+      <p class="section-intro" style="margin-bottom:0">
+        After a forward + backward pass, <code>inputDer</code> is populated on
+        all nodes. We walk the links from the first hidden layer back to the
+        input layer: <code>∂L/∂xᵢ = Σₕ wᵢₕ · inputDer_h</code>.
+        FGSM takes a single step of size ε along the sign of this gradient;
+        PGD iterates and projects back into the L∞ ball of radius ε around
+        the original point.
+      </p>
+    </div>
+
+    <!-- ============================================================
+         Section B: Machine Unlearning
+    ============================================================ -->
+    <div class="section-card">
+      <h2>B — Machine Unlearning</h2>
+      <p class="section-intro">
+        Select points to "forget" by enabling <em>Brush Mode</em> (checkbox in
+        the left panel) and dragging a rectangle on the canvas. Then run one
+        of two unlearning strategies:
+      </p>
+      <ul class="section-intro" style="margin-left:16px; margin-bottom:8px">
+        <li><strong>Gradient-Ascent Forget</strong> — takes N ascent steps on
+          the forget set (maximising loss) while taking descent steps on the
+          retain set to preserve accuracy.</li>
+        <li><strong>Retrain from Scratch</strong> — builds a fresh network and
+          trains only on the retain set; gold-standard baseline.</li>
+      </ul>
+
+      <div class="ctrl-row">
+        <label>Steps</label>
+        <input type="number" id="unlearnSteps" value="200" min="10" max="2000" style="width:60px" />
+        <label>LR</label>
+        <input type="number" id="unlearnLR" value="0.03" min="0.001" max="1" step="0.001" style="width:60px" />
+      </div>
+
+      <div id="forgetCount" style="font-size:12px;color:#555;margin:6px 0">No points selected.</div>
+
+      <div class="ctrl-row">
+        <button id="btnForget" class="warn">Gradient-Ascent Forget</button>
+        <button id="btnRetrain" class="danger">Retrain from Scratch</button>
+        <button id="btnClearForget">Clear Selection</button>
+      </div>
+
+      <div class="results-box" id="unlearnResults">Select a region and run an unlearning method.</div>
+
+      <hr />
+      <h3>Interpreting results</h3>
+      <p class="section-intro" style="margin-bottom:0">
+        Good unlearning: <em>forget-set accuracy drops</em> (the model
+        no longer correctly classifies erased points) while
+        <em>retain-set accuracy stays high</em>. A retrain-from-scratch
+        result is the theoretical ideal — gradient-ascent is faster but
+        approximate.
+      </p>
+    </div>
+
+    <!-- ============================================================
+         Section C: Custom Dataset
+    ============================================================ -->
+    <div class="section-card">
+      <h2>C — Custom Dataset</h2>
+      <p class="section-intro">
+        Paste a CSV with one example per line: <code>x,y,label</code>
+        where x,&nbsp;y are floats in roughly [−6,&nbsp;6] and label is
+        <code>1</code> or <code>-1</code>.  A header row and
+        lines starting with <code>#</code> are ignored.
+        Label <code>0</code> is mapped to <code>-1</code>.
+      </p>
+
+      <textarea id="csvInput" rows="10" spellcheck="false"># Example: XOR-like custom dataset
+# x,y,label
+2.0,2.0,1
+-2.0,-2.0,1
+2.0,-2.0,-1
+-2.0,2.0,-1
+1.5,1.5,1
+-1.5,-1.5,1
+1.5,-1.5,-1
+-1.5,1.5,-1
+3.0,1.0,1
+-3.0,-1.0,1
+3.0,-1.0,-1
+-3.0,1.0,-1
+0.5,3.0,1
+-0.5,-3.0,1
+0.5,-3.0,-1
+-0.5,3.0,-1
+4.0,0.5,1
+-4.0,-0.5,1
+4.0,-0.5,-1
+-4.0,0.5,-1</textarea>
+
+      <div id="csvErrors"></div>
+
+      <div class="ctrl-row" style="margin-top:8px">
+        <button id="btnLoadCSV" class="primary">Load Dataset</button>
+        <button id="btnExportCSV">Export Current Data</button>
+      </div>
+
+      <hr />
+      <h3>Tips</h3>
+      <p class="section-intro" style="margin-bottom:0">
+        After loading, press <strong>Train</strong> in the left panel to fit
+        the network on your custom data.  You can then run adversarial attacks
+        or select points to unlearn just as with the built-in datasets.
+        Export saves the current training data (including any you generated) as
+        a CSV file you can re-load later.
+      </p>
+    </div>
+
+  </div><!-- /right-panel -->
+
+</div><!-- /app -->
+
+<!-- Brush-mode cursor helper -->
+<script>
+  document.getElementById('brushMode').addEventListener('change', function() {
+    document.getElementById('canvasWrap').classList.toggle('brush-mode', this.checked);
+  });
+</script>
+
+<!-- Bundled lab script (generated by browserify) -->
+<script src="../dist/bundlesecurity.js"></script>
+</body>
+</html>
