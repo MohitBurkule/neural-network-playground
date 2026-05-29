@@ -19,7 +19,7 @@
         "build-cnn": "browserify src/cnn.ts -p [tsify] > dist/bundlecnn.js",
         "build-transformer": "browserify src/transformer.ts -p [tsify] > dist/bundletransformer.js",
         "build-security": "browserify src/security_lab.ts -p [tsify] > dist/bundlesecurity.js",
-        "build-labs": "npm run build-3d && npm run build-cnn && npm run build-transformer && npm run build-security && copyfiles \"labs/*.html\" dist",
+        "build-labs": "npm run build-3d && npm run build-cnn && npm run build-transformer && npm run build-security && copyfiles -f \"labs/*.html\" dist",
         "build": "npm run prep && npm run build-js && npm run build-css && npm run build-darkcss && npm run build-lightcss && npm run build-html",
         "build-all": "npm run build && npm run build-labs",
         "watch": "npm run prep && concurrently \"npm run watch-js\" \"npm run watch-css\" \"npm run watch-html\"",

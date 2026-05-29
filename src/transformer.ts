@@ -482,8 +482,6 @@ const embColor  = d3.scaleDiverging(d3.interpolateRdBu).domain([-1, 0, 1]);
 // Layout constants
 // ---------------------------------------------------------------------------
 
-const MARGIN = {top: 20, right: 20, bottom: 20, left: 20};
-
 // Attention heatmap
 const ATTN_CELL = 46;
 const ATTN_PAD  = 4;
@@ -498,183 +496,37 @@ const EMB_CELL_H = 12;
 const LOSS_W = 300, LOSS_H = 130;
 
 // ---------------------------------------------------------------------------
-// Build the page layout
+// Wire up UI — bind event handlers to existing HTML elements
 // ---------------------------------------------------------------------------
 
 function buildLayout(): void {
-  const body = d3.select('body');
+  // Play/Pause button
+  d3.select('#btn-play').on('click', togglePlay);
 
-  // ---- header ----
-  body.append('header')
-    .style('padding', '18px 32px 10px')
-    .style('border-bottom', `1px solid ${COLORS.accent}`)
-    .html(`
-      <h1 style="margin:0;font-size:1.5rem;letter-spacing:.04em;color:${COLORS.cold}">
-        Transformer Attention Lab
-      </h1>
-      <p style="margin:4px 0 0;color:${COLORS.muted};font-size:.88rem">
-        A tiny single-block transformer trained in your browser — watch attention patterns emerge.
-      </p>
-    `);
+  // Step button
+  d3.select('#btn-step').on('click', () => { if (!isPlaying) trainStep(); });
 
-  // ---- controls bar ----
-  const ctrl = body.append('div').attr('id', 'controls')
-    .style('display', 'flex')
-    .style('align-items', 'center')
-    .style('gap', '18px')
-    .style('padding', '12px 32px')
-    .style('background', COLORS.accent)
-    .style('flex-wrap', 'wrap');
+  // Reset button
+  d3.select('#btn-reset').on('click', resetAll);
 
-  // Play/Pause
-  ctrl.append('button').attr('id', 'btn-play')
-    .attr('title', 'Play / Pause training')
-    .style('font-size', '1.4rem')
-    .style('cursor', 'pointer')
-    .style('background', COLORS.hot)
-    .style('color', '#fff')
-    .style('border', 'none')
-    .style('border-radius', '50%')
-    .style('width', '42px').style('height', '42px')
-    .text('▶')
-    .on('click', togglePlay);
-
-  // Step
-  ctrl.append('button').attr('id', 'btn-step')
-    .attr('title', 'Single step')
-    .style('cursor', 'pointer')
-    .style('background', COLORS.panel)
-    .style('color', COLORS.text)
-    .style('border', `1px solid ${COLORS.muted}`)
-    .style('border-radius', '6px')
-    .style('padding', '6px 14px')
-    .text('Step')
-    .on('click', () => { if (!isPlaying) trainStep(); });
-
-  // Reset
-  ctrl.append('button').attr('id', 'btn-reset')
-    .attr('title', 'Reset weights')
-    .style('cursor', 'pointer')
-    .style('background', COLORS.panel)
-    .style('color', COLORS.text)
-    .style('border', `1px solid ${COLORS.muted}`)
-    .style('border-radius', '6px')
-    .style('padding', '6px 14px')
-    .text('Reset')
-    .on('click', resetAll);
-
-  // LR slider
-  const lrGroup = ctrl.append('label').style('display', 'flex').style('align-items', 'center').style('gap', '8px').style('color', COLORS.text);
-  lrGroup.append('span').text('Learning rate');
-  const lrSlider = lrGroup.append('input')
-    .attr('type', 'range')
-    .attr('min', '-4').attr('max', '-1').attr('step', '0.1')
-    .attr('value', String(Math.log10(learningRate)))
-    .style('width', '120px');
-  const lrDisplay = lrGroup.append('span').attr('id', 'lr-display').text(learningRate.toFixed(4));
-  lrSlider.on('input', function() {
+  // Learning rate slider
+  const lrDisplay = d3.select('#lr-display');
+  d3.select('#lr-slider').on('input', function() {
     learningRate = Math.pow(10, +(this as HTMLInputElement).value);
     lrDisplay.text(learningRate.toFixed(4));
   });
+  // Initialise display from slider default value
+  const sliderEl = document.getElementById('lr-slider') as HTMLInputElement | null;
+  if (sliderEl) {
+    learningRate = Math.pow(10, +sliderEl.value);
+    lrDisplay.text(learningRate.toFixed(4));
+  }
 
   // Task selector
-  const taskGroup = ctrl.append('label').style('display', 'flex').style('align-items', 'center').style('gap', '8px').style('color', COLORS.text);
-  taskGroup.append('span').text('Task');
-  const taskSel = taskGroup.append('select')
-    .style('background', COLORS.panel)
-    .style('color', COLORS.text)
-    .style('border', `1px solid ${COLORS.muted}`)
-    .style('border-radius', '4px')
-    .style('padding', '4px 8px');
-  (['copy', 'reverse', 'shift'] as Task[]).forEach(t => {
-    taskSel.append('option').attr('value', t).text(
-      t === 'copy' ? 'Copy sequence' : t === 'reverse' ? 'Reverse sequence' : 'Shift-by-one'
-    );
-  });
-  taskSel.on('change', function() {
+  d3.select('#task-select').on('change', function() {
     task = (this as HTMLSelectElement).value as Task;
     resetAll();
   });
-
-  // Step counter
-  ctrl.append('span').attr('id', 'step-counter')
-    .style('color', COLORS.muted)
-    .style('font-size', '.85rem')
-    .text('Step: 0');
-
-  // Loss display
-  ctrl.append('span').attr('id', 'loss-display')
-    .style('color', COLORS.yellow)
-    .style('font-size', '.85rem')
-    .text('Loss: —');
-
-  // ---- main content grid ----
-  const main = body.append('div').attr('id', 'main')
-    .style('display', 'grid')
-    .style('grid-template-columns', '1fr 1fr')
-    .style('grid-template-rows', 'auto auto')
-    .style('gap', '24px')
-    .style('padding', '24px 32px');
-
-  // Panel: Attention heatmaps
-  const attnPanel = main.append('div').attr('id', 'panel-attn')
-    .style('background', COLORS.panel)
-    .style('border-radius', '10px')
-    .style('padding', '18px')
-    .style('grid-column', '1');
-  attnPanel.append('h2').text('Attention Weights')
-    .style('margin', '0 0 6px')
-    .style('font-size', '1rem')
-    .style('color', COLORS.cold);
-  attnPanel.append('p').text('Each cell (row i, col j) = how much token i attends to token j.')
-    .style('margin', '0 0 14px')
-    .style('font-size', '.78rem')
-    .style('color', COLORS.muted);
-  attnPanel.append('div').attr('id', 'attn-heatmaps');
-
-  // Panel: Token predictions
-  const predPanel = main.append('div').attr('id', 'panel-pred')
-    .style('background', COLORS.panel)
-    .style('border-radius', '10px')
-    .style('padding', '18px')
-    .style('grid-column', '2');
-  predPanel.append('h2').text('Predictions vs. Targets')
-    .style('margin', '0 0 6px')
-    .style('font-size', '1rem')
-    .style('color', COLORS.cold);
-  predPanel.append('p').text('Input → predicted token (argmax) vs. expected. Green = correct.')
-    .style('margin', '0 0 14px')
-    .style('font-size', '.78rem')
-    .style('color', COLORS.muted);
-  predPanel.append('div').attr('id', 'token-display');
-
-  // Panel: Q/K/V embeddings
-  const qkvPanel = main.append('div').attr('id', 'panel-qkv')
-    .style('background', COLORS.panel)
-    .style('border-radius', '10px')
-    .style('padding', '18px')
-    .style('grid-column', '1');
-  qkvPanel.append('h2').text('Q / K / V Vectors (head 0)')
-    .style('margin', '0 0 6px')
-    .style('font-size', '1rem')
-    .style('color', COLORS.cold);
-  qkvPanel.append('p').text('Each row = one sequence position. Colour = vector value (red=neg, blue=pos).')
-    .style('margin', '0 0 14px')
-    .style('font-size', '.78rem')
-    .style('color', COLORS.muted);
-  qkvPanel.append('div').attr('id', 'qkv-display');
-
-  // Panel: Loss chart
-  const lossPanel = main.append('div').attr('id', 'panel-loss')
-    .style('background', COLORS.panel)
-    .style('border-radius', '10px')
-    .style('padding', '18px')
-    .style('grid-column', '2');
-  lossPanel.append('h2').text('Training Loss')
-    .style('margin', '0 0 6px')
-    .style('font-size', '1rem')
-    .style('color', COLORS.cold);
-  lossPanel.append('div').attr('id', 'loss-chart');
 }
 
 // ---------------------------------------------------------------------------
@@ -1014,6 +866,15 @@ function trainStep(): void {
   // Update UI
   d3.select('#step-counter').text(`Step: ${stepCount}`);
   d3.select('#loss-display').text(`Loss: ${loss.toFixed(4)}`);
+
+  // Accuracy bar
+  let correct = 0;
+  for (let i = 0; i < SEQ_LEN; i++) {
+    if (argmax(softmax(cache.logits[i])) === ex.target[i]) correct++;
+  }
+  const accPct = (correct / SEQ_LEN * 100).toFixed(0);
+  d3.select('#acc-bar').style('width', `${accPct}%`);
+  d3.select('#acc-label').text(`${correct} / ${SEQ_LEN} correct`);
 
   renderAttn();
   renderPredictions();
