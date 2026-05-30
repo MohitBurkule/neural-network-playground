@@ -110,6 +110,26 @@ export let datasets: {[key: string]: dataset.DataGenerator} = {
   "moons": dataset.classifyMoons,
   "hash": dataset.classifyHashData,
   "three": dataset.classifyMNISTThreeData,
+  "checkerboard": dataset.classifyCheckerboard,
+  "quadrant-blobs": dataset.classifyQuadrantBlobs,
+  "concentric-rings": dataset.classifyConcentricRings,
+  "spiral3": dataset.classifyThreeArmSpiral,
+  "spiral4": dataset.classifyFourArmSpiral,
+  "tight-spiral": dataset.classifyTightSpiral,
+  "clean-moons": dataset.classifyCleanMoons,
+  "nested-u": dataset.classifyNestedU,
+  "gaussian-mixture": dataset.classifyGaussianMixture,
+  "diagonal-stripes": dataset.classifyDiagonalStripes,
+  "sine-boundary": dataset.classifySineBoundary,
+  "circle-in-square": dataset.classifyCircleInSquare,
+  "cross": dataset.classifyCross,
+  "s-curve": dataset.classifySCurve,
+  "pinwheel": dataset.classifyPinwheel,
+  "islands": dataset.classifyIslands,
+  "ring-vs-center": dataset.classifyRingVsCenter,
+  "gaussian-quantiles": dataset.classifyGaussianQuantiles,
+  "anisotropic": dataset.classifyAnisotropicBlobs,
+  "random-blobs": dataset.classifyRandomLabelBlobs,
 };
 
 /** A map between dataset names and functions that generate regression data. */
@@ -121,7 +141,11 @@ export let regDatasets: {[key: string]: dataset.DataGenerator} = {
   "reg-sine-wave": dataset.regressSineWave,
   "reg-friedman1": dataset.regressFriedman1,
   "reg-friedman2": dataset.regressFriedman2,
-  "reg-friedman3": dataset.regressFriedman3
+  "reg-friedman3": dataset.regressFriedman3,
+  "reg-ripple": dataset.regressRipple,
+  "reg-saddle": dataset.regressSaddle,
+  "reg-gauss-bump": dataset.regressGaussianBump,
+  "reg-staircase": dataset.regressStaircase
 };
 
 export function getKeyFromValue(obj: any, value: any): string {

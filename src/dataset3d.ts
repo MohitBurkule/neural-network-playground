@@ -133,3 +133,130 @@ export function classifySwissRoll(numSamples: number, noise: number): Example3D[
   }
   return points;
 }
+
+/**
+ * Two interlocking rings (Hopf-link style): one ring in the xy-plane,
+ * one in the xz-plane offset so they interlink.
+ */
+export function classifyLinkedRings(numSamples: number, noise: number): Example3D[] {
+  const points: Example3D[] = [];
+  const half = Math.floor(numSamples / 2);
+  const r = 3;
+  for (let i = 0; i < half; i++) {
+    const t = randUniform(0, 2 * Math.PI);
+    points.push({
+      x: r * Math.cos(t) + randNormal(0, noise),
+      y: r * Math.sin(t) + randNormal(0, noise),
+      z: randNormal(0, noise),
+      label: 1
+    });
+  }
+  for (let i = half; i < numSamples; i++) {
+    const t = randUniform(0, 2 * Math.PI);
+    points.push({
+      x: r + r * Math.cos(t) + randNormal(0, noise),
+      y: randNormal(0, noise),
+      z: r * Math.sin(t) + randNormal(0, noise),
+      label: -1
+    });
+  }
+  return points;
+}
+
+/**
+ * 3D checkerboard cube: alternating labels across a 3x3x3 voxel grid.
+ */
+export function classifyCheckerboardCube(numSamples: number, noise: number): Example3D[] {
+  const points: Example3D[] = [];
+  const size = 2;
+  for (let i = 0; i < numSamples; i++) {
+    const x = randUniform(-3, 3);
+    const y = randUniform(-3, 3);
+    const z = randUniform(-3, 3);
+    const cx = Math.floor((x + 3 + randNormal(0, noise)) / size);
+    const cy = Math.floor((y + 3 + randNormal(0, noise)) / size);
+    const cz = Math.floor((z + 3 + randNormal(0, noise)) / size);
+    const label = (cx + cy + cz) % 2 === 0 ? 1 : -1;
+    points.push({ x, y, z, label });
+  }
+  return points;
+}
+
+/**
+ * Double helix pair, two intertwined helices wound around the y-axis.
+ */
+export function classifyDoubleHelix(numSamples: number, noise: number): Example3D[] {
+  const points: Example3D[] = [];
+  const half = Math.floor(numSamples / 2);
+  const r = 2.5;
+  function genHelix(phase: number, label: number, n: number) {
+    for (let i = 0; i < n; i++) {
+      const t = (i / n) * 6 * Math.PI;
+      points.push({
+        x: r * Math.cos(t + phase) + randNormal(0, noise),
+        y: (t / (6 * Math.PI)) * 8 - 4 + randNormal(0, noise),
+        z: r * Math.sin(t + phase) + randNormal(0, noise),
+        label
+      });
+    }
+  }
+  genHelix(0, 1, half);
+  genHelix(Math.PI, -1, numSamples - half);
+  return points;
+}
+
+/**
+ * 3D XOR: label by parity of signs of x, y, z (8 octants).
+ */
+export function classifyXOR3D(numSamples: number, noise: number): Example3D[] {
+  const points: Example3D[] = [];
+  for (let i = 0; i < numSamples; i++) {
+    const x = randUniform(-4, 4);
+    const y = randUniform(-4, 4);
+    const z = randUniform(-4, 4);
+    const sx = (x + randNormal(0, noise)) >= 0 ? 1 : 0;
+    const sy = (y + randNormal(0, noise)) >= 0 ? 1 : 0;
+    const sz = (z + randNormal(0, noise)) >= 0 ? 1 : 0;
+    const label = (sx + sy + sz) % 2 === 0 ? 1 : -1;
+    points.push({ x, y, z, label });
+  }
+  return points;
+}
+
+/**
+ * Sphere shell vs solid core.
+ */
+export function classifyShellVsCore(numSamples: number, noise: number): Example3D[] {
+  const points: Example3D[] = [];
+  for (let i = 0; i < numSamples; i++) {
+    const theta = randUniform(0, 2 * Math.PI);
+    const phi = Math.acos(randUniform(-1, 1));
+    const isCore = i % 2 === 0;
+    const r = isCore
+      ? randUniform(0, 1.5) + randNormal(0, noise)
+      : 4 + randNormal(0, noise * 0.5);
+    points.push({
+      x: r * Math.sin(phi) * Math.cos(theta),
+      y: r * Math.sin(phi) * Math.sin(theta),
+      z: r * Math.cos(phi),
+      label: isCore ? 1 : -1
+    });
+  }
+  return points;
+}
+
+/**
+ * 3D S-curve: points along an S-shaped manifold, labelled by branch.
+ */
+export function classifySCurve3D(numSamples: number, noise: number): Example3D[] {
+  const points: Example3D[] = [];
+  for (let i = 0; i < numSamples; i++) {
+    const t = randUniform(-1.5 * Math.PI, 1.5 * Math.PI);
+    const x = Math.sin(t) * 3 + randNormal(0, noise);
+    const y = randUniform(-3, 3) + randNormal(0, noise);
+    const z = Math.sign(t) * (Math.cos(t) - 1) * 3 + randNormal(0, noise);
+    const label = t >= 0 ? 1 : -1;
+    points.push({ x, y, z, label });
+  }
+  return points;
+}

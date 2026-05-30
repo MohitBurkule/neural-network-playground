@@ -37,7 +37,13 @@ import {
   classifyTwoGaussBlobs,
   classifyConcentricSpheres,
   classifyHelix,
-  classifySwissRoll
+  classifySwissRoll,
+  classifyLinkedRings,
+  classifyCheckerboardCube,
+  classifyDoubleHelix,
+  classifyXOR3D,
+  classifyShellVsCore,
+  classifySCurve3D
 } from "./dataset3d";
 import {parseCSV} from "./customdataset";
 import * as d3 from 'd3';
@@ -1279,7 +1285,13 @@ const THREE_GENERATORS: {[k: string]: (n: number, noise: number) => Example3D[]}
   "blobs": classifyTwoGaussBlobs,
   "spheres": classifyConcentricSpheres,
   "helix": classifyHelix,
-  "swiss-roll": classifySwissRoll
+  "swiss-roll": classifySwissRoll,
+  "linked-rings": classifyLinkedRings,
+  "checkerboard-cube": classifyCheckerboardCube,
+  "double-helix": classifyDoubleHelix,
+  "xor3d": classifyXOR3D,
+  "shell-vs-core": classifyShellVsCore,
+  "s-curve-3d": classifySCurve3D
 };
 
 function construct3DInput(x: number, y: number, z: number): number[] {
