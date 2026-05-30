@@ -1143,3 +1143,101 @@ input:checked + .toggler:before {
 .advanced-labs .adv-readout .err {
   color: #c0392b;
 }
+
+/* ============================ Analysis section ============================ */
+.analysis-section {
+  margin-top: 24px;
+  margin-bottom: 24px;
+}
+.analysis-header {
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  user-select: none;
+}
+.analysis-header i {
+  margin-right: 6px;
+  transition: transform 0.2s;
+}
+.analysis-section.collapsed #analysis-body {
+  display: none;
+}
+.analysis-section.collapsed #analysis-arrow {
+  transform: rotate(-90deg);
+}
+.analysis-options {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 14px;
+  align-items: center;
+  font-size: 12px;
+  margin-bottom: 14px;
+}
+.analysis-options .ao-title {
+  font-weight: 700;
+  color: #555;
+}
+.analysis-options label {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  cursor: pointer;
+}
+.analysis-readouts {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+  margin-bottom: 14px;
+}
+.ar-card {
+  background: #f7f7f7;
+  border: 1px solid #e0e0e0;
+  border-radius: 4px;
+  padding: 6px 10px;
+  min-width: 110px;
+}
+.ar-label {
+  font-size: 11px;
+  color: #777;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+}
+.ar-value {
+  font-size: 15px;
+  font-weight: 700;
+  color: #333;
+}
+.analysis-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-bottom: 16px;
+}
+.analysis-grid {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 16px;
+}
+.an-panel {
+  border: 1px solid #e0e0e0;
+  border-radius: 4px;
+  padding: 8px;
+  background: #fff;
+}
+.an-panel-title {
+  font-size: 12px;
+  font-weight: 700;
+  color: #555;
+  margin-bottom: 4px;
+}
+.an-panel svg {
+  display: block;
+}
+.an-axis path,
+.an-axis line {
+  stroke: #ccc;
+}
+.an-axis text {
+  font-size: 9px;
+  fill: #888;
+}

@@ -1124,6 +1124,7 @@ function updateUI(firstStep = false) {
   d3.select("#effective-lr").text(effectiveLearningRate().toPrecision(3));
   lineChart.addDataPoint([lossTrain, lossTest]);
   updateClassificationMetricsUI();
+  updateAnalysis();
 
   // Now "draw" it as JavaScript
   d3.select("#network-as-javascript").text(nn.compileNetworkToJs(network));
@@ -1483,6 +1484,9 @@ export function getOutputWeights(network: nn.Node[][]): number[] {
 
 function reset(onStartup=false) {
   lineChart.reset();
+  trainingHistory = [];
+  weightMagHistory = [];
+  analysisStep = 0;
   state.serialize();
   if (!onStartup) {
     userHasInteracted();
@@ -2045,11 +2049,584 @@ function makeAdvancedGUI() {
   });
 }
 
+// ============================================================================
+// Analysis: evaluation & visualization. All panels live in #analysis-section
+// and are refreshed (cheaply) from updateUI() / via buttons. Classification-
+// only panels are hidden in regression mode.
+// ============================================================================
+
+// State accumulated for export / time-series charts.
+let analysisStep = 0;
+let lastStepTime = (typeof performance !== "undefined" ? performance.now() : Date.now());
+let lastStepsPerSec = 0;
+let trainingHistory: Array<{iter: number; lossTrain: number; lossTest: number;
+    accTrain: number; accTest: number}> = [];
+// Per-layer mean |weight| time series (one array per hidden layer + output).
+let weightMagHistory: number[][] = [];
+let lastAuc = NaN;
+let lastAp = NaN;
+let lastConfusion: number[][] = [[0, 0], [0, 0]];
+
+const analysisOpts = {curves: true, hist: true, grad: true, landscape: true};
+
+function nowMs(): number {
+  return (typeof performance !== "undefined" ? performance.now() : Date.now());
+}
+
+/** Raw network outputs + labels over a dataset (classification scoring). */
+function scoreDataset(net: nn.Node[][], data: Example2D[]):
+    Array<{score: number; label: number}> {
+  let out: Array<{score: number; label: number}> = [];
+  for (let p of data) {
+    let o = nn.forwardProp(net, constructInput(p.x, p.y),
+        state.weightQuantization, state.layerNorm);
+    out.push({score: o, label: p.label});
+  }
+  return out;
+}
+
+/** ROC points (sweep threshold over raw output) + AUC. Positive = label +1. */
+function computeRoc(scored: Array<{score: number; label: number}>):
+    {points: Array<[number, number]>; auc: number} {
+  let pos = scored.filter(s => s.label > 0).length;
+  let neg = scored.length - pos;
+  if (pos === 0 || neg === 0) {
+    return {points: [[0, 0], [1, 1]], auc: 0.5};
+  }
+  let sorted = scored.slice().sort((a, b) => b.score - a.score);
+  let points: Array<[number, number]> = [[0, 0]];
+  let tp = 0, fp = 0;
+  let auc = 0;
+  let prevFpr = 0, prevTpr = 0;
+  for (let s of sorted) {
+    if (s.label > 0) { tp++; } else { fp++; }
+    let tpr = tp / pos;
+    let fpr = fp / neg;
+    // Trapezoidal area increment.
+    auc += (fpr - prevFpr) * (tpr + prevTpr) / 2;
+    points.push([fpr, tpr]);
+    prevFpr = fpr; prevTpr = tpr;
+  }
+  return {points, auc};
+}
+
+/** Precision-Recall curve + average precision. Positive = label +1. */
+function computePr(scored: Array<{score: number; label: number}>):
+    {points: Array<[number, number]>; ap: number} {
+  let pos = scored.filter(s => s.label > 0).length;
+  if (pos === 0) { return {points: [[0, 1]], ap: 0}; }
+  let sorted = scored.slice().sort((a, b) => b.score - a.score);
+  let tp = 0, fp = 0;
+  let points: Array<[number, number]> = [];
+  let ap = 0;
+  let prevRecall = 0;
+  for (let s of sorted) {
+    if (s.label > 0) { tp++; } else { fp++; }
+    let precision = tp / (tp + fp);
+    let recall = tp / pos;
+    ap += (recall - prevRecall) * precision;
+    points.push([recall, precision]);
+    prevRecall = recall;
+  }
+  return {points, ap};
+}
+
+/** Precision/recall/F1/specificity at threshold 0 (predict +1 if output>=0). */
+function computeThresholdMetrics(scored: Array<{score: number; label: number}>):
+    {precision: number; recall: number; f1: number; specificity: number} {
+  let tp = 0, fp = 0, tn = 0, fn = 0;
+  for (let s of scored) {
+    let pred = s.score >= 0 ? 1 : -1;
+    if (s.label > 0) {
+      if (pred > 0) { tp++; } else { fn++; }
+    } else {
+      if (pred > 0) { fp++; } else { tn++; }
+    }
+  }
+  let precision = tp + fp ? tp / (tp + fp) : 0;
+  let recall = tp + fn ? tp / (tp + fn) : 0;
+  let f1 = precision + recall ? 2 * precision * recall / (precision + recall) : 0;
+  let specificity = tn + fp ? tn / (tn + fp) : 0;
+  return {precision, recall, f1, specificity};
+}
+
+/** Generic line/curve plot into an svg id. data = list of [x,y] in [0,1]. */
+function drawCurve(svgId: string, data: Array<[number, number]>,
+    color: string, diagonal: boolean): void {
+  let svg = d3.select<SVGSVGElement, unknown>("#" + svgId);
+  if (svg.empty()) { return; }
+  let W = +svg.attr("width");
+  let H = +svg.attr("height");
+  let m = {t: 8, r: 8, b: 22, l: 28};
+  let x = d3.scaleLinear().domain([0, 1]).range([m.l, W - m.r]);
+  let y = d3.scaleLinear().domain([0, 1]).range([H - m.b, m.t]);
+  svg.selectAll("*").remove();
+  // Axes.
+  svg.append("g").attr("class", "an-axis")
+      .attr("transform", `translate(0,${H - m.b})`)
+      .call(d3.axisBottom(x).ticks(4));
+  svg.append("g").attr("class", "an-axis")
+      .attr("transform", `translate(${m.l},0)`)
+      .call(d3.axisLeft(y).ticks(4));
+  if (diagonal) {
+    svg.append("line")
+        .attr("x1", x(0)).attr("y1", y(0))
+        .attr("x2", x(1)).attr("y2", y(1))
+        .attr("stroke", "#ccc").attr("stroke-dasharray", "3,3");
+  }
+  let line = d3.line<[number, number]>()
+      .x(d => x(d[0])).y(d => y(d[1]));
+  svg.append("path")
+      .datum(data)
+      .attr("fill", "none")
+      .attr("stroke", color)
+      .attr("stroke-width", 1.5)
+      .attr("d", line);
+}
+
+/** Histogram of values into an svg id. */
+function drawHistogram(svgId: string, values: number[], color: string,
+    domain?: [number, number]): void {
+  let svg = d3.select<SVGSVGElement, unknown>("#" + svgId);
+  if (svg.empty()) { return; }
+  let W = +svg.attr("width");
+  let H = +svg.attr("height");
+  let m = {t: 8, r: 8, b: 22, l: 28};
+  svg.selectAll("*").remove();
+  if (!values.length) { return; }
+  let dom = domain || [d3.min(values), d3.max(values)];
+  if (dom[0] === dom[1]) { dom = [dom[0] - 1, dom[1] + 1]; }
+  let x = d3.scaleLinear().domain(dom).range([m.l, W - m.r]);
+  let bins = d3.bin().domain(dom as [number, number]).thresholds(16)(values);
+  let maxCount = d3.max(bins, b => b.length) || 1;
+  let y = d3.scaleLinear().domain([0, maxCount]).range([H - m.b, m.t]);
+  svg.append("g").attr("class", "an-axis")
+      .attr("transform", `translate(0,${H - m.b})`)
+      .call(d3.axisBottom(x).ticks(4));
+  svg.append("g").attr("class", "an-axis")
+      .attr("transform", `translate(${m.l},0)`)
+      .call(d3.axisLeft(y).ticks(3));
+  svg.selectAll("rect").data(bins).enter().append("rect")
+      .attr("x", d => x(d.x0) + 1)
+      .attr("y", d => y(d.length))
+      .attr("width", d => Math.max(0, x(d.x1) - x(d.x0) - 1))
+      .attr("height", d => (H - m.b) - y(d.length))
+      .attr("fill", color);
+}
+
+/** Bar chart from labeled values into an svg id. */
+function drawBars(svgId: string, labels: string[], values: number[],
+    color: string): void {
+  let svg = d3.select<SVGSVGElement, unknown>("#" + svgId);
+  if (svg.empty()) { return; }
+  let W = +svg.attr("width");
+  let H = +svg.attr("height");
+  let m = {t: 8, r: 8, b: 22, l: 32};
+  svg.selectAll("*").remove();
+  let x = d3.scaleBand().domain(labels).range([m.l, W - m.r]).padding(0.2);
+  let maxV = d3.max(values) || 1;
+  let y = d3.scaleLinear().domain([0, maxV]).range([H - m.b, m.t]);
+  svg.append("g").attr("class", "an-axis")
+      .attr("transform", `translate(0,${H - m.b})`)
+      .call(d3.axisBottom(x));
+  svg.append("g").attr("class", "an-axis")
+      .attr("transform", `translate(${m.l},0)`)
+      .call(d3.axisLeft(y).ticks(3));
+  svg.selectAll("rect").data(values).enter().append("rect")
+      .attr("x", (d, i) => x(labels[i]))
+      .attr("y", d => y(d))
+      .attr("width", x.bandwidth())
+      .attr("height", d => (H - m.b) - y(d))
+      .attr("fill", color);
+}
+
+/** Multi-line chart (per-layer series) into svg id. */
+function drawMultiLine(svgId: string, series: number[][],
+    colors: string[]): void {
+  let svg = d3.select<SVGSVGElement, unknown>("#" + svgId);
+  if (svg.empty()) { return; }
+  let W = +svg.attr("width");
+  let H = +svg.attr("height");
+  let m = {t: 8, r: 8, b: 22, l: 32};
+  svg.selectAll("*").remove();
+  let maxLen = d3.max(series, s => s.length) || 1;
+  if (maxLen < 2) { return; }
+  let allVals: number[] = [];
+  series.forEach(s => s.forEach(v => allVals.push(v)));
+  let maxV = d3.max(allVals) || 1;
+  let x = d3.scaleLinear().domain([0, maxLen - 1]).range([m.l, W - m.r]);
+  let y = d3.scaleLinear().domain([0, maxV]).range([H - m.b, m.t]);
+  svg.append("g").attr("class", "an-axis")
+      .attr("transform", `translate(0,${H - m.b})`)
+      .call(d3.axisBottom(x).ticks(4));
+  svg.append("g").attr("class", "an-axis")
+      .attr("transform", `translate(${m.l},0)`)
+      .call(d3.axisLeft(y).ticks(3));
+  let line = d3.line<number>()
+      .x((d, i) => x(i)).y(d => y(d));
+  series.forEach((s, idx) => {
+    svg.append("path")
+        .datum(s)
+        .attr("fill", "none")
+        .attr("stroke", colors[idx % colors.length])
+        .attr("stroke-width", 1.3)
+        .attr("d", line);
+  });
+}
+
+/** Reliability/calibration diagram. */
+function drawCalibration(svgId: string,
+    scored: Array<{score: number; label: number}>): void {
+  let nBins = 10;
+  let binSum = new Array(nBins).fill(0);
+  let binPos = new Array(nBins).fill(0);
+  let binCnt = new Array(nBins).fill(0);
+  for (let s of scored) {
+    let p = (s.score + 1) / 2;  // map [-1,1] -> [0,1]
+    p = Math.max(0, Math.min(1, p));
+    let b = Math.min(nBins - 1, Math.floor(p * nBins));
+    binSum[b] += p;
+    binCnt[b]++;
+    if (s.label > 0) { binPos[b]++; }
+  }
+  let points: Array<[number, number]> = [];
+  for (let b = 0; b < nBins; b++) {
+    if (binCnt[b] > 0) {
+      points.push([binSum[b] / binCnt[b], binPos[b] / binCnt[b]]);
+    }
+  }
+  drawCurve(svgId, points, "#9b59b6", true);
+}
+
+/** Count total trainable parameters (weights + biases). */
+function countParameters(net: nn.Node[][]): number {
+  let count = 0;
+  for (let layerIdx = 1; layerIdx < net.length; layerIdx++) {
+    for (let node of net[layerIdx]) {
+      count++;  // bias
+      count += node.inputLinks.length;  // weights
+    }
+  }
+  return count;
+}
+
+/** Collect all link weights / node biases. */
+function collectWeights(net: nn.Node[][]): number[] {
+  let w: number[] = [];
+  for (let layerIdx = 1; layerIdx < net.length; layerIdx++) {
+    for (let node of net[layerIdx]) {
+      for (let link of node.inputLinks) { w.push(link.weight); }
+    }
+  }
+  return w;
+}
+function collectBiases(net: nn.Node[][]): number[] {
+  let b: number[] = [];
+  nn.forEachNode(net, true, node => b.push(node.bias));
+  return b;
+}
+
+/** Hidden-node activations over the test set. */
+function collectActivations(net: nn.Node[][], data: Example2D[]): number[] {
+  let acts: number[] = [];
+  let sample = data.slice(0, 200);
+  for (let p of sample) {
+    nn.forwardProp(net, constructInput(p.x, p.y),
+        state.weightQuantization, state.layerNorm);
+    for (let layerIdx = 1; layerIdx < net.length - 1; layerIdx++) {
+      for (let node of net[layerIdx]) { acts.push(node.output); }
+    }
+  }
+  return acts;
+}
+
+/** Mean |weight| per hidden+output layer. */
+function meanWeightMagPerLayer(net: nn.Node[][]): number[] {
+  let result: number[] = [];
+  for (let layerIdx = 1; layerIdx < net.length; layerIdx++) {
+    let sum = 0, cnt = 0;
+    for (let node of net[layerIdx]) {
+      for (let link of node.inputLinks) { sum += Math.abs(link.weight); cnt++; }
+    }
+    result.push(cnt ? sum / cnt : 0);
+  }
+  return result;
+}
+
+/** Run a backprop pass on a sample to populate gradients; return mean |grad|
+ * per hidden layer (using link.errorDer of incoming links). */
+function gradientFlowPerLayer(net: nn.Node[][], data: Example2D[]): number[] {
+  let sample = data.slice(0, 50);
+  // Reset accumulators by recomputing errorDer per example then averaging.
+  let sums: number[] = new Array(net.length).fill(0);
+  let counts: number[] = new Array(net.length).fill(0);
+  for (let p of sample) {
+    nn.forwardProp(net, constructInput(p.x, p.y),
+        state.weightQuantization, state.layerNorm);
+    nn.backProp(net, p.label, nn.Errors.SQUARE);
+    for (let layerIdx = 1; layerIdx < net.length; layerIdx++) {
+      for (let node of net[layerIdx]) {
+        for (let link of node.inputLinks) {
+          sums[layerIdx] += Math.abs(link.errorDer);
+          counts[layerIdx]++;
+        }
+      }
+    }
+  }
+  let out: number[] = [];
+  for (let layerIdx = 1; layerIdx < net.length; layerIdx++) {
+    out.push(counts[layerIdx] ? sums[layerIdx] / counts[layerIdx] : 0);
+  }
+  return out;
+}
+
+const LAYER_COLORS = ["#e74c3c", "#3498db", "#2ecc71", "#f39c12", "#9b59b6",
+    "#1abc9c", "#e67e22", "#34495e"];
+
+function updateAnalysis(): void {
+  if (!network) { return; }
+  let isClass = state.problem === Problem.CLASSIFICATION && !state.threeD;
+
+  // Show/hide classification-only panels & readouts.
+  d3.selectAll(".classification-only").style("display", isClass ? null : "none");
+
+  // --- Cheap readouts (every step) ---
+  d3.select("#an-params").text(countParameters(network).toString());
+
+  let t = nowMs();
+  let dt = t - lastStepTime;
+  if (dt > 0) {
+    let sps = 1000 / dt;
+    lastStepsPerSec = lastStepsPerSec ? lastStepsPerSec * 0.7 + sps * 0.3 : sps;
+  }
+  lastStepTime = t;
+  d3.select("#an-sps").text(lastStepsPerSec.toFixed(1));
+
+  // Decision margin (mean |out|) over test set.
+  let testScored = scoreDataset(network, state.testData);
+  let margin = testScored.length ?
+      d3.mean(testScored, s => Math.abs(s.score)) : 0;
+  d3.select("#an-margin").text((margin || 0).toFixed(3));
+
+  if (isClass) {
+    // Class balance.
+    let trPos = state.trainData.filter(p => p.label > 0).length;
+    let trNeg = state.trainData.length - trPos;
+    let tePos = state.testData.filter(p => p.label > 0).length;
+    let teNeg = state.testData.length - tePos;
+    d3.select("#an-balance").text(
+        `tr ${trPos}/${trNeg} · te ${tePos}/${teNeg}`);
+
+    let thr = computeThresholdMetrics(testScored);
+    d3.select("#an-prec-rec").text(
+        `${(thr.precision * 100).toFixed(1)}% / ${(thr.recall * 100).toFixed(1)}%`);
+    d3.select("#an-f1-spec").text(
+        `${thr.f1.toFixed(3)} / ${(thr.specificity * 100).toFixed(1)}%`);
+
+    let roc = computeRoc(testScored);
+    let pr = computePr(testScored);
+    lastAuc = roc.auc;
+    lastAp = pr.ap;
+    lastConfusion = computeClassMetrics(network, state.testData).matrix;
+    d3.select("#an-auc").text(roc.auc.toFixed(3));
+    d3.select("#an-ap").text(pr.ap.toFixed(3));
+
+    // --- Curves (every K steps, if enabled) ---
+    if (analysisOpts.curves && analysisStep % 5 === 0) {
+      drawCurve("an-roc", roc.points, "#e74c3c", true);
+      drawCurve("an-pr", pr.points, "#3498db", false);
+      drawCalibration("an-calib", testScored);
+    }
+  } else {
+    lastAuc = NaN; lastAp = NaN;
+  }
+
+  // --- Histograms (every step is fine but throttle heavy ones) ---
+  if (analysisOpts.hist) {
+    drawHistogram("an-whist", collectWeights(network), "#3498db");
+    drawHistogram("an-bhist", collectBiases(network), "#e67e22");
+    drawHistogram("an-chist", testScored.map(s => Math.abs(s.score)),
+        "#2ecc71", [0, 1]);
+    if (analysisStep % 5 === 0) {
+      drawHistogram("an-ahist", collectActivations(network, state.testData),
+          "#9b59b6");
+    }
+  }
+
+  // --- Gradient flow & per-layer weight magnitude (every K steps) ---
+  if (analysisOpts.grad && analysisStep % 5 === 0) {
+    let gf = gradientFlowPerLayer(network, state.trainData);
+    let labels = gf.map((_, i) => "L" + (i + 1));
+    drawBars("an-grad", labels, gf, "#16a085");
+
+    let mags = meanWeightMagPerLayer(network);
+    if (weightMagHistory.length !== mags.length) {
+      weightMagHistory = mags.map(() => []);
+    }
+    mags.forEach((mg, i) => {
+      weightMagHistory[i].push(mg);
+      if (weightMagHistory[i].length > 200) { weightMagHistory[i].shift(); }
+    });
+    drawMultiLine("an-wmag", weightMagHistory, LAYER_COLORS);
+  }
+
+  // --- Training history accumulation (for CSV export) ---
+  let accTrain = isClass ?
+      computeClassMetrics(network, state.trainData).accuracy : NaN;
+  let accTest = isClass ?
+      computeClassMetrics(network, state.testData).accuracy : NaN;
+  trainingHistory.push({iter, lossTrain, lossTest, accTrain, accTest});
+  if (trainingHistory.length > 5000) { trainingHistory.shift(); }
+
+  analysisStep++;
+}
+
+/** Loss landscape 1D slice: perturb weights along a random direction. */
+function computeLossLandscape(): void {
+  if (!network) { return; }
+  // Save weights & biases.
+  let savedW: number[] = [];
+  let dirW: number[] = [];
+  let linkRefs: nn.Link[] = [];
+  let savedB: number[] = [];
+  let dirB: number[] = [];
+  let nodeRefs: nn.Node[] = [];
+  for (let layerIdx = 1; layerIdx < network.length; layerIdx++) {
+    for (let node of network[layerIdx]) {
+      nodeRefs.push(node);
+      savedB.push(node.bias);
+      dirB.push(Math.random() - 0.5);
+      for (let link of node.inputLinks) {
+        linkRefs.push(link);
+        savedW.push(link.weight);
+        dirW.push(Math.random() - 0.5);
+      }
+    }
+  }
+  // Normalize direction.
+  let norm = Math.sqrt(
+      dirW.reduce((a, b) => a + b * b, 0) + dirB.reduce((a, b) => a + b * b, 0));
+  if (norm === 0) { norm = 1; }
+  dirW = dirW.map(v => v / norm);
+  dirB = dirB.map(v => v / norm);
+
+  let r = 1.0;
+  let steps = 41;
+  let points: Array<[number, number]> = [];
+  let minLoss = Infinity, maxLoss = -Infinity;
+  for (let k = 0; k < steps; k++) {
+    let alpha = -r + (2 * r) * k / (steps - 1);
+    for (let i = 0; i < linkRefs.length; i++) {
+      linkRefs[i].weight = savedW[i] + alpha * dirW[i];
+    }
+    for (let i = 0; i < nodeRefs.length; i++) {
+      nodeRefs[i].bias = savedB[i] + alpha * dirB[i];
+    }
+    let loss = getLoss(network, state.trainData);
+    minLoss = Math.min(minLoss, loss);
+    maxLoss = Math.max(maxLoss, loss);
+    points.push([(alpha + r) / (2 * r), loss]);
+  }
+  // Restore.
+  for (let i = 0; i < linkRefs.length; i++) { linkRefs[i].weight = savedW[i]; }
+  for (let i = 0; i < nodeRefs.length; i++) { nodeRefs[i].bias = savedB[i]; }
+
+  // Normalize y for the [0,1] drawCurve helper.
+  let range = maxLoss - minLoss || 1;
+  let norm2: Array<[number, number]> =
+      points.map(p => [p[0], (p[1] - minLoss) / range]);
+  drawCurve("an-landscape", norm2, "#c0392b", false);
+}
+
+function downloadText(filename: string, text: string, mime: string): void {
+  let blob = new Blob([text], {type: mime});
+  let url = URL.createObjectURL(blob);
+  let a = document.createElement("a");
+  a.href = url;
+  a.download = filename;
+  document.body.appendChild(a);
+  a.click();
+  document.body.removeChild(a);
+  setTimeout(() => URL.revokeObjectURL(url), 1000);
+}
+
+function exportHistoryCsv(): void {
+  let rows = ["iter,lossTrain,lossTest,accTrain,accTest"];
+  for (let h of trainingHistory) {
+    rows.push(`${h.iter},${h.lossTrain},${h.lossTest},` +
+        `${isNaN(h.accTrain) ? "" : h.accTrain},` +
+        `${isNaN(h.accTest) ? "" : h.accTest}`);
+  }
+  downloadText("training-history.csv", rows.join("\n"), "text/csv");
+}
+
+function exportMetricsJson(): void {
+  let snapshot = {
+    iter,
+    lossTrain,
+    lossTest,
+    auc: isNaN(lastAuc) ? null : lastAuc,
+    averagePrecision: isNaN(lastAp) ? null : lastAp,
+    confusionMatrix: lastConfusion,
+    parameters: network ? countParameters(network) : 0,
+    problem: getKeyFromValue(problems, state.problem)
+  };
+  downloadText("metrics-snapshot.json", JSON.stringify(snapshot, null, 2),
+      "application/json");
+}
+
+function exportBoundaryPng(): void {
+  let canvasEl = document.querySelector("#heatmap canvas") as HTMLCanvasElement;
+  if (!canvasEl) { return; }
+  let dataUrl = canvasEl.toDataURL("image/png");
+  let a = document.createElement("a");
+  a.href = dataUrl;
+  a.download = "decision-boundary.png";
+  document.body.appendChild(a);
+  a.click();
+  document.body.removeChild(a);
+}
+
+function makeAnalysisGUI(): void {
+  // Collapsible toggle.
+  d3.select("#analysis-toggle").on("click", () => {
+    let sec = document.getElementById("analysis-section");
+    if (sec) { sec.classList.toggle("collapsed"); }
+  });
+
+  // Panel visibility checkboxes.
+  let bind = (id: string, key: keyof typeof analysisOpts,
+      panelSelector: string) => {
+    let cb = document.getElementById(id) as HTMLInputElement;
+    if (!cb) { return; }
+    let apply = () => {
+      analysisOpts[key] = cb.checked;
+      d3.selectAll(panelSelector).style("display", cb.checked ? null : "none");
+      // Re-apply classification gating.
+      if (state.problem !== Problem.CLASSIFICATION || state.threeD) {
+        d3.selectAll(".classification-only").style("display", "none");
+      }
+    };
+    cb.addEventListener("change", apply);
+  };
+  bind("ao-curves", "curves", "#an-panel-roc,#an-panel-pr,#an-panel-calib");
+  bind("ao-hist", "hist",
+      "#an-panel-whist,#an-panel-bhist,#an-panel-ahist,#an-panel-chist");
+  bind("ao-grad", "grad", "#an-panel-grad,#an-panel-wmag");
+  bind("ao-landscape", "landscape", "#an-panel-landscape");
+
+  d3.select("#an-export-png").on("click", () => exportBoundaryPng());
+  d3.select("#an-export-csv").on("click", () => exportHistoryCsv());
+  d3.select("#an-export-json").on("click", () => exportMetricsJson());
+  d3.select("#an-landscape-btn").on("click", () => computeLossLandscape());
+}
+
 drawDatasetThumbnails();
 initTutorial();
 makeGUI();
 makeAdvancedGUI();
 makeFineTuneGUI();
+makeAnalysisGUI();
 generateData(true);
 reset(true);
 hideControls();

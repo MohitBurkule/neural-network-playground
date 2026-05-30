@@ -588,6 +588,108 @@ Modified by David Cato
         </div>
     </div>
 
+    <!-- Analysis: evaluation & visualization -->
+    <div class="l--page analysis-section" id="analysis-section">
+      <h4 class="analysis-header" id="analysis-toggle">
+        <i class="material-icons" id="analysis-arrow">keyboard_arrow_down</i>
+        Analysis &mdash; evaluation &amp; visualization
+      </h4>
+      <div id="analysis-body">
+        <div class="analysis-options" id="analysis-options">
+          <span class="ao-title">Show panels:</span>
+          <label><input type="checkbox" id="ao-curves" checked> ROC / PR / calibration</label>
+          <label><input type="checkbox" id="ao-hist" checked> Weight / bias / activation / confidence histograms</label>
+          <label><input type="checkbox" id="ao-grad" checked> Gradient flow &amp; weight-magnitude</label>
+          <label><input type="checkbox" id="ao-landscape" checked> Loss landscape slice</label>
+        </div>
+
+        <div class="analysis-readouts">
+          <div class="ar-card">
+            <div class="ar-label">Parameters</div>
+            <div class="ar-value" id="an-params">&mdash;</div>
+          </div>
+          <div class="ar-card">
+            <div class="ar-label">Steps / sec</div>
+            <div class="ar-value" id="an-sps">&mdash;</div>
+          </div>
+          <div class="ar-card classification-only">
+            <div class="ar-label">Precision / Recall</div>
+            <div class="ar-value" id="an-prec-rec">&mdash;</div>
+          </div>
+          <div class="ar-card classification-only">
+            <div class="ar-label">F1 / Specificity</div>
+            <div class="ar-value" id="an-f1-spec">&mdash;</div>
+          </div>
+          <div class="ar-card classification-only">
+            <div class="ar-label">AUC (ROC)</div>
+            <div class="ar-value" id="an-auc">&mdash;</div>
+          </div>
+          <div class="ar-card classification-only">
+            <div class="ar-label">Avg precision (PR)</div>
+            <div class="ar-value" id="an-ap">&mdash;</div>
+          </div>
+          <div class="ar-card">
+            <div class="ar-label">Decision margin (mean |out|)</div>
+            <div class="ar-value" id="an-margin">&mdash;</div>
+          </div>
+          <div class="ar-card classification-only">
+            <div class="ar-label">Class balance (+1 / -1)</div>
+            <div class="ar-value" id="an-balance">&mdash;</div>
+          </div>
+        </div>
+
+        <div class="analysis-actions">
+          <button class="basic-button" id="an-export-png">Export decision boundary (PNG)</button>
+          <button class="basic-button" id="an-export-csv">Export training history (CSV)</button>
+          <button class="basic-button" id="an-export-json">Export metrics snapshot (JSON)</button>
+          <button class="basic-button" id="an-landscape-btn">Compute loss landscape</button>
+        </div>
+
+        <div class="analysis-grid">
+          <div class="an-panel classification-only" id="an-panel-roc">
+            <div class="an-panel-title">ROC curve (test)</div>
+            <svg id="an-roc" width="220" height="180"></svg>
+          </div>
+          <div class="an-panel classification-only" id="an-panel-pr">
+            <div class="an-panel-title">Precision-Recall (test)</div>
+            <svg id="an-pr" width="220" height="180"></svg>
+          </div>
+          <div class="an-panel classification-only" id="an-panel-calib">
+            <div class="an-panel-title">Calibration / reliability</div>
+            <svg id="an-calib" width="220" height="180"></svg>
+          </div>
+          <div class="an-panel" id="an-panel-whist">
+            <div class="an-panel-title">Weight histogram</div>
+            <svg id="an-whist" width="220" height="160"></svg>
+          </div>
+          <div class="an-panel" id="an-panel-bhist">
+            <div class="an-panel-title">Bias histogram</div>
+            <svg id="an-bhist" width="220" height="160"></svg>
+          </div>
+          <div class="an-panel" id="an-panel-ahist">
+            <div class="an-panel-title">Activation histogram (test)</div>
+            <svg id="an-ahist" width="220" height="160"></svg>
+          </div>
+          <div class="an-panel" id="an-panel-chist">
+            <div class="an-panel-title">Confidence histogram |out| (test)</div>
+            <svg id="an-chist" width="220" height="160"></svg>
+          </div>
+          <div class="an-panel" id="an-panel-grad">
+            <div class="an-panel-title">Gradient flow (mean |grad| / layer)</div>
+            <svg id="an-grad" width="220" height="160"></svg>
+          </div>
+          <div class="an-panel" id="an-panel-wmag">
+            <div class="an-panel-title">Per-layer mean |weight| over time</div>
+            <svg id="an-wmag" width="220" height="160"></svg>
+          </div>
+          <div class="an-panel" id="an-panel-landscape">
+            <div class="an-panel-title">Loss landscape 1D slice</div>
+            <svg id="an-landscape" width="220" height="160"></svg>
+          </div>
+        </div>
+      </div>
+    </div>
+
     <!-- Advanced features -->
     <div class="l--page advanced-labs">
         <div class="adv-panel">

@@ -89969,6 +89969,7 @@ function updateUI(firstStep) {
     d3.select("#effective-lr").text(effectiveLearningRate().toPrecision(3));
     lineChart.addDataPoint([lossTrain, lossTest]);
     updateClassificationMetricsUI();
+    updateAnalysis();
     d3.select("#network-as-javascript").text(nn.compileNetworkToJs(network));
 }
 function pct(v) {
@@ -90269,6 +90270,9 @@ function getOutputWeights(network) {
 function reset(onStartup) {
     if (onStartup === void 0) { onStartup = false; }
     lineChart.reset();
+    trainingHistory = [];
+    weightMagHistory = [];
+    analysisStep = 0;
     state.serialize();
     if (!onStartup) {
         userHasInteracted();
@@ -90747,11 +90751,564 @@ function makeAdvancedGUI() {
                 "<br>".concat(result.errors.length, " bad line(s) skipped.") : ""));
     });
 }
+var analysisStep = 0;
+var lastStepTime = (typeof performance !== "undefined" ? performance.now() : Date.now());
+var lastStepsPerSec = 0;
+var trainingHistory = [];
+var weightMagHistory = [];
+var lastAuc = NaN;
+var lastAp = NaN;
+var lastConfusion = [[0, 0], [0, 0]];
+var analysisOpts = { curves: true, hist: true, grad: true, landscape: true };
+function nowMs() {
+    return (typeof performance !== "undefined" ? performance.now() : Date.now());
+}
+function scoreDataset(net, data) {
+    var out = [];
+    for (var _i = 0, data_1 = data; _i < data_1.length; _i++) {
+        var p = data_1[_i];
+        var o = nn.forwardProp(net, constructInput(p.x, p.y), state.weightQuantization, state.layerNorm);
+        out.push({ score: o, label: p.label });
+    }
+    return out;
+}
+function computeRoc(scored) {
+    var pos = scored.filter(function (s) { return s.label > 0; }).length;
+    var neg = scored.length - pos;
+    if (pos === 0 || neg === 0) {
+        return { points: [[0, 0], [1, 1]], auc: 0.5 };
+    }
+    var sorted = scored.slice().sort(function (a, b) { return b.score - a.score; });
+    var points = [[0, 0]];
+    var tp = 0, fp = 0;
+    var auc = 0;
+    var prevFpr = 0, prevTpr = 0;
+    for (var _i = 0, sorted_1 = sorted; _i < sorted_1.length; _i++) {
+        var s = sorted_1[_i];
+        if (s.label > 0) {
+            tp++;
+        }
+        else {
+            fp++;
+        }
+        var tpr = tp / pos;
+        var fpr = fp / neg;
+        auc += (fpr - prevFpr) * (tpr + prevTpr) / 2;
+        points.push([fpr, tpr]);
+        prevFpr = fpr;
+        prevTpr = tpr;
+    }
+    return { points: points, auc: auc };
+}
+function computePr(scored) {
+    var pos = scored.filter(function (s) { return s.label > 0; }).length;
+    if (pos === 0) {
+        return { points: [[0, 1]], ap: 0 };
+    }
+    var sorted = scored.slice().sort(function (a, b) { return b.score - a.score; });
+    var tp = 0, fp = 0;
+    var points = [];
+    var ap = 0;
+    var prevRecall = 0;
+    for (var _i = 0, sorted_2 = sorted; _i < sorted_2.length; _i++) {
+        var s = sorted_2[_i];
+        if (s.label > 0) {
+            tp++;
+        }
+        else {
+            fp++;
+        }
+        var precision = tp / (tp + fp);
+        var recall = tp / pos;
+        ap += (recall - prevRecall) * precision;
+        points.push([recall, precision]);
+        prevRecall = recall;
+    }
+    return { points: points, ap: ap };
+}
+function computeThresholdMetrics(scored) {
+    var tp = 0, fp = 0, tn = 0, fn = 0;
+    for (var _i = 0, scored_1 = scored; _i < scored_1.length; _i++) {
+        var s = scored_1[_i];
+        var pred = s.score >= 0 ? 1 : -1;
+        if (s.label > 0) {
+            if (pred > 0) {
+                tp++;
+            }
+            else {
+                fn++;
+            }
+        }
+        else {
+            if (pred > 0) {
+                fp++;
+            }
+            else {
+                tn++;
+            }
+        }
+    }
+    var precision = tp + fp ? tp / (tp + fp) : 0;
+    var recall = tp + fn ? tp / (tp + fn) : 0;
+    var f1 = precision + recall ? 2 * precision * recall / (precision + recall) : 0;
+    var specificity = tn + fp ? tn / (tn + fp) : 0;
+    return { precision: precision, recall: recall, f1: f1, specificity: specificity };
+}
+function drawCurve(svgId, data, color, diagonal) {
+    var svg = d3.select("#" + svgId);
+    if (svg.empty()) {
+        return;
+    }
+    var W = +svg.attr("width");
+    var H = +svg.attr("height");
+    var m = { t: 8, r: 8, b: 22, l: 28 };
+    var x = d3.scaleLinear().domain([0, 1]).range([m.l, W - m.r]);
+    var y = d3.scaleLinear().domain([0, 1]).range([H - m.b, m.t]);
+    svg.selectAll("*").remove();
+    svg.append("g").attr("class", "an-axis")
+        .attr("transform", "translate(0,".concat(H - m.b, ")"))
+        .call(d3.axisBottom(x).ticks(4));
+    svg.append("g").attr("class", "an-axis")
+        .attr("transform", "translate(".concat(m.l, ",0)"))
+        .call(d3.axisLeft(y).ticks(4));
+    if (diagonal) {
+        svg.append("line")
+            .attr("x1", x(0)).attr("y1", y(0))
+            .attr("x2", x(1)).attr("y2", y(1))
+            .attr("stroke", "#ccc").attr("stroke-dasharray", "3,3");
+    }
+    var line = d3.line()
+        .x(function (d) { return x(d[0]); }).y(function (d) { return y(d[1]); });
+    svg.append("path")
+        .datum(data)
+        .attr("fill", "none")
+        .attr("stroke", color)
+        .attr("stroke-width", 1.5)
+        .attr("d", line);
+}
+function drawHistogram(svgId, values, color, domain) {
+    var svg = d3.select("#" + svgId);
+    if (svg.empty()) {
+        return;
+    }
+    var W = +svg.attr("width");
+    var H = +svg.attr("height");
+    var m = { t: 8, r: 8, b: 22, l: 28 };
+    svg.selectAll("*").remove();
+    if (!values.length) {
+        return;
+    }
+    var dom = domain || [d3.min(values), d3.max(values)];
+    if (dom[0] === dom[1]) {
+        dom = [dom[0] - 1, dom[1] + 1];
+    }
+    var x = d3.scaleLinear().domain(dom).range([m.l, W - m.r]);
+    var bins = d3.bin().domain(dom).thresholds(16)(values);
+    var maxCount = d3.max(bins, function (b) { return b.length; }) || 1;
+    var y = d3.scaleLinear().domain([0, maxCount]).range([H - m.b, m.t]);
+    svg.append("g").attr("class", "an-axis")
+        .attr("transform", "translate(0,".concat(H - m.b, ")"))
+        .call(d3.axisBottom(x).ticks(4));
+    svg.append("g").attr("class", "an-axis")
+        .attr("transform", "translate(".concat(m.l, ",0)"))
+        .call(d3.axisLeft(y).ticks(3));
+    svg.selectAll("rect").data(bins).enter().append("rect")
+        .attr("x", function (d) { return x(d.x0) + 1; })
+        .attr("y", function (d) { return y(d.length); })
+        .attr("width", function (d) { return Math.max(0, x(d.x1) - x(d.x0) - 1); })
+        .attr("height", function (d) { return (H - m.b) - y(d.length); })
+        .attr("fill", color);
+}
+function drawBars(svgId, labels, values, color) {
+    var svg = d3.select("#" + svgId);
+    if (svg.empty()) {
+        return;
+    }
+    var W = +svg.attr("width");
+    var H = +svg.attr("height");
+    var m = { t: 8, r: 8, b: 22, l: 32 };
+    svg.selectAll("*").remove();
+    var x = d3.scaleBand().domain(labels).range([m.l, W - m.r]).padding(0.2);
+    var maxV = d3.max(values) || 1;
+    var y = d3.scaleLinear().domain([0, maxV]).range([H - m.b, m.t]);
+    svg.append("g").attr("class", "an-axis")
+        .attr("transform", "translate(0,".concat(H - m.b, ")"))
+        .call(d3.axisBottom(x));
+    svg.append("g").attr("class", "an-axis")
+        .attr("transform", "translate(".concat(m.l, ",0)"))
+        .call(d3.axisLeft(y).ticks(3));
+    svg.selectAll("rect").data(values).enter().append("rect")
+        .attr("x", function (d, i) { return x(labels[i]); })
+        .attr("y", function (d) { return y(d); })
+        .attr("width", x.bandwidth())
+        .attr("height", function (d) { return (H - m.b) - y(d); })
+        .attr("fill", color);
+}
+function drawMultiLine(svgId, series, colors) {
+    var svg = d3.select("#" + svgId);
+    if (svg.empty()) {
+        return;
+    }
+    var W = +svg.attr("width");
+    var H = +svg.attr("height");
+    var m = { t: 8, r: 8, b: 22, l: 32 };
+    svg.selectAll("*").remove();
+    var maxLen = d3.max(series, function (s) { return s.length; }) || 1;
+    if (maxLen < 2) {
+        return;
+    }
+    var allVals = [];
+    series.forEach(function (s) { return s.forEach(function (v) { return allVals.push(v); }); });
+    var maxV = d3.max(allVals) || 1;
+    var x = d3.scaleLinear().domain([0, maxLen - 1]).range([m.l, W - m.r]);
+    var y = d3.scaleLinear().domain([0, maxV]).range([H - m.b, m.t]);
+    svg.append("g").attr("class", "an-axis")
+        .attr("transform", "translate(0,".concat(H - m.b, ")"))
+        .call(d3.axisBottom(x).ticks(4));
+    svg.append("g").attr("class", "an-axis")
+        .attr("transform", "translate(".concat(m.l, ",0)"))
+        .call(d3.axisLeft(y).ticks(3));
+    var line = d3.line()
+        .x(function (d, i) { return x(i); }).y(function (d) { return y(d); });
+    series.forEach(function (s, idx) {
+        svg.append("path")
+            .datum(s)
+            .attr("fill", "none")
+            .attr("stroke", colors[idx % colors.length])
+            .attr("stroke-width", 1.3)
+            .attr("d", line);
+    });
+}
+function drawCalibration(svgId, scored) {
+    var nBins = 10;
+    var binSum = new Array(nBins).fill(0);
+    var binPos = new Array(nBins).fill(0);
+    var binCnt = new Array(nBins).fill(0);
+    for (var _i = 0, scored_2 = scored; _i < scored_2.length; _i++) {
+        var s = scored_2[_i];
+        var p = (s.score + 1) / 2;
+        p = Math.max(0, Math.min(1, p));
+        var b = Math.min(nBins - 1, Math.floor(p * nBins));
+        binSum[b] += p;
+        binCnt[b]++;
+        if (s.label > 0) {
+            binPos[b]++;
+        }
+    }
+    var points = [];
+    for (var b = 0; b < nBins; b++) {
+        if (binCnt[b] > 0) {
+            points.push([binSum[b] / binCnt[b], binPos[b] / binCnt[b]]);
+        }
+    }
+    drawCurve(svgId, points, "#9b59b6", true);
+}
+function countParameters(net) {
+    var count = 0;
+    for (var layerIdx = 1; layerIdx < net.length; layerIdx++) {
+        for (var _i = 0, _a = net[layerIdx]; _i < _a.length; _i++) {
+            var node = _a[_i];
+            count++;
+            count += node.inputLinks.length;
+        }
+    }
+    return count;
+}
+function collectWeights(net) {
+    var w = [];
+    for (var layerIdx = 1; layerIdx < net.length; layerIdx++) {
+        for (var _i = 0, _a = net[layerIdx]; _i < _a.length; _i++) {
+            var node = _a[_i];
+            for (var _b = 0, _c = node.inputLinks; _b < _c.length; _b++) {
+                var link = _c[_b];
+                w.push(link.weight);
+            }
+        }
+    }
+    return w;
+}
+function collectBiases(net) {
+    var b = [];
+    nn.forEachNode(net, true, function (node) { return b.push(node.bias); });
+    return b;
+}
+function collectActivations(net, data) {
+    var acts = [];
+    var sample = data.slice(0, 200);
+    for (var _i = 0, sample_1 = sample; _i < sample_1.length; _i++) {
+        var p = sample_1[_i];
+        nn.forwardProp(net, constructInput(p.x, p.y), state.weightQuantization, state.layerNorm);
+        for (var layerIdx = 1; layerIdx < net.length - 1; layerIdx++) {
+            for (var _a = 0, _b = net[layerIdx]; _a < _b.length; _a++) {
+                var node = _b[_a];
+                acts.push(node.output);
+            }
+        }
+    }
+    return acts;
+}
+function meanWeightMagPerLayer(net) {
+    var result = [];
+    for (var layerIdx = 1; layerIdx < net.length; layerIdx++) {
+        var sum = 0, cnt = 0;
+        for (var _i = 0, _a = net[layerIdx]; _i < _a.length; _i++) {
+            var node = _a[_i];
+            for (var _b = 0, _c = node.inputLinks; _b < _c.length; _b++) {
+                var link = _c[_b];
+                sum += Math.abs(link.weight);
+                cnt++;
+            }
+        }
+        result.push(cnt ? sum / cnt : 0);
+    }
+    return result;
+}
+function gradientFlowPerLayer(net, data) {
+    var sample = data.slice(0, 50);
+    var sums = new Array(net.length).fill(0);
+    var counts = new Array(net.length).fill(0);
+    for (var _i = 0, sample_2 = sample; _i < sample_2.length; _i++) {
+        var p = sample_2[_i];
+        nn.forwardProp(net, constructInput(p.x, p.y), state.weightQuantization, state.layerNorm);
+        nn.backProp(net, p.label, nn.Errors.SQUARE);
+        for (var layerIdx = 1; layerIdx < net.length; layerIdx++) {
+            for (var _a = 0, _b = net[layerIdx]; _a < _b.length; _a++) {
+                var node = _b[_a];
+                for (var _c = 0, _d = node.inputLinks; _c < _d.length; _c++) {
+                    var link = _d[_c];
+                    sums[layerIdx] += Math.abs(link.errorDer);
+                    counts[layerIdx]++;
+                }
+            }
+        }
+    }
+    var out = [];
+    for (var layerIdx = 1; layerIdx < net.length; layerIdx++) {
+        out.push(counts[layerIdx] ? sums[layerIdx] / counts[layerIdx] : 0);
+    }
+    return out;
+}
+var LAYER_COLORS = ["#e74c3c", "#3498db", "#2ecc71", "#f39c12", "#9b59b6",
+    "#1abc9c", "#e67e22", "#34495e"];
+function updateAnalysis() {
+    if (!network) {
+        return;
+    }
+    var isClass = state.problem === state_1.Problem.CLASSIFICATION && !state.threeD;
+    d3.selectAll(".classification-only").style("display", isClass ? null : "none");
+    d3.select("#an-params").text(countParameters(network).toString());
+    var t = nowMs();
+    var dt = t - lastStepTime;
+    if (dt > 0) {
+        var sps = 1000 / dt;
+        lastStepsPerSec = lastStepsPerSec ? lastStepsPerSec * 0.7 + sps * 0.3 : sps;
+    }
+    lastStepTime = t;
+    d3.select("#an-sps").text(lastStepsPerSec.toFixed(1));
+    var testScored = scoreDataset(network, state.testData);
+    var margin = testScored.length ?
+        d3.mean(testScored, function (s) { return Math.abs(s.score); }) : 0;
+    d3.select("#an-margin").text((margin || 0).toFixed(3));
+    if (isClass) {
+        var trPos = state.trainData.filter(function (p) { return p.label > 0; }).length;
+        var trNeg = state.trainData.length - trPos;
+        var tePos = state.testData.filter(function (p) { return p.label > 0; }).length;
+        var teNeg = state.testData.length - tePos;
+        d3.select("#an-balance").text("tr ".concat(trPos, "/").concat(trNeg, " \u00B7 te ").concat(tePos, "/").concat(teNeg));
+        var thr = computeThresholdMetrics(testScored);
+        d3.select("#an-prec-rec").text("".concat((thr.precision * 100).toFixed(1), "% / ").concat((thr.recall * 100).toFixed(1), "%"));
+        d3.select("#an-f1-spec").text("".concat(thr.f1.toFixed(3), " / ").concat((thr.specificity * 100).toFixed(1), "%"));
+        var roc = computeRoc(testScored);
+        var pr = computePr(testScored);
+        lastAuc = roc.auc;
+        lastAp = pr.ap;
+        lastConfusion = computeClassMetrics(network, state.testData).matrix;
+        d3.select("#an-auc").text(roc.auc.toFixed(3));
+        d3.select("#an-ap").text(pr.ap.toFixed(3));
+        if (analysisOpts.curves && analysisStep % 5 === 0) {
+            drawCurve("an-roc", roc.points, "#e74c3c", true);
+            drawCurve("an-pr", pr.points, "#3498db", false);
+            drawCalibration("an-calib", testScored);
+        }
+    }
+    else {
+        lastAuc = NaN;
+        lastAp = NaN;
+    }
+    if (analysisOpts.hist) {
+        drawHistogram("an-whist", collectWeights(network), "#3498db");
+        drawHistogram("an-bhist", collectBiases(network), "#e67e22");
+        drawHistogram("an-chist", testScored.map(function (s) { return Math.abs(s.score); }), "#2ecc71", [0, 1]);
+        if (analysisStep % 5 === 0) {
+            drawHistogram("an-ahist", collectActivations(network, state.testData), "#9b59b6");
+        }
+    }
+    if (analysisOpts.grad && analysisStep % 5 === 0) {
+        var gf = gradientFlowPerLayer(network, state.trainData);
+        var labels = gf.map(function (_, i) { return "L" + (i + 1); });
+        drawBars("an-grad", labels, gf, "#16a085");
+        var mags = meanWeightMagPerLayer(network);
+        if (weightMagHistory.length !== mags.length) {
+            weightMagHistory = mags.map(function () { return []; });
+        }
+        mags.forEach(function (mg, i) {
+            weightMagHistory[i].push(mg);
+            if (weightMagHistory[i].length > 200) {
+                weightMagHistory[i].shift();
+            }
+        });
+        drawMultiLine("an-wmag", weightMagHistory, LAYER_COLORS);
+    }
+    var accTrain = isClass ?
+        computeClassMetrics(network, state.trainData).accuracy : NaN;
+    var accTest = isClass ?
+        computeClassMetrics(network, state.testData).accuracy : NaN;
+    trainingHistory.push({ iter: iter, lossTrain: lossTrain, lossTest: lossTest, accTrain: accTrain, accTest: accTest });
+    if (trainingHistory.length > 5000) {
+        trainingHistory.shift();
+    }
+    analysisStep++;
+}
+function computeLossLandscape() {
+    if (!network) {
+        return;
+    }
+    var savedW = [];
+    var dirW = [];
+    var linkRefs = [];
+    var savedB = [];
+    var dirB = [];
+    var nodeRefs = [];
+    for (var layerIdx = 1; layerIdx < network.length; layerIdx++) {
+        for (var _i = 0, _a = network[layerIdx]; _i < _a.length; _i++) {
+            var node = _a[_i];
+            nodeRefs.push(node);
+            savedB.push(node.bias);
+            dirB.push(Math.random() - 0.5);
+            for (var _b = 0, _c = node.inputLinks; _b < _c.length; _b++) {
+                var link = _c[_b];
+                linkRefs.push(link);
+                savedW.push(link.weight);
+                dirW.push(Math.random() - 0.5);
+            }
+        }
+    }
+    var norm = Math.sqrt(dirW.reduce(function (a, b) { return a + b * b; }, 0) + dirB.reduce(function (a, b) { return a + b * b; }, 0));
+    if (norm === 0) {
+        norm = 1;
+    }
+    dirW = dirW.map(function (v) { return v / norm; });
+    dirB = dirB.map(function (v) { return v / norm; });
+    var r = 1.0;
+    var steps = 41;
+    var points = [];
+    var minLoss = Infinity, maxLoss = -Infinity;
+    for (var k = 0; k < steps; k++) {
+        var alpha = -r + (2 * r) * k / (steps - 1);
+        for (var i = 0; i < linkRefs.length; i++) {
+            linkRefs[i].weight = savedW[i] + alpha * dirW[i];
+        }
+        for (var i = 0; i < nodeRefs.length; i++) {
+            nodeRefs[i].bias = savedB[i] + alpha * dirB[i];
+        }
+        var loss = getLoss(network, state.trainData);
+        minLoss = Math.min(minLoss, loss);
+        maxLoss = Math.max(maxLoss, loss);
+        points.push([(alpha + r) / (2 * r), loss]);
+    }
+    for (var i = 0; i < linkRefs.length; i++) {
+        linkRefs[i].weight = savedW[i];
+    }
+    for (var i = 0; i < nodeRefs.length; i++) {
+        nodeRefs[i].bias = savedB[i];
+    }
+    var range = maxLoss - minLoss || 1;
+    var norm2 = points.map(function (p) { return [p[0], (p[1] - minLoss) / range]; });
+    drawCurve("an-landscape", norm2, "#c0392b", false);
+}
+function downloadText(filename, text, mime) {
+    var blob = new Blob([text], { type: mime });
+    var url = URL.createObjectURL(blob);
+    var a = document.createElement("a");
+    a.href = url;
+    a.download = filename;
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+    setTimeout(function () { return URL.revokeObjectURL(url); }, 1000);
+}
+function exportHistoryCsv() {
+    var rows = ["iter,lossTrain,lossTest,accTrain,accTest"];
+    for (var _i = 0, trainingHistory_1 = trainingHistory; _i < trainingHistory_1.length; _i++) {
+        var h = trainingHistory_1[_i];
+        rows.push("".concat(h.iter, ",").concat(h.lossTrain, ",").concat(h.lossTest, ",") +
+            "".concat(isNaN(h.accTrain) ? "" : h.accTrain, ",") +
+            "".concat(isNaN(h.accTest) ? "" : h.accTest));
+    }
+    downloadText("training-history.csv", rows.join("\n"), "text/csv");
+}
+function exportMetricsJson() {
+    var snapshot = {
+        iter: iter,
+        lossTrain: lossTrain,
+        lossTest: lossTest,
+        auc: isNaN(lastAuc) ? null : lastAuc,
+        averagePrecision: isNaN(lastAp) ? null : lastAp,
+        confusionMatrix: lastConfusion,
+        parameters: network ? countParameters(network) : 0,
+        problem: (0, state_1.getKeyFromValue)(state_1.problems, state.problem)
+    };
+    downloadText("metrics-snapshot.json", JSON.stringify(snapshot, null, 2), "application/json");
+}
+function exportBoundaryPng() {
+    var canvasEl = document.querySelector("#heatmap canvas");
+    if (!canvasEl) {
+        return;
+    }
+    var dataUrl = canvasEl.toDataURL("image/png");
+    var a = document.createElement("a");
+    a.href = dataUrl;
+    a.download = "decision-boundary.png";
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+}
+function makeAnalysisGUI() {
+    d3.select("#analysis-toggle").on("click", function () {
+        var sec = document.getElementById("analysis-section");
+        if (sec) {
+            sec.classList.toggle("collapsed");
+        }
+    });
+    var bind = function (id, key, panelSelector) {
+        var cb = document.getElementById(id);
+        if (!cb) {
+            return;
+        }
+        var apply = function () {
+            analysisOpts[key] = cb.checked;
+            d3.selectAll(panelSelector).style("display", cb.checked ? null : "none");
+            if (state.problem !== state_1.Problem.CLASSIFICATION || state.threeD) {
+                d3.selectAll(".classification-only").style("display", "none");
+            }
+        };
+        cb.addEventListener("change", apply);
+    };
+    bind("ao-curves", "curves", "#an-panel-roc,#an-panel-pr,#an-panel-calib");
+    bind("ao-hist", "hist", "#an-panel-whist,#an-panel-bhist,#an-panel-ahist,#an-panel-chist");
+    bind("ao-grad", "grad", "#an-panel-grad,#an-panel-wmag");
+    bind("ao-landscape", "landscape", "#an-panel-landscape");
+    d3.select("#an-export-png").on("click", function () { return exportBoundaryPng(); });
+    d3.select("#an-export-csv").on("click", function () { return exportHistoryCsv(); });
+    d3.select("#an-export-json").on("click", function () { return exportMetricsJson(); });
+    d3.select("#an-landscape-btn").on("click", function () { return computeLossLandscape(); });
+}
 drawDatasetThumbnails();
 initTutorial();
 makeGUI();
 makeAdvancedGUI();
 makeFineTuneGUI();
+makeAnalysisGUI();
 generateData(true);
 reset(true);
 hideControls();
