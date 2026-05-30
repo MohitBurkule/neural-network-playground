@@ -116,3 +116,160 @@ export function pgd(
 export function predict(network: Node[][], x: number, y: number): number {
   return forwardProp(network, [x, y], null);
 }
+
+// ============================================================================
+// Additional attacks & analysis (additive; do not alter existing exports).
+//
+// The functions below are intentionally feature-agnostic: they accept a
+// `lossFn(x, y, label)` and a `gradFn(x, y, label)` so callers using derived
+// input features (and finite-difference gradients) can plug in their own. This
+// keeps these helpers usable both from the raw-input module above and from the
+// playground's constructInput()-based pipeline.
+// ============================================================================
+
+export type LossFn = (x: number, y: number, label: number) => number;
+export type GradFn = (x: number, y: number, label: number) => [number, number];
+
+/** Build a loss/grad pair for a raw 2-input network (central differences). */
+export function rawLossGrad(network: Node[][]): {loss: LossFn; grad: GradFn} {
+  const loss: LossFn = (x, y, label) =>
+    Errors.SQUARE.error(forwardProp(network, [x, y], null), label);
+  const grad: GradFn = (x, y, label) => {
+    const h = 1e-3;
+    const dx = (loss(x + h, y, label) - loss(x - h, y, label)) / (2 * h);
+    const dy = (loss(x, y + h, label) - loss(x, y - h, label)) / (2 * h);
+    return [dx, dy];
+  };
+  return {loss, grad};
+}
+
+/**
+ * Random-noise baseline attack: uniform L∞ perturbation in [-eps, eps].
+ * No gradient used — a control to compare real attacks against.
+ */
+export function randomNoiseAttack(
+    point: {x: number; y: number; label: number},
+    epsilon: number,
+    rng: () => number = Math.random): {x: number; y: number; label: number} {
+  return {
+    x: point.x + (rng() * 2 - 1) * epsilon,
+    y: point.y + (rng() * 2 - 1) * epsilon,
+    label: point.label
+  };
+}
+
+/**
+ * Iterative least-likely / targeted FGSM: descend the loss toward the OPPOSITE
+ * (target) label, pushing the point across the decision boundary. Projected to
+ * the L∞ ball of radius epsilon.
+ */
+export function targetedFgsm(
+    grad: GradFn,
+    point: {x: number; y: number; label: number},
+    epsilon: number,
+    steps: number = 10,
+    stepSize: number = epsilon / 4): {x: number; y: number; label: number} {
+  const target = -Math.sign(point.label) || -1;
+  let ax = point.x;
+  let ay = point.y;
+  for (let s = 0; s < steps; s++) {
+    const [gx, gy] = grad(ax, ay, target);
+    // Descend loss wrt target label -> move toward target class.
+    ax -= stepSize * Math.sign(gx);
+    ay -= stepSize * Math.sign(gy);
+    ax = Math.max(point.x - epsilon, Math.min(point.x + epsilon, ax));
+    ay = Math.max(point.y - epsilon, Math.min(point.y + epsilon, ay));
+  }
+  return {x: ax, y: ay, label: point.label};
+}
+
+/**
+ * DeepFool-lite: step along the loss gradient (away from the true label) until
+ * the prediction flips sign or maxIter is reached. Returns the perturbed point
+ * plus whether it flipped and how many iterations were used.
+ */
+export function deepFoolLite(
+    predictFn: (x: number, y: number) => number,
+    grad: GradFn,
+    point: {x: number; y: number; label: number},
+    stepSize: number = 0.1,
+    maxIter: number = 50): {x: number; y: number; label: number;
+                            flipped: boolean; iterations: number} {
+  let ax = point.x;
+  let ay = point.y;
+  const startSign = Math.sign(predictFn(ax, ay)) || 1;
+  let i = 0;
+  for (; i < maxIter; i++) {
+    if (Math.sign(predictFn(ax, ay)) !== startSign) break;
+    const [gx, gy] = grad(ax, ay, point.label);
+    const norm = Math.hypot(gx, gy) || 1;
+    // Ascend loss (move toward boundary / misclassification).
+    ax += stepSize * gx / norm;
+    ay += stepSize * gy / norm;
+  }
+  const flipped = Math.sign(predictFn(ax, ay)) !== startSign;
+  return {x: ax, y: ay, label: point.label, flipped, iterations: i};
+}
+
+/**
+ * Perturbation-budget summary for an adversarial set vs its clean originals.
+ * Returns mean L2 and mean (and max) L∞ distances.
+ */
+export function perturbationBudget(
+    clean: {x: number; y: number}[],
+    adv: {x: number; y: number}[]): {meanL2: number; meanLinf: number;
+                                     maxLinf: number} {
+  const n = Math.min(clean.length, adv.length);
+  if (n === 0) return {meanL2: 0, meanLinf: 0, maxLinf: 0};
+  let sumL2 = 0;
+  let sumLinf = 0;
+  let maxLinf = 0;
+  for (let i = 0; i < n; i++) {
+    const dx = adv[i].x - clean[i].x;
+    const dy = adv[i].y - clean[i].y;
+    sumL2 += Math.hypot(dx, dy);
+    const linf = Math.max(Math.abs(dx), Math.abs(dy));
+    sumLinf += linf;
+    if (linf > maxLinf) maxLinf = linf;
+  }
+  return {meanL2: sumL2 / n, meanLinf: sumLinf / n, maxLinf};
+}
+
+/**
+ * Attack success rate: fraction of points whose predicted sign flips between
+ * the clean and adversarial versions.
+ */
+export function attackSuccessRate(
+    predictFn: (x: number, y: number) => number,
+    clean: {x: number; y: number}[],
+    adv: {x: number; y: number}[]): number {
+  const n = Math.min(clean.length, adv.length);
+  if (n === 0) return 0;
+  let flipped = 0;
+  for (let i = 0; i < n; i++) {
+    if (Math.sign(predictFn(clean[i].x, clean[i].y)) !==
+        Math.sign(predictFn(adv[i].x, adv[i].y))) flipped++;
+  }
+  return flipped / n;
+}
+
+/**
+ * Robustness curve: for each epsilon, perturb every point with attackFn and
+ * measure accuracy (predicted sign matches label). Returns points for plotting.
+ */
+export function robustnessCurve(
+    predictFn: (x: number, y: number) => number,
+    attackFn: (p: {x: number; y: number; label: number}, eps: number) =>
+        {x: number; y: number; label: number},
+    points: {x: number; y: number; label: number}[],
+    epsilons: number[]): {epsilon: number; accuracy: number}[] {
+  return epsilons.map(eps => {
+    if (points.length === 0) return {epsilon: eps, accuracy: 1};
+    let correct = 0;
+    for (const p of points) {
+      const a = attackFn(p, eps);
+      if (Math.sign(predictFn(a.x, a.y)) === Math.sign(p.label)) correct++;
+    }
+    return {epsilon: eps, accuracy: correct / points.length};
+  });
+}

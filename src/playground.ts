@@ -46,6 +46,11 @@ import {
   classifySCurve3D
 } from "./dataset3d";
 import {parseCSV} from "./customdataset";
+import {
+  randomNoiseAttack, targetedFgsm, deepFoolLite, perturbationBudget,
+  attackSuccessRate, robustnessCurve, GradFn
+} from "./adversarial";
+import {forgetQualityScore} from "./unlearning";
 import * as d3 from 'd3';
 import {compile} from 'mathjs';
 
@@ -215,6 +220,12 @@ let colorScale = d3.scaleLinear<string, number>()
                      .clamp(true);
 let iter = 0;
 let network: nn.Node[][] = null;
+// ML-security feature state.
+let lastClickedPoint: Example2D = null;
+let selectedForget: Example2D[] = [];
+let brushSelectActive = false;
+let lastAdvClean: Example2D[] = [];
+let lastAdvPerturbed: Example2D[] = [];
 let lossTrain = 0;
 let lossTest = 0;
 let player = new Player();
@@ -344,11 +355,21 @@ function makeGUI() {
       x = x/factor - maxScale
       y = maxScale - y/factor
       state.trainData.push({x, y, label})
+      lastClickedPoint = {x, y, label};
       heatMap.updatePoints(state.trainData);
     }
   });
 
   d3.select("#heatmap").call(dragBehavior);
+
+  // Record the last clicked location on the heatmap (for saliency & nearest-N).
+  d3.select("#heatmap").on("click", function(event) {
+    let [px, py] = d3.pointer(event, this);
+    let padding = 20, maxScale = 5.0, factor = 23.07;
+    let x = (px - padding) / factor - maxScale;
+    let y = maxScale - (py - padding) / factor;
+    lastClickedPoint = {x, y, label: state.editColor || 1};
+  });
 
   let showTestData = d3.select("#show-test-data").on("change", function() {
     state.showTestData = (this as any).checked;
@@ -1274,13 +1295,33 @@ function pgd(point: Example2D, eps: number, steps: number,
   return {x: ax, y: ay, label: point.label};
 }
 
+/** Predict scalar output for raw (x, y) via the playground feature pipeline. */
+function predictXY(x: number, y: number): number {
+  return nn.forwardProp(network, constructInput(x, y),
+      state.weightQuantization, state.layerNorm);
+}
+
+/** Feature-agnostic loss gradient wrt raw (x, y), for module attack helpers. */
+const advGrad: GradFn = (x, y, label) => rawInputGradient(x, y, label);
+
 /** Perturb a point using the currently selected method/epsilon. */
-function perturb(point: Example2D): Example2D {
-  let eps = state.advEpsilon;
-  if (state.advMethod === "pgd") {
-    return pgd(point, eps, 10, eps / 4);
+function perturb(point: Example2D, epsOverride?: number): Example2D {
+  let eps = epsOverride != null ? epsOverride : state.advEpsilon;
+  switch (state.advMethod) {
+    case "pgd":
+      return pgd(point, eps, 10, eps / 4);
+    case "random":
+      return randomNoiseAttack(point, eps);
+    case "targeted":
+      return targetedFgsm(advGrad, point, eps, 10, eps / 4);
+    case "deepfool": {
+      let r = deepFoolLite(predictXY, advGrad, point, Math.max(eps / 4, 0.05),
+          50);
+      return {x: r.x, y: r.y, label: r.label};
+    }
+    default:
+      return fgsm(point, eps);
   }
-  return fgsm(point, eps);
 }
 
 function accuracy(points: Example2D[]): number {
@@ -1723,19 +1764,267 @@ function misclassified(points: Example2D[]): Example2D[] {
   });
 }
 
+/** Snapshot the discretized predicted class for every heatmap grid cell. */
+function snapshotBoundary(): number[] {
+  let xScale = d3.scaleLinear().domain([0, DENSITY - 1]).range(xDomain);
+  let yScale = d3.scaleLinear().domain([DENSITY - 1, 0]).range(xDomain);
+  let grid: number[] = [];
+  for (let i = 0; i < DENSITY; i++) {
+    for (let j = 0; j < DENSITY; j++) {
+      grid.push(Math.sign(predictXY(xScale(i), yScale(j))) || 1);
+    }
+  }
+  return grid;
+}
+
+/** Fraction of grid cells whose predicted class flipped between two snapshots. */
+function boundaryChangePct(before: number[], after: number[]): number {
+  let flipped = 0;
+  for (let i = 0; i < before.length; i++) {
+    if (before[i] !== after[i]) flipped++;
+  }
+  return before.length ? flipped / before.length : 0;
+}
+
+/** Fine-tune-on-retain unlearning using the playground feature pipeline. */
+function fineTuneRetain(retainSet: Example2D[], steps: number): void {
+  if (retainSet.length === 0) return;
+  let optimizerType = optimizers[state.optimizer] || nn.OptimizerType.SGD;
+  for (let s = 0; s < steps; s++) {
+    retainSet.forEach(point => {
+      nn.forwardProp(network, constructInput(point.x, point.y),
+          state.weightQuantization, state.layerNorm);
+      nn.backProp(network, point.label, nn.Errors.SQUARE);
+      nn.updateWeights(network, state.learningRate, state.regularization,
+          state.regularizationRate, optimizerType);
+    });
+  }
+}
+
+function meanLoss(points: Example2D[]): number {
+  if (points.length === 0) return 0;
+  let total = 0;
+  for (let p of points) {
+    let out = predictXY(p.x, p.y);
+    total += nn.Errors.SQUARE.error(out, p.label);
+  }
+  return total / points.length;
+}
+
+/** Sample up to k items uniformly without bias toward order. */
+function sampleSubset(arr: Example2D[], k: number): Example2D[] {
+  if (arr.length <= k) return arr;
+  let copy = arr.slice();
+  let out: Example2D[] = [];
+  for (let i = 0; i < k; i++) {
+    out.push(copy.splice(Math.floor(Math.random() * copy.length), 1)[0]);
+  }
+  return out;
+}
+
+/** Membership-inference proxy: loss gap forget vs random retain subset. */
+function miaGap(forgetSet: Example2D[], retainSet: Example2D[]):
+    {forgetLoss: number; retainLoss: number; gap: number} {
+  let subset = sampleSubset(retainSet, Math.max(1, forgetSet.length));
+  let fl = meanLoss(forgetSet);
+  let rl = meanLoss(subset);
+  return {forgetLoss: fl, retainLoss: rl, gap: rl - fl};
+}
+
 function doUnlearn(forgetSet: Example2D[], label: string): void {
   let retainSet = state.trainData.filter(p => forgetSet.indexOf(p) === -1);
+  let method = (d3.select("#unlearn-method").property("value") as string)
+      || "ascent";
   let accF0 = accuracy(forgetSet);
   let accR0 = accuracy(retainSet);
+  let mia0 = miaGap(forgetSet, retainSet);
+  let boundaryBefore = snapshotBoundary();
   let steps = +(d3.select("#unlearn-steps").property("value") || 100);
-  unlearn(forgetSet, steps);
+  if (method === "finetune") {
+    fineTuneRetain(retainSet, steps);
+  } else {
+    unlearn(forgetSet, steps);
+  }
   let accF1 = accuracy(forgetSet);
   let accR1 = accuracy(retainSet);
+  let mia1 = miaGap(forgetSet, retainSet);
+  let quality = forgetQualityScore(
+    {forgetLoss: 0, forgetAccuracy: accF0, retainLoss: 0, retainAccuracy: accR0},
+    {forgetLoss: 0, forgetAccuracy: accF1, retainLoss: 0, retainAccuracy: accR1});
   updateUI();
+  let boundaryAfter = snapshotBoundary();
+  let changePct = boundaryChangePct(boundaryBefore, boundaryAfter);
   d3.select("#unlearn-readout").html(
-    `${label} (${forgetSet.length} pts, ${steps} steps)<br>` +
+    `${label} (${forgetSet.length} pts, ${steps} steps, ${method})<br>` +
     `Forget acc: ${(accF0 * 100).toFixed(1)}% &rarr; ${(accF1 * 100).toFixed(1)}%<br>` +
-    `Retain acc: ${(accR0 * 100).toFixed(1)}% &rarr; ${(accR1 * 100).toFixed(1)}%`);
+    `Retain acc: ${(accR0 * 100).toFixed(1)}% &rarr; ${(accR1 * 100).toFixed(1)}%<br>` +
+    `MIA loss gap: ${mia0.gap.toFixed(4)} &rarr; ${mia1.gap.toFixed(4)}<br>` +
+    `Forget-quality score: ${quality}/100<br>` +
+    `Boundary changed: ${(changePct * 100).toFixed(1)}% of grid cells`);
+}
+
+function dist2(a: Example2D, b: Example2D): number {
+  return (a.x - b.x) * (a.x - b.x) + (a.y - b.y) * (a.y - b.y);
+}
+
+/** Non-destructive relearn-time probe (playground feature pipeline). */
+function relearnProbe(forgetSet: Example2D[], maxSteps: number,
+    target: number): {steps: number; accuracy: number; reached: boolean} {
+  // Snapshot weights & biases.
+  let weights: number[][] = [];
+  let biases: number[] = [];
+  for (let l = 1; l < network.length; l++) {
+    for (let node of network[l]) {
+      biases.push(node.bias);
+      weights.push(node.inputLinks.map(lk => lk.weight));
+    }
+  }
+  let optimizerType = optimizers[state.optimizer] || nn.OptimizerType.SGD;
+  let steps = maxSteps;
+  let acc = 0;
+  for (let s = 1; s <= maxSteps; s++) {
+    forgetSet.forEach(point => {
+      nn.forwardProp(network, constructInput(point.x, point.y),
+          state.weightQuantization, state.layerNorm);
+      nn.backProp(network, point.label, nn.Errors.SQUARE);
+      nn.updateWeights(network, state.learningRate, state.regularization,
+          state.regularizationRate, optimizerType);
+    });
+    acc = accuracy(forgetSet);
+    if (acc >= target) { steps = s; break; }
+  }
+  // Restore.
+  let bi = 0, wi = 0;
+  for (let l = 1; l < network.length; l++) {
+    for (let node of network[l]) {
+      node.bias = biases[bi++];
+      let ws = weights[wi++];
+      node.inputLinks.forEach((lk, i) => { lk.weight = ws[i]; });
+    }
+  }
+  updateUI();
+  return {steps, accuracy: acc, reached: acc >= target};
+}
+
+// ----------------------------------------------------------------------------
+// Heatmap overlay helpers (saliency arrow, brush selection, robustness plot).
+// ----------------------------------------------------------------------------
+
+const HM_PADDING = 20;
+const HM_FACTOR = 23.07;
+const HM_MAXSCALE = 5.0;
+
+function dataToPx(x: number, y: number): [number, number] {
+  return [(x + HM_MAXSCALE) * HM_FACTOR + HM_PADDING,
+          (HM_MAXSCALE - y) * HM_FACTOR + HM_PADDING];
+}
+function pxToData(px: number, py: number): [number, number] {
+  return [(px - HM_PADDING) / HM_FACTOR - HM_MAXSCALE,
+          HM_MAXSCALE - (py - HM_PADDING) / HM_FACTOR];
+}
+
+/** Return (and lazily create) an SVG overlay group on the heatmap container. */
+function heatmapOverlay() {
+  let svg = d3.select("#heatmap").select("svg");
+  if (svg.empty()) {
+    svg = d3.select("#heatmap").append("svg")
+      .attr("class", "ml-sec-overlay")
+      .style("position", "absolute")
+      .style("left", "0").style("top", "0")
+      .style("pointer-events", "none")
+      .attr("width", 340).attr("height", 340);
+  }
+  let g = svg.select("g.ml-sec");
+  if (g.empty()) {
+    g = svg.append("g").attr("class", "ml-sec");
+  }
+  return g;
+}
+
+function drawSaliencyArrow(p: Example2D, gx: number, gy: number): void {
+  let g = heatmapOverlay();
+  g.selectAll("*").remove();
+  let [x0, y0] = dataToPx(p.x, p.y);
+  let norm = Math.hypot(gx, gy) || 1;
+  let len = 30;
+  // Screen y is inverted relative to data y.
+  let x1 = x0 + (gx / norm) * len;
+  let y1 = y0 - (gy / norm) * len;
+  g.append("line")
+    .attr("x1", x0).attr("y1", y0).attr("x2", x1).attr("y2", y1)
+    .attr("stroke", "#c00").attr("stroke-width", 2);
+  g.append("circle")
+    .attr("cx", x1).attr("cy", y1).attr("r", 3).attr("fill", "#c00");
+}
+
+function enableBrushSelect(): void {
+  let svg = d3.select("#heatmap").select("svg");
+  if (svg.empty()) {
+    svg = d3.select("#heatmap").append("svg")
+      .attr("class", "ml-sec-overlay")
+      .style("position", "absolute").style("left", "0").style("top", "0")
+      .attr("width", 340).attr("height", 340);
+  }
+  svg.style("pointer-events", "all");
+  let brush = d3.brush()
+    .extent([[HM_PADDING, HM_PADDING], [HM_PADDING + 300, HM_PADDING + 300]])
+    .on("end", (event: any) => {
+      if (!event.selection) { selectedForget = []; highlightSelected(); return; }
+      let [[x0, y0], [x1, y1]] = event.selection;
+      let [dx0, dy0] = pxToData(x0, y0);
+      let [dx1, dy1] = pxToData(x1, y1);
+      let xmin = Math.min(dx0, dx1), xmax = Math.max(dx0, dx1);
+      let ymin = Math.min(dy0, dy1), ymax = Math.max(dy0, dy1);
+      selectedForget = state.trainData.filter(p =>
+        p.x >= xmin && p.x <= xmax && p.y >= ymin && p.y <= ymax);
+      highlightSelected();
+      d3.select("#unlearn-readout").html(
+        `Selected ${selectedForget.length} points. Click "Forget selected".`);
+    });
+  svg.append("g").attr("class", "ml-brush").call(brush as any);
+}
+
+function disableBrushSelect(): void {
+  let svg = d3.select("#heatmap").select("svg.ml-sec-overlay");
+  svg.select("g.ml-brush").remove();
+  svg.style("pointer-events", "none");
+  selectedForget = [];
+  highlightSelected();
+}
+
+function highlightSelected(): void {
+  let g = heatmapOverlay();
+  g.selectAll("circle.sel").remove();
+  g.selectAll("circle.sel").data(selectedForget).enter()
+    .append("circle").attr("class", "sel")
+    .attr("cx", (d: Example2D) => dataToPx(d.x, d.y)[0])
+    .attr("cy", (d: Example2D) => dataToPx(d.x, d.y)[1])
+    .attr("r", 5).attr("fill", "none")
+    .attr("stroke", "#000").attr("stroke-width", 1.5);
+}
+
+function drawRobustnessCurve(
+    curve: {epsilon: number; accuracy: number}[]): void {
+  let svg = d3.select("#adv-robustness-plot");
+  svg.style("display", "block");
+  svg.selectAll("*").remove();
+  let w = 240, h = 140, m = 28;
+  let maxEps = d3.max(curve, d => d.epsilon) || 1;
+  let xs = d3.scaleLinear().domain([0, maxEps]).range([m, w - 8]);
+  let ys = d3.scaleLinear().domain([0, 1]).range([h - m, 8]);
+  svg.append("g").attr("transform", `translate(0,${h - m})`)
+    .call(d3.axisBottom(xs).ticks(4) as any);
+  svg.append("g").attr("transform", `translate(${m},0)`)
+    .call(d3.axisLeft(ys).ticks(4) as any);
+  let line = d3.line<{epsilon: number; accuracy: number}>()
+    .x(d => xs(d.epsilon)).y(d => ys(d.accuracy));
+  svg.append("path").datum(curve)
+    .attr("fill", "none").attr("stroke", "#0877bd").attr("stroke-width", 2)
+    .attr("d", line as any);
+  svg.selectAll("circle.pt").data(curve).enter().append("circle")
+    .attr("class", "pt")
+    .attr("cx", d => xs(d.epsilon)).attr("cy", d => ys(d.accuracy))
+    .attr("r", 2).attr("fill", "#0877bd");
 }
 
 // ============================================================================
@@ -2009,11 +2298,48 @@ function makeAdvancedGUI() {
       if (Math.sign(oc) !== Math.sign(op)) flipped++;
     }
     heatMap.updateTestPoints(perturbed);
+    lastAdvClean = clean;
+    lastAdvPerturbed = perturbed;
+    let budget = perturbationBudget(clean, perturbed);
+    let success = attackSuccessRate(predictXY, clean, perturbed);
     d3.select("#adv-readout").html(
       `Method: ${state.advMethod.toUpperCase()}, &epsilon;=${state.advEpsilon}<br>` +
       `Clean acc: ${(cleanAcc * 100).toFixed(1)}%<br>` +
       `Adversarial acc: ${(advAcc * 100).toFixed(1)}%<br>` +
-      `Predictions flipped: ${flipped}/${clean.length}`);
+      `Predictions flipped: ${flipped}/${clean.length}<br>` +
+      `Attack success rate: ${(success * 100).toFixed(1)}%<br>` +
+      `Budget: mean L2=${budget.meanL2.toFixed(3)}, ` +
+      `mean L&infin;=${budget.meanLinf.toFixed(3)}, ` +
+      `max L&infin;=${budget.maxLinf.toFixed(3)}`);
+  });
+
+  // Robustness curve: sweep epsilon and plot adversarial accuracy.
+  d3.select("#adv-robustness").on("click", () => {
+    let epsilons: number[] = [];
+    for (let e = 0; e <= 3.0001; e += 0.25) epsilons.push(+e.toFixed(3));
+    let curve = robustnessCurve(predictXY, (p, eps) => perturb(p, eps),
+        state.testData, epsilons);
+    drawRobustnessCurve(curve);
+    let worst = curve[curve.length - 1];
+    d3.select("#adv-readout").html(
+      `Robustness sweep over &epsilon;&isin;[0,3]<br>` +
+      `Acc @&epsilon;=0: ${(curve[0].accuracy * 100).toFixed(1)}%, ` +
+      `@&epsilon;=${worst.epsilon}: ${(worst.accuracy * 100).toFixed(1)}%`);
+  });
+
+  // Saliency readout: dLoss/dx, dLoss/dy as an arrow at the last point.
+  d3.select("#adv-saliency").on("click", () => {
+    let p = lastClickedPoint ||
+        (state.testData.length ? state.testData[0] : null);
+    if (p == null) {
+      d3.select("#adv-readout").html("Click a point on the plot first.");
+      return;
+    }
+    let [gx, gy] = rawInputGradient(p.x, p.y, p.label);
+    drawSaliencyArrow(p, gx, gy);
+    d3.select("#adv-readout").html(
+      `Saliency at (${p.x.toFixed(2)}, ${p.y.toFixed(2)})<br>` +
+      `dLoss/dx = ${gx.toFixed(4)}<br>dLoss/dy = ${gy.toFixed(4)}`);
   });
 
   // ---- Unlearning ----
@@ -2044,6 +2370,62 @@ function makeAdvancedGUI() {
     d3.select("#unlearn-readout").html(
       `Retrained from scratch without ${forget.length} forgotten points ` +
       `(100 epochs).`);
+  });
+
+  // Nearest-N slider.
+  let nearestN = d3.select("#forget-nearest-n").on("input", function() {
+    d3.select("#forget-nearest-n-val").text((this as any).value);
+  });
+  nearestN.property("value", 10);
+  d3.select("#forget-nearest-n-val").text(10);
+
+  // Brush-to-select toggle.
+  d3.select("#unlearn-brush-toggle").on("click", () => {
+    brushSelectActive = !brushSelectActive;
+    d3.select("#unlearn-brush-toggle").text(
+      "Brush-select: " + (brushSelectActive ? "on" : "off"));
+    if (brushSelectActive) {
+      enableBrushSelect();
+    } else {
+      disableBrushSelect();
+    }
+  });
+
+  d3.select("#forget-selected").on("click", () => {
+    if (selectedForget.length === 0) {
+      d3.select("#unlearn-readout").html(
+        "No points selected. Toggle brush-select and drag a rectangle.");
+      return;
+    }
+    doUnlearn(selectedForget.slice(), "Forgot selected");
+    selectedForget = [];
+    highlightSelected();
+  });
+
+  d3.select("#forget-nearest").on("click", () => {
+    if (lastClickedPoint == null) {
+      d3.select("#unlearn-readout").html("Click a point on the plot first.");
+      return;
+    }
+    let n = +(d3.select("#forget-nearest-n").property("value") || 10);
+    let sorted = state.trainData.slice().sort((a, b) =>
+      dist2(a, lastClickedPoint) - dist2(b, lastClickedPoint));
+    doUnlearn(sorted.slice(0, n), `Forgot nearest ${n}`);
+  });
+
+  d3.select("#unlearn-relearn").on("click", () => {
+    let forget = selectedForget.length ? selectedForget.slice() :
+        misclassified(state.trainData);
+    if (forget.length === 0) {
+      d3.select("#unlearn-readout").html("No forget set for relearn probe.");
+      return;
+    }
+    let probe = relearnProbe(forget, 300, 1);
+    d3.select("#unlearn-readout").html(
+      `Relearn-time probe on ${forget.length} pts:<br>` +
+      `${probe.reached ? probe.steps : "&ge;" + probe.steps} steps to ` +
+      `recover accuracy (reached ${(probe.accuracy * 100).toFixed(1)}%).<br>` +
+      `Weights restored after probe.`);
   });
 
   // ---- Custom data ----

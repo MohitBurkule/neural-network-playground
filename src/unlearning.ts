@@ -197,3 +197,122 @@ export function retrainWithout(
   const metrics = measureForgetMetrics(network, forgetSet, retainSet);
   return {network, metrics};
 }
+
+// ============================================================================
+// Additional unlearning analysis & variants (additive; existing exports kept).
+// ============================================================================
+
+/**
+ * Fine-tune-on-retain unlearning variant: continue plain gradient DESCENT on
+ * the retain set only for K steps. The forget set is never trained on, so the
+ * model gradually drifts away from fitting it. Mutates the network in-place.
+ */
+export function fineTuneOnRetain(
+    network: Node[][],
+    forgetSet: Example2D[],
+    retainSet: Example2D[],
+    opts: UnlearnOpts = {}): {before: ForgetMetrics; after: ForgetMetrics} {
+  const lr = opts.learningRate ?? 0.03;
+  const steps = opts.steps ?? 200;
+  const batchSize = opts.batchSize ?? 32;
+  const before = measureForgetMetrics(network, forgetSet, retainSet);
+  for (let step = 0; step < steps; step++) {
+    for (const ex of sampleBatch(retainSet, batchSize)) {
+      sgdStep(network, ex, lr, false);
+    }
+  }
+  const after = measureForgetMetrics(network, forgetSet, retainSet);
+  return {before, after};
+}
+
+/**
+ * Membership-inference proxy. A simple MIA signal is the loss gap between the
+ * forget set and a random subset of the retain set: a model that memorised the
+ * forget set has much lower loss there than on unseen-like retain points.
+ * After unlearning the gap should shrink toward zero (or invert).
+ */
+export function membershipInferenceGap(
+    network: Node[][],
+    forgetSet: Example2D[],
+    retainSet: Example2D[],
+    subsetSize: number = 0): {forgetLoss: number; retainLoss: number;
+                              gap: number} {
+  const k = subsetSize > 0 ?
+    Math.min(subsetSize, retainSet.length) :
+    Math.min(forgetSet.length || retainSet.length, retainSet.length);
+  const subset = retainSet.length <= k ? retainSet : sampleBatch(retainSet, k);
+  const fl = evalMetrics(network, forgetSet).loss;
+  const rl = evalMetrics(network, subset).loss;
+  // Positive gap => forget set fits better than retain (memorisation signal).
+  return {forgetLoss: fl, retainLoss: rl, gap: rl - fl};
+}
+
+/**
+ * Forget-quality score in [0, 100]. Combines how much accuracy DROPPED on the
+ * forget set (we want low forget accuracy) with how well retain accuracy is
+ * RETAINED. Both before and after metrics are supplied.
+ */
+export function forgetQualityScore(
+    before: ForgetMetrics, after: ForgetMetrics): number {
+  // Forget component: drop relative to before (clamped to [0,1]).
+  const drop = Math.max(0, Math.min(1,
+      before.forgetAccuracy - after.forgetAccuracy +
+      (1 - after.forgetAccuracy)));
+  const forgetComponent = Math.max(0, Math.min(1, 1 - after.forgetAccuracy));
+  // Retention component: retain accuracy preserved relative to before.
+  const retainComponent = before.retainAccuracy <= 0 ? 1 :
+      Math.max(0, Math.min(1, after.retainAccuracy / before.retainAccuracy));
+  void drop;
+  return Math.round(100 * (0.5 * forgetComponent + 0.5 * retainComponent));
+}
+
+/**
+ * Relearn-time probe: after forgetting, measure how many gradient-descent steps
+ * (on the forget set) are needed to recover a target accuracy. Restores all
+ * weights/biases afterwards so the probe is non-destructive.
+ *
+ * @returns steps needed (or maxSteps if not reached) and the achieved accuracy.
+ */
+export function relearnTimeProbe(
+    network: Node[][],
+    forgetSet: Example2D[],
+    opts: {learningRate?: number; maxSteps?: number;
+           targetAccuracy?: number} = {}): {steps: number; accuracy: number;
+                                            reached: boolean} {
+  const lr = opts.learningRate ?? 0.03;
+  const maxSteps = opts.maxSteps ?? 300;
+  const target = opts.targetAccuracy ?? 1;
+  if (forgetSet.length === 0) return {steps: 0, accuracy: 1, reached: true};
+
+  // Snapshot weights & biases.
+  const snapshot: {weights: number[][]; biases: number[]} = {
+    weights: [], biases: []
+  };
+  for (let l = 1; l < network.length; l++) {
+    for (const node of network[l]) {
+      snapshot.biases.push(node.bias);
+      snapshot.weights.push(node.inputLinks.map(lk => lk.weight));
+    }
+  }
+
+  let steps = maxSteps;
+  let acc = 0;
+  for (let s = 1; s <= maxSteps; s++) {
+    for (const ex of forgetSet) sgdStep(network, ex, lr, false);
+    acc = evalMetrics(network, forgetSet).accuracy;
+    if (acc >= target) { steps = s; break; }
+  }
+  if (acc < target) acc = evalMetrics(network, forgetSet).accuracy;
+
+  // Restore.
+  let bi = 0;
+  let wi = 0;
+  for (let l = 1; l < network.length; l++) {
+    for (const node of network[l]) {
+      node.bias = snapshot.biases[bi++];
+      const ws = snapshot.weights[wi++];
+      node.inputLinks.forEach((lk, i) => { lk.weight = ws[i]; });
+    }
+  }
+  return {steps, accuracy: acc, reached: acc >= target};
+}

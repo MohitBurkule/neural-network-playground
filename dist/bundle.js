@@ -87164,6 +87164,167 @@ module.exports.TinyEmitter = E;
 },{}],1030:[function(require,module,exports){
 "use strict";
 Object.defineProperty(exports, "__esModule", { value: true });
+exports.fgsm = fgsm;
+exports.pgd = pgd;
+exports.predict = predict;
+exports.rawLossGrad = rawLossGrad;
+exports.randomNoiseAttack = randomNoiseAttack;
+exports.targetedFgsm = targetedFgsm;
+exports.deepFoolLite = deepFoolLite;
+exports.perturbationBudget = perturbationBudget;
+exports.attackSuccessRate = attackSuccessRate;
+exports.robustnessCurve = robustnessCurve;
+var nn_1 = require("./nn");
+function inputGradients(network) {
+    var inputLayer = network[0];
+    var firstHiddenLayer = network[1];
+    var grads = inputLayer.map(function () { return 0; });
+    for (var h = 0; h < firstHiddenLayer.length; h++) {
+        var hiddenNode = firstHiddenLayer[h];
+        for (var i = 0; i < hiddenNode.inputLinks.length; i++) {
+            var link = hiddenNode.inputLinks[i];
+            if (link.isDead)
+                continue;
+            var srcIdx = inputLayer.indexOf(link.source);
+            if (srcIdx >= 0) {
+                grads[srcIdx] += link.weight * hiddenNode.inputDer;
+            }
+        }
+    }
+    return grads;
+}
+function fgsm(network, point, epsilon) {
+    var inputs = [point.x, point.y];
+    (0, nn_1.forwardProp)(network, inputs, null);
+    (0, nn_1.backProp)(network, point.label, nn_1.Errors.SQUARE);
+    var grads = inputGradients(network);
+    return {
+        x: point.x + epsilon * Math.sign(grads[0]),
+        y: point.y + epsilon * Math.sign(grads[1]),
+        label: point.label
+    };
+}
+function pgd(network, point, epsilon, steps, stepSize) {
+    if (steps === void 0) { steps = 10; }
+    if (stepSize === void 0) { stepSize = epsilon / 4; }
+    var ax = point.x;
+    var ay = point.y;
+    for (var s = 0; s < steps; s++) {
+        var inputs = [ax, ay];
+        (0, nn_1.forwardProp)(network, inputs, null);
+        (0, nn_1.backProp)(network, point.label, nn_1.Errors.SQUARE);
+        var grads = inputGradients(network);
+        ax = ax + stepSize * Math.sign(grads[0]);
+        ay = ay + stepSize * Math.sign(grads[1]);
+        ax = Math.max(point.x - epsilon, Math.min(point.x + epsilon, ax));
+        ay = Math.max(point.y - epsilon, Math.min(point.y + epsilon, ay));
+    }
+    return { x: ax, y: ay, label: point.label };
+}
+function predict(network, x, y) {
+    return (0, nn_1.forwardProp)(network, [x, y], null);
+}
+function rawLossGrad(network) {
+    var loss = function (x, y, label) {
+        return nn_1.Errors.SQUARE.error((0, nn_1.forwardProp)(network, [x, y], null), label);
+    };
+    var grad = function (x, y, label) {
+        var h = 1e-3;
+        var dx = (loss(x + h, y, label) - loss(x - h, y, label)) / (2 * h);
+        var dy = (loss(x, y + h, label) - loss(x, y - h, label)) / (2 * h);
+        return [dx, dy];
+    };
+    return { loss: loss, grad: grad };
+}
+function randomNoiseAttack(point, epsilon, rng) {
+    if (rng === void 0) { rng = Math.random; }
+    return {
+        x: point.x + (rng() * 2 - 1) * epsilon,
+        y: point.y + (rng() * 2 - 1) * epsilon,
+        label: point.label
+    };
+}
+function targetedFgsm(grad, point, epsilon, steps, stepSize) {
+    if (steps === void 0) { steps = 10; }
+    if (stepSize === void 0) { stepSize = epsilon / 4; }
+    var target = -Math.sign(point.label) || -1;
+    var ax = point.x;
+    var ay = point.y;
+    for (var s = 0; s < steps; s++) {
+        var _a = grad(ax, ay, target), gx = _a[0], gy = _a[1];
+        ax -= stepSize * Math.sign(gx);
+        ay -= stepSize * Math.sign(gy);
+        ax = Math.max(point.x - epsilon, Math.min(point.x + epsilon, ax));
+        ay = Math.max(point.y - epsilon, Math.min(point.y + epsilon, ay));
+    }
+    return { x: ax, y: ay, label: point.label };
+}
+function deepFoolLite(predictFn, grad, point, stepSize, maxIter) {
+    if (stepSize === void 0) { stepSize = 0.1; }
+    if (maxIter === void 0) { maxIter = 50; }
+    var ax = point.x;
+    var ay = point.y;
+    var startSign = Math.sign(predictFn(ax, ay)) || 1;
+    var i = 0;
+    for (; i < maxIter; i++) {
+        if (Math.sign(predictFn(ax, ay)) !== startSign)
+            break;
+        var _a = grad(ax, ay, point.label), gx = _a[0], gy = _a[1];
+        var norm = Math.hypot(gx, gy) || 1;
+        ax += stepSize * gx / norm;
+        ay += stepSize * gy / norm;
+    }
+    var flipped = Math.sign(predictFn(ax, ay)) !== startSign;
+    return { x: ax, y: ay, label: point.label, flipped: flipped, iterations: i };
+}
+function perturbationBudget(clean, adv) {
+    var n = Math.min(clean.length, adv.length);
+    if (n === 0)
+        return { meanL2: 0, meanLinf: 0, maxLinf: 0 };
+    var sumL2 = 0;
+    var sumLinf = 0;
+    var maxLinf = 0;
+    for (var i = 0; i < n; i++) {
+        var dx = adv[i].x - clean[i].x;
+        var dy = adv[i].y - clean[i].y;
+        sumL2 += Math.hypot(dx, dy);
+        var linf = Math.max(Math.abs(dx), Math.abs(dy));
+        sumLinf += linf;
+        if (linf > maxLinf)
+            maxLinf = linf;
+    }
+    return { meanL2: sumL2 / n, meanLinf: sumLinf / n, maxLinf: maxLinf };
+}
+function attackSuccessRate(predictFn, clean, adv) {
+    var n = Math.min(clean.length, adv.length);
+    if (n === 0)
+        return 0;
+    var flipped = 0;
+    for (var i = 0; i < n; i++) {
+        if (Math.sign(predictFn(clean[i].x, clean[i].y)) !==
+            Math.sign(predictFn(adv[i].x, adv[i].y)))
+            flipped++;
+    }
+    return flipped / n;
+}
+function robustnessCurve(predictFn, attackFn, points, epsilons) {
+    return epsilons.map(function (eps) {
+        if (points.length === 0)
+            return { epsilon: eps, accuracy: 1 };
+        var correct = 0;
+        for (var _i = 0, points_1 = points; _i < points_1.length; _i++) {
+            var p = points_1[_i];
+            var a = attackFn(p, eps);
+            if (Math.sign(predictFn(a.x, a.y)) === Math.sign(p.label))
+                correct++;
+        }
+        return { epsilon: eps, accuracy: correct / points.length };
+    });
+}
+
+},{"./nn":1036}],1031:[function(require,module,exports){
+"use strict";
+Object.defineProperty(exports, "__esModule", { value: true });
 exports.parseCSV = parseCSV;
 exports.serializeCSV = serializeCSV;
 exports.validateExample = validateExample;
@@ -87239,7 +87400,7 @@ function trainTestSplit(examples, trainRatio) {
     return { train: arr.slice(0, cutoff), test: arr.slice(cutoff) };
 }
 
-},{}],1031:[function(require,module,exports){
+},{}],1032:[function(require,module,exports){
 "use strict";
 Object.defineProperty(exports, "__esModule", { value: true });
 exports.shuffle = shuffle;
@@ -87947,7 +88108,7 @@ function dist(a, b) {
     return Math.sqrt(dx * dx + dy * dy);
 }
 
-},{"d3":9}],1032:[function(require,module,exports){
+},{"d3":9}],1033:[function(require,module,exports){
 "use strict";
 Object.defineProperty(exports, "__esModule", { value: true });
 exports.classifyTwoGaussBlobs = classifyTwoGaussBlobs;
@@ -88150,7 +88311,7 @@ function classifySCurve3D(numSamples, noise) {
     return points;
 }
 
-},{}],1033:[function(require,module,exports){
+},{}],1034:[function(require,module,exports){
 "use strict";
 Object.defineProperty(exports, "__esModule", { value: true });
 exports.HeatMap = void 0;
@@ -88306,7 +88467,7 @@ function reduceMatrix(matrix, factor) {
     return result;
 }
 
-},{"d3":9}],1034:[function(require,module,exports){
+},{"d3":9}],1035:[function(require,module,exports){
 "use strict";
 Object.defineProperty(exports, "__esModule", { value: true });
 exports.AppendingLineChart = void 0;
@@ -88379,7 +88540,7 @@ var AppendingLineChart = (function () {
 }());
 exports.AppendingLineChart = AppendingLineChart;
 
-},{"d3":9}],1035:[function(require,module,exports){
+},{"d3":9}],1036:[function(require,module,exports){
 "use strict";
 Object.defineProperty(exports, "__esModule", { value: true });
 exports.OPTIMIZER_EPSILON = exports.OPTIMIZER_BETA2 = exports.OPTIMIZER_BETA1 = exports.OptimizerType = exports.WeightInit = exports.Link = exports.WeightQuantizationFunction = exports.RegularizationFunction = exports.Activations = exports.Errors = exports.Node = void 0;
@@ -89064,7 +89225,7 @@ function compileNetworkToJs(network) {
     return js;
 }
 
-},{}],1036:[function(require,module,exports){
+},{}],1037:[function(require,module,exports){
 "use strict";
 Object.defineProperty(exports, "__esModule", { value: true });
 exports.getOutputWeights = getOutputWeights;
@@ -89076,6 +89237,8 @@ var linechart_1 = require("./linechart");
 var threeview_1 = require("./threeview");
 var dataset3d_1 = require("./dataset3d");
 var customdataset_1 = require("./customdataset");
+var adversarial_1 = require("./adversarial");
+var unlearning_1 = require("./unlearning");
 var d3 = require("d3");
 var mathjs_1 = require("mathjs");
 var mainWidth;
@@ -89215,6 +89378,11 @@ var colorScale = d3.scaleLinear()
     .clamp(true);
 var iter = 0;
 var network = null;
+var lastClickedPoint = null;
+var selectedForget = [];
+var brushSelectActive = false;
+var lastAdvClean = [];
+var lastAdvPerturbed = [];
 var lossTrain = 0;
 var lossTest = 0;
 var player = new Player();
@@ -89323,10 +89491,18 @@ function makeGUI() {
             x_1 = x_1 / factor - maxScale;
             y = maxScale - y / factor;
             state.trainData.push({ x: x_1, y: y, label: label });
+            lastClickedPoint = { x: x_1, y: y, label: label };
             heatMap.updatePoints(state.trainData);
         }
     });
     d3.select("#heatmap").call(dragBehavior);
+    d3.select("#heatmap").on("click", function (event) {
+        var _a = d3.pointer(event, this), px = _a[0], py = _a[1];
+        var padding = 20, maxScale = 5.0, factor = 23.07;
+        var x = (px - padding) / factor - maxScale;
+        var y = maxScale - (py - padding) / factor;
+        lastClickedPoint = { x: x, y: y, label: state.editColor || 1 };
+    });
     var showTestData = d3.select("#show-test-data").on("change", function () {
         state.showTestData = this.checked;
         state.serialize();
@@ -90084,12 +90260,26 @@ function pgd(point, eps, steps, stepSize) {
     }
     return { x: ax, y: ay, label: point.label };
 }
-function perturb(point) {
-    var eps = state.advEpsilon;
-    if (state.advMethod === "pgd") {
-        return pgd(point, eps, 10, eps / 4);
+function predictXY(x, y) {
+    return nn.forwardProp(network, constructInput(x, y), state.weightQuantization, state.layerNorm);
+}
+var advGrad = function (x, y, label) { return rawInputGradient(x, y, label); };
+function perturb(point, epsOverride) {
+    var eps = epsOverride != null ? epsOverride : state.advEpsilon;
+    switch (state.advMethod) {
+        case "pgd":
+            return pgd(point, eps, 10, eps / 4);
+        case "random":
+            return (0, adversarial_1.randomNoiseAttack)(point, eps);
+        case "targeted":
+            return (0, adversarial_1.targetedFgsm)(advGrad, point, eps, 10, eps / 4);
+        case "deepfool": {
+            var r = (0, adversarial_1.deepFoolLite)(predictXY, advGrad, point, Math.max(eps / 4, 0.05), 50);
+            return { x: r.x, y: r.y, label: r.label };
+        }
+        default:
+            return fgsm(point, eps);
     }
-    return fgsm(point, eps);
 }
 function accuracy(points) {
     if (points.length === 0)
@@ -90467,18 +90657,245 @@ function misclassified(points) {
         return Math.sign(out) !== Math.sign(p.label);
     });
 }
+function snapshotBoundary() {
+    var xScale = d3.scaleLinear().domain([0, DENSITY - 1]).range(xDomain);
+    var yScale = d3.scaleLinear().domain([DENSITY - 1, 0]).range(xDomain);
+    var grid = [];
+    for (var i = 0; i < DENSITY; i++) {
+        for (var j = 0; j < DENSITY; j++) {
+            grid.push(Math.sign(predictXY(xScale(i), yScale(j))) || 1);
+        }
+    }
+    return grid;
+}
+function boundaryChangePct(before, after) {
+    var flipped = 0;
+    for (var i = 0; i < before.length; i++) {
+        if (before[i] !== after[i])
+            flipped++;
+    }
+    return before.length ? flipped / before.length : 0;
+}
+function fineTuneRetain(retainSet, steps) {
+    if (retainSet.length === 0)
+        return;
+    var optimizerType = state_1.optimizers[state.optimizer] || nn.OptimizerType.SGD;
+    for (var s = 0; s < steps; s++) {
+        retainSet.forEach(function (point) {
+            nn.forwardProp(network, constructInput(point.x, point.y), state.weightQuantization, state.layerNorm);
+            nn.backProp(network, point.label, nn.Errors.SQUARE);
+            nn.updateWeights(network, state.learningRate, state.regularization, state.regularizationRate, optimizerType);
+        });
+    }
+}
+function meanLoss(points) {
+    if (points.length === 0)
+        return 0;
+    var total = 0;
+    for (var _i = 0, points_4 = points; _i < points_4.length; _i++) {
+        var p = points_4[_i];
+        var out = predictXY(p.x, p.y);
+        total += nn.Errors.SQUARE.error(out, p.label);
+    }
+    return total / points.length;
+}
+function sampleSubset(arr, k) {
+    if (arr.length <= k)
+        return arr;
+    var copy = arr.slice();
+    var out = [];
+    for (var i = 0; i < k; i++) {
+        out.push(copy.splice(Math.floor(Math.random() * copy.length), 1)[0]);
+    }
+    return out;
+}
+function miaGap(forgetSet, retainSet) {
+    var subset = sampleSubset(retainSet, Math.max(1, forgetSet.length));
+    var fl = meanLoss(forgetSet);
+    var rl = meanLoss(subset);
+    return { forgetLoss: fl, retainLoss: rl, gap: rl - fl };
+}
 function doUnlearn(forgetSet, label) {
     var retainSet = state.trainData.filter(function (p) { return forgetSet.indexOf(p) === -1; });
+    var method = d3.select("#unlearn-method").property("value")
+        || "ascent";
     var accF0 = accuracy(forgetSet);
     var accR0 = accuracy(retainSet);
+    var mia0 = miaGap(forgetSet, retainSet);
+    var boundaryBefore = snapshotBoundary();
     var steps = +(d3.select("#unlearn-steps").property("value") || 100);
-    unlearn(forgetSet, steps);
+    if (method === "finetune") {
+        fineTuneRetain(retainSet, steps);
+    }
+    else {
+        unlearn(forgetSet, steps);
+    }
     var accF1 = accuracy(forgetSet);
     var accR1 = accuracy(retainSet);
+    var mia1 = miaGap(forgetSet, retainSet);
+    var quality = (0, unlearning_1.forgetQualityScore)({ forgetLoss: 0, forgetAccuracy: accF0, retainLoss: 0, retainAccuracy: accR0 }, { forgetLoss: 0, forgetAccuracy: accF1, retainLoss: 0, retainAccuracy: accR1 });
     updateUI();
-    d3.select("#unlearn-readout").html("".concat(label, " (").concat(forgetSet.length, " pts, ").concat(steps, " steps)<br>") +
+    var boundaryAfter = snapshotBoundary();
+    var changePct = boundaryChangePct(boundaryBefore, boundaryAfter);
+    d3.select("#unlearn-readout").html("".concat(label, " (").concat(forgetSet.length, " pts, ").concat(steps, " steps, ").concat(method, ")<br>") +
         "Forget acc: ".concat((accF0 * 100).toFixed(1), "% &rarr; ").concat((accF1 * 100).toFixed(1), "%<br>") +
-        "Retain acc: ".concat((accR0 * 100).toFixed(1), "% &rarr; ").concat((accR1 * 100).toFixed(1), "%"));
+        "Retain acc: ".concat((accR0 * 100).toFixed(1), "% &rarr; ").concat((accR1 * 100).toFixed(1), "%<br>") +
+        "MIA loss gap: ".concat(mia0.gap.toFixed(4), " &rarr; ").concat(mia1.gap.toFixed(4), "<br>") +
+        "Forget-quality score: ".concat(quality, "/100<br>") +
+        "Boundary changed: ".concat((changePct * 100).toFixed(1), "% of grid cells"));
+}
+function dist2(a, b) {
+    return (a.x - b.x) * (a.x - b.x) + (a.y - b.y) * (a.y - b.y);
+}
+function relearnProbe(forgetSet, maxSteps, target) {
+    var weights = [];
+    var biases = [];
+    for (var l = 1; l < network.length; l++) {
+        for (var _i = 0, _a = network[l]; _i < _a.length; _i++) {
+            var node = _a[_i];
+            biases.push(node.bias);
+            weights.push(node.inputLinks.map(function (lk) { return lk.weight; }));
+        }
+    }
+    var optimizerType = state_1.optimizers[state.optimizer] || nn.OptimizerType.SGD;
+    var steps = maxSteps;
+    var acc = 0;
+    for (var s = 1; s <= maxSteps; s++) {
+        forgetSet.forEach(function (point) {
+            nn.forwardProp(network, constructInput(point.x, point.y), state.weightQuantization, state.layerNorm);
+            nn.backProp(network, point.label, nn.Errors.SQUARE);
+            nn.updateWeights(network, state.learningRate, state.regularization, state.regularizationRate, optimizerType);
+        });
+        acc = accuracy(forgetSet);
+        if (acc >= target) {
+            steps = s;
+            break;
+        }
+    }
+    var bi = 0, wi = 0;
+    for (var l = 1; l < network.length; l++) {
+        var _loop_1 = function (node) {
+            node.bias = biases[bi++];
+            var ws = weights[wi++];
+            node.inputLinks.forEach(function (lk, i) { lk.weight = ws[i]; });
+        };
+        for (var _b = 0, _c = network[l]; _b < _c.length; _b++) {
+            var node = _c[_b];
+            _loop_1(node);
+        }
+    }
+    updateUI();
+    return { steps: steps, accuracy: acc, reached: acc >= target };
+}
+var HM_PADDING = 20;
+var HM_FACTOR = 23.07;
+var HM_MAXSCALE = 5.0;
+function dataToPx(x, y) {
+    return [(x + HM_MAXSCALE) * HM_FACTOR + HM_PADDING,
+        (HM_MAXSCALE - y) * HM_FACTOR + HM_PADDING];
+}
+function pxToData(px, py) {
+    return [(px - HM_PADDING) / HM_FACTOR - HM_MAXSCALE,
+        HM_MAXSCALE - (py - HM_PADDING) / HM_FACTOR];
+}
+function heatmapOverlay() {
+    var svg = d3.select("#heatmap").select("svg");
+    if (svg.empty()) {
+        svg = d3.select("#heatmap").append("svg")
+            .attr("class", "ml-sec-overlay")
+            .style("position", "absolute")
+            .style("left", "0").style("top", "0")
+            .style("pointer-events", "none")
+            .attr("width", 340).attr("height", 340);
+    }
+    var g = svg.select("g.ml-sec");
+    if (g.empty()) {
+        g = svg.append("g").attr("class", "ml-sec");
+    }
+    return g;
+}
+function drawSaliencyArrow(p, gx, gy) {
+    var g = heatmapOverlay();
+    g.selectAll("*").remove();
+    var _a = dataToPx(p.x, p.y), x0 = _a[0], y0 = _a[1];
+    var norm = Math.hypot(gx, gy) || 1;
+    var len = 30;
+    var x1 = x0 + (gx / norm) * len;
+    var y1 = y0 - (gy / norm) * len;
+    g.append("line")
+        .attr("x1", x0).attr("y1", y0).attr("x2", x1).attr("y2", y1)
+        .attr("stroke", "#c00").attr("stroke-width", 2);
+    g.append("circle")
+        .attr("cx", x1).attr("cy", y1).attr("r", 3).attr("fill", "#c00");
+}
+function enableBrushSelect() {
+    var svg = d3.select("#heatmap").select("svg");
+    if (svg.empty()) {
+        svg = d3.select("#heatmap").append("svg")
+            .attr("class", "ml-sec-overlay")
+            .style("position", "absolute").style("left", "0").style("top", "0")
+            .attr("width", 340).attr("height", 340);
+    }
+    svg.style("pointer-events", "all");
+    var brush = d3.brush()
+        .extent([[HM_PADDING, HM_PADDING], [HM_PADDING + 300, HM_PADDING + 300]])
+        .on("end", function (event) {
+        if (!event.selection) {
+            selectedForget = [];
+            highlightSelected();
+            return;
+        }
+        var _a = event.selection, _b = _a[0], x0 = _b[0], y0 = _b[1], _c = _a[1], x1 = _c[0], y1 = _c[1];
+        var _d = pxToData(x0, y0), dx0 = _d[0], dy0 = _d[1];
+        var _e = pxToData(x1, y1), dx1 = _e[0], dy1 = _e[1];
+        var xmin = Math.min(dx0, dx1), xmax = Math.max(dx0, dx1);
+        var ymin = Math.min(dy0, dy1), ymax = Math.max(dy0, dy1);
+        selectedForget = state.trainData.filter(function (p) {
+            return p.x >= xmin && p.x <= xmax && p.y >= ymin && p.y <= ymax;
+        });
+        highlightSelected();
+        d3.select("#unlearn-readout").html("Selected ".concat(selectedForget.length, " points. Click \"Forget selected\"."));
+    });
+    svg.append("g").attr("class", "ml-brush").call(brush);
+}
+function disableBrushSelect() {
+    var svg = d3.select("#heatmap").select("svg.ml-sec-overlay");
+    svg.select("g.ml-brush").remove();
+    svg.style("pointer-events", "none");
+    selectedForget = [];
+    highlightSelected();
+}
+function highlightSelected() {
+    var g = heatmapOverlay();
+    g.selectAll("circle.sel").remove();
+    g.selectAll("circle.sel").data(selectedForget).enter()
+        .append("circle").attr("class", "sel")
+        .attr("cx", function (d) { return dataToPx(d.x, d.y)[0]; })
+        .attr("cy", function (d) { return dataToPx(d.x, d.y)[1]; })
+        .attr("r", 5).attr("fill", "none")
+        .attr("stroke", "#000").attr("stroke-width", 1.5);
+}
+function drawRobustnessCurve(curve) {
+    var svg = d3.select("#adv-robustness-plot");
+    svg.style("display", "block");
+    svg.selectAll("*").remove();
+    var w = 240, h = 140, m = 28;
+    var maxEps = d3.max(curve, function (d) { return d.epsilon; }) || 1;
+    var xs = d3.scaleLinear().domain([0, maxEps]).range([m, w - 8]);
+    var ys = d3.scaleLinear().domain([0, 1]).range([h - m, 8]);
+    svg.append("g").attr("transform", "translate(0,".concat(h - m, ")"))
+        .call(d3.axisBottom(xs).ticks(4));
+    svg.append("g").attr("transform", "translate(".concat(m, ",0)"))
+        .call(d3.axisLeft(ys).ticks(4));
+    var line = d3.line()
+        .x(function (d) { return xs(d.epsilon); }).y(function (d) { return ys(d.accuracy); });
+    svg.append("path").datum(curve)
+        .attr("fill", "none").attr("stroke", "#0877bd").attr("stroke-width", 2)
+        .attr("d", line);
+    svg.selectAll("circle.pt").data(curve).enter().append("circle")
+        .attr("class", "pt")
+        .attr("cx", function (d) { return xs(d.epsilon); }).attr("cy", function (d) { return ys(d.accuracy); })
+        .attr("r", 2).attr("fill", "#0877bd");
 }
 function applyFrozenLayers() {
     if (network == null)
@@ -90513,7 +90930,7 @@ function rebuildFreezeControls() {
         container.append("span").attr("class", "adv-help").text("No hidden layers.");
         return;
     }
-    var _loop_1 = function (layerIdx) {
+    var _loop_2 = function (layerIdx) {
         var label = container.append("label")
             .attr("class", "freeze-layer-item")
             .style("display", "inline-block")
@@ -90531,7 +90948,7 @@ function rebuildFreezeControls() {
         label.append("span").text(" Layer " + layerIdx);
     };
     for (var layerIdx = 1; layerIdx <= numHidden; layerIdx++) {
-        _loop_1(layerIdx);
+        _loop_2(layerIdx);
     }
 }
 function exportModel() {
@@ -90714,10 +91131,41 @@ function makeAdvancedGUI() {
                 flipped++;
         }
         heatMap.updateTestPoints(perturbed);
+        lastAdvClean = clean;
+        lastAdvPerturbed = perturbed;
+        var budget = (0, adversarial_1.perturbationBudget)(clean, perturbed);
+        var success = (0, adversarial_1.attackSuccessRate)(predictXY, clean, perturbed);
         d3.select("#adv-readout").html("Method: ".concat(state.advMethod.toUpperCase(), ", &epsilon;=").concat(state.advEpsilon, "<br>") +
             "Clean acc: ".concat((cleanAcc * 100).toFixed(1), "%<br>") +
             "Adversarial acc: ".concat((advAcc * 100).toFixed(1), "%<br>") +
-            "Predictions flipped: ".concat(flipped, "/").concat(clean.length));
+            "Predictions flipped: ".concat(flipped, "/").concat(clean.length, "<br>") +
+            "Attack success rate: ".concat((success * 100).toFixed(1), "%<br>") +
+            "Budget: mean L2=".concat(budget.meanL2.toFixed(3), ", ") +
+            "mean L&infin;=".concat(budget.meanLinf.toFixed(3), ", ") +
+            "max L&infin;=".concat(budget.maxLinf.toFixed(3)));
+    });
+    d3.select("#adv-robustness").on("click", function () {
+        var epsilons = [];
+        for (var e = 0; e <= 3.0001; e += 0.25)
+            epsilons.push(+e.toFixed(3));
+        var curve = (0, adversarial_1.robustnessCurve)(predictXY, function (p, eps) { return perturb(p, eps); }, state.testData, epsilons);
+        drawRobustnessCurve(curve);
+        var worst = curve[curve.length - 1];
+        d3.select("#adv-readout").html("Robustness sweep over &epsilon;&isin;[0,3]<br>" +
+            "Acc @&epsilon;=0: ".concat((curve[0].accuracy * 100).toFixed(1), "%, ") +
+            "@&epsilon;=".concat(worst.epsilon, ": ").concat((worst.accuracy * 100).toFixed(1), "%"));
+    });
+    d3.select("#adv-saliency").on("click", function () {
+        var p = lastClickedPoint ||
+            (state.testData.length ? state.testData[0] : null);
+        if (p == null) {
+            d3.select("#adv-readout").html("Click a point on the plot first.");
+            return;
+        }
+        var _a = rawInputGradient(p.x, p.y, p.label), gx = _a[0], gy = _a[1];
+        drawSaliencyArrow(p, gx, gy);
+        d3.select("#adv-readout").html("Saliency at (".concat(p.x.toFixed(2), ", ").concat(p.y.toFixed(2), ")<br>") +
+            "dLoss/dx = ".concat(gx.toFixed(4), "<br>dLoss/dy = ").concat(gy.toFixed(4)));
     });
     var unlearnSteps = d3.select("#unlearn-steps").on("input", function () {
         d3.select("#unlearn-steps-val").text(this.value);
@@ -90744,6 +91192,54 @@ function makeAdvancedGUI() {
         player.pause();
         d3.select("#unlearn-readout").html("Retrained from scratch without ".concat(forget.length, " forgotten points ") +
             "(100 epochs).");
+    });
+    var nearestN = d3.select("#forget-nearest-n").on("input", function () {
+        d3.select("#forget-nearest-n-val").text(this.value);
+    });
+    nearestN.property("value", 10);
+    d3.select("#forget-nearest-n-val").text(10);
+    d3.select("#unlearn-brush-toggle").on("click", function () {
+        brushSelectActive = !brushSelectActive;
+        d3.select("#unlearn-brush-toggle").text("Brush-select: " + (brushSelectActive ? "on" : "off"));
+        if (brushSelectActive) {
+            enableBrushSelect();
+        }
+        else {
+            disableBrushSelect();
+        }
+    });
+    d3.select("#forget-selected").on("click", function () {
+        if (selectedForget.length === 0) {
+            d3.select("#unlearn-readout").html("No points selected. Toggle brush-select and drag a rectangle.");
+            return;
+        }
+        doUnlearn(selectedForget.slice(), "Forgot selected");
+        selectedForget = [];
+        highlightSelected();
+    });
+    d3.select("#forget-nearest").on("click", function () {
+        if (lastClickedPoint == null) {
+            d3.select("#unlearn-readout").html("Click a point on the plot first.");
+            return;
+        }
+        var n = +(d3.select("#forget-nearest-n").property("value") || 10);
+        var sorted = state.trainData.slice().sort(function (a, b) {
+            return dist2(a, lastClickedPoint) - dist2(b, lastClickedPoint);
+        });
+        doUnlearn(sorted.slice(0, n), "Forgot nearest ".concat(n));
+    });
+    d3.select("#unlearn-relearn").on("click", function () {
+        var forget = selectedForget.length ? selectedForget.slice() :
+            misclassified(state.trainData);
+        if (forget.length === 0) {
+            d3.select("#unlearn-readout").html("No forget set for relearn probe.");
+            return;
+        }
+        var probe = relearnProbe(forget, 300, 1);
+        d3.select("#unlearn-readout").html("Relearn-time probe on ".concat(forget.length, " pts:<br>") +
+            "".concat(probe.reached ? probe.steps : "&ge;" + probe.steps, " steps to ") +
+            "recover accuracy (reached ".concat((probe.accuracy * 100).toFixed(1), "%).<br>") +
+            "Weights restored after probe.");
     });
     d3.select("#custom-data-load").on("click", function () {
         var text = d3.select("#custom-data-text").property("value");
@@ -91955,7 +92451,7 @@ function uxTickStatus() {
 }
 initUXFeatures();
 
-},{"./customdataset":1030,"./dataset":1031,"./dataset3d":1032,"./heatmap":1033,"./linechart":1034,"./nn":1035,"./state":1037,"./threeview":1038,"d3":9,"mathjs":937}],1037:[function(require,module,exports){
+},{"./adversarial":1030,"./customdataset":1031,"./dataset":1032,"./dataset3d":1033,"./heatmap":1034,"./linechart":1035,"./nn":1036,"./state":1038,"./threeview":1039,"./unlearning":1040,"d3":9,"mathjs":937}],1038:[function(require,module,exports){
 "use strict";
 Object.defineProperty(exports, "__esModule", { value: true });
 exports.State = exports.problems = exports.Problem = exports.Type = exports.regDatasets = exports.datasets = exports.weightQuantizations = exports.regularizations = exports.activations = exports.lrSchedules = exports.weightInits = exports.optimizers = void 0;
@@ -92315,7 +92811,7 @@ var State = (function () {
 }());
 exports.State = State;
 
-},{"./dataset":1031,"./nn":1035}],1038:[function(require,module,exports){
+},{"./dataset":1032,"./nn":1036}],1039:[function(require,module,exports){
 "use strict";
 Object.defineProperty(exports, "__esModule", { value: true });
 exports.ThreeView = void 0;
@@ -92508,4 +93004,200 @@ var ThreeView = (function () {
 }());
 exports.ThreeView = ThreeView;
 
-},{}]},{},[1036]);
+},{}],1040:[function(require,module,exports){
+"use strict";
+Object.defineProperty(exports, "__esModule", { value: true });
+exports.evalMetrics = evalMetrics;
+exports.measureForgetMetrics = measureForgetMetrics;
+exports.forgetPoints = forgetPoints;
+exports.retrainWithout = retrainWithout;
+exports.fineTuneOnRetain = fineTuneOnRetain;
+exports.membershipInferenceGap = membershipInferenceGap;
+exports.forgetQualityScore = forgetQualityScore;
+exports.relearnTimeProbe = relearnTimeProbe;
+var nn_1 = require("./nn");
+function evalMetrics(network, examples) {
+    if (examples.length === 0)
+        return { loss: 0, accuracy: 1 };
+    var totalLoss = 0;
+    var correct = 0;
+    for (var _i = 0, examples_1 = examples; _i < examples_1.length; _i++) {
+        var ex = examples_1[_i];
+        var pred = (0, nn_1.forwardProp)(network, [ex.x, ex.y], null);
+        totalLoss += nn_1.Errors.SQUARE.error(pred, ex.label);
+        if (Math.sign(pred) === Math.sign(ex.label))
+            correct++;
+    }
+    return {
+        loss: totalLoss / examples.length,
+        accuracy: correct / examples.length
+    };
+}
+function measureForgetMetrics(network, forgetSet, retainSet) {
+    var fm = evalMetrics(network, forgetSet);
+    var rm = evalMetrics(network, retainSet);
+    return {
+        forgetLoss: fm.loss,
+        forgetAccuracy: fm.accuracy,
+        retainLoss: rm.loss,
+        retainAccuracy: rm.accuracy
+    };
+}
+function sgdStep(network, example, learningRate, ascent) {
+    (0, nn_1.forwardProp)(network, [example.x, example.y], null);
+    (0, nn_1.backProp)(network, example.label, nn_1.Errors.SQUARE);
+    var sign = ascent ? -1 : 1;
+    for (var layerIdx = 1; layerIdx < network.length; layerIdx++) {
+        for (var _i = 0, _a = network[layerIdx]; _i < _a.length; _i++) {
+            var node = _a[_i];
+            node.bias -= sign * learningRate * node.accInputDer;
+            node.accInputDer = 0;
+            node.numAccumulatedDers = 0;
+            for (var _b = 0, _c = node.inputLinks; _b < _c.length; _b++) {
+                var link = _c[_b];
+                if (link.isDead)
+                    continue;
+                link.weight -= sign * learningRate * link.accErrorDer;
+                link.accErrorDer = 0;
+                link.numAccumulatedDers = 0;
+            }
+        }
+    }
+}
+function sampleBatch(arr, k) {
+    if (arr.length === 0)
+        return [];
+    var batch = [];
+    for (var i = 0; i < k; i++) {
+        batch.push(arr[Math.floor(Math.random() * arr.length)]);
+    }
+    return batch;
+}
+function forgetPoints(network, forgetSet, retainSet, opts) {
+    var _a, _b, _c, _d;
+    if (opts === void 0) { opts = {}; }
+    var lr = (_a = opts.learningRate) !== null && _a !== void 0 ? _a : 0.03;
+    var steps = (_b = opts.steps) !== null && _b !== void 0 ? _b : 200;
+    var retainRatio = (_c = opts.retainRatio) !== null && _c !== void 0 ? _c : 1;
+    var batchSize = (_d = opts.batchSize) !== null && _d !== void 0 ? _d : 32;
+    var before = measureForgetMetrics(network, forgetSet, retainSet);
+    for (var step = 0; step < steps; step++) {
+        for (var _i = 0, _e = sampleBatch(forgetSet, 1); _i < _e.length; _i++) {
+            var ex = _e[_i];
+            sgdStep(network, ex, lr, true);
+        }
+        if (retainSet.length > 0) {
+            for (var r = 0; r < retainRatio; r++) {
+                for (var _f = 0, _g = sampleBatch(retainSet, batchSize); _f < _g.length; _f++) {
+                    var ex = _g[_f];
+                    sgdStep(network, ex, lr, false);
+                }
+            }
+        }
+    }
+    var after = measureForgetMetrics(network, forgetSet, retainSet);
+    return { before: before, after: after };
+}
+function retrainWithout(shape, retainSet, forgetSet, opts) {
+    var _a, _b, _c;
+    if (opts === void 0) { opts = {}; }
+    var lr = (_a = opts.learningRate) !== null && _a !== void 0 ? _a : 0.03;
+    var steps = (_b = opts.steps) !== null && _b !== void 0 ? _b : 1000;
+    var batchSize = (_c = opts.batchSize) !== null && _c !== void 0 ? _c : 32;
+    var inputIds = shape[0] === 2 ? ['x', 'y'] :
+        Array.from({ length: shape[0] }, function (_, i) { return "i".concat(i); });
+    var network = (0, nn_1.buildNetwork)(shape, nn_1.Activations.TANH, nn_1.Activations.LINEAR, inputIds);
+    for (var step = 0; step < steps; step++) {
+        for (var _i = 0, _d = sampleBatch(retainSet, batchSize); _i < _d.length; _i++) {
+            var ex = _d[_i];
+            sgdStep(network, ex, lr, false);
+        }
+    }
+    var metrics = measureForgetMetrics(network, forgetSet, retainSet);
+    return { network: network, metrics: metrics };
+}
+function fineTuneOnRetain(network, forgetSet, retainSet, opts) {
+    var _a, _b, _c;
+    if (opts === void 0) { opts = {}; }
+    var lr = (_a = opts.learningRate) !== null && _a !== void 0 ? _a : 0.03;
+    var steps = (_b = opts.steps) !== null && _b !== void 0 ? _b : 200;
+    var batchSize = (_c = opts.batchSize) !== null && _c !== void 0 ? _c : 32;
+    var before = measureForgetMetrics(network, forgetSet, retainSet);
+    for (var step = 0; step < steps; step++) {
+        for (var _i = 0, _d = sampleBatch(retainSet, batchSize); _i < _d.length; _i++) {
+            var ex = _d[_i];
+            sgdStep(network, ex, lr, false);
+        }
+    }
+    var after = measureForgetMetrics(network, forgetSet, retainSet);
+    return { before: before, after: after };
+}
+function membershipInferenceGap(network, forgetSet, retainSet, subsetSize) {
+    if (subsetSize === void 0) { subsetSize = 0; }
+    var k = subsetSize > 0 ?
+        Math.min(subsetSize, retainSet.length) :
+        Math.min(forgetSet.length || retainSet.length, retainSet.length);
+    var subset = retainSet.length <= k ? retainSet : sampleBatch(retainSet, k);
+    var fl = evalMetrics(network, forgetSet).loss;
+    var rl = evalMetrics(network, subset).loss;
+    return { forgetLoss: fl, retainLoss: rl, gap: rl - fl };
+}
+function forgetQualityScore(before, after) {
+    var drop = Math.max(0, Math.min(1, before.forgetAccuracy - after.forgetAccuracy +
+        (1 - after.forgetAccuracy)));
+    var forgetComponent = Math.max(0, Math.min(1, 1 - after.forgetAccuracy));
+    var retainComponent = before.retainAccuracy <= 0 ? 1 :
+        Math.max(0, Math.min(1, after.retainAccuracy / before.retainAccuracy));
+    void drop;
+    return Math.round(100 * (0.5 * forgetComponent + 0.5 * retainComponent));
+}
+function relearnTimeProbe(network, forgetSet, opts) {
+    var _a, _b, _c;
+    if (opts === void 0) { opts = {}; }
+    var lr = (_a = opts.learningRate) !== null && _a !== void 0 ? _a : 0.03;
+    var maxSteps = (_b = opts.maxSteps) !== null && _b !== void 0 ? _b : 300;
+    var target = (_c = opts.targetAccuracy) !== null && _c !== void 0 ? _c : 1;
+    if (forgetSet.length === 0)
+        return { steps: 0, accuracy: 1, reached: true };
+    var snapshot = {
+        weights: [], biases: []
+    };
+    for (var l = 1; l < network.length; l++) {
+        for (var _i = 0, _d = network[l]; _i < _d.length; _i++) {
+            var node = _d[_i];
+            snapshot.biases.push(node.bias);
+            snapshot.weights.push(node.inputLinks.map(function (lk) { return lk.weight; }));
+        }
+    }
+    var steps = maxSteps;
+    var acc = 0;
+    for (var s = 1; s <= maxSteps; s++) {
+        for (var _e = 0, forgetSet_1 = forgetSet; _e < forgetSet_1.length; _e++) {
+            var ex = forgetSet_1[_e];
+            sgdStep(network, ex, lr, false);
+        }
+        acc = evalMetrics(network, forgetSet).accuracy;
+        if (acc >= target) {
+            steps = s;
+            break;
+        }
+    }
+    if (acc < target)
+        acc = evalMetrics(network, forgetSet).accuracy;
+    var bi = 0;
+    var wi = 0;
+    for (var l = 1; l < network.length; l++) {
+        var _loop_1 = function (node) {
+            node.bias = snapshot.biases[bi++];
+            var ws = snapshot.weights[wi++];
+            node.inputLinks.forEach(function (lk, i) { lk.weight = ws[i]; });
+        };
+        for (var _f = 0, _g = network[l]; _f < _g.length; _f++) {
+            var node = _g[_f];
+            _loop_1(node);
+        }
+    }
+    return { steps: steps, accuracy: acc, reached: acc >= target };
+}
+
+},{"./nn":1036}]},{},[1037]);

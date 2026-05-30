@@ -760,14 +760,20 @@ Modified by David Cato
                 <select id="adv-method">
                     <option value="fgsm">FGSM</option>
                     <option value="pgd">PGD</option>
+                    <option value="random">Random-noise baseline</option>
+                    <option value="targeted">Targeted (least-likely)</option>
+                    <option value="deepfool">DeepFool-lite</option>
                 </select>
             </div>
             <button class="basic-button" id="adv-generate">Generate adversarial examples</button>
+            <button class="basic-button" id="adv-robustness">Robustness curve (sweep &epsilon;)</button>
+            <button class="basic-button" id="adv-saliency">Saliency at last point</button>
             <label class="mdl-checkbox mdl-js-checkbox" for="adv-training" style="display:block;margin-top:8px;">
                 <input type="checkbox" id="adv-training" class="mdl-checkbox__input">
                 <span class="mdl-checkbox__label label">Adversarial training</span>
             </label>
             <div class="adv-readout" id="adv-readout"></div>
+            <svg id="adv-robustness-plot" width="240" height="140" style="display:none;margin-top:8px;"></svg>
         </div>
 
         <div class="adv-panel">
@@ -777,10 +783,25 @@ Modified by David Cato
             <p class="slider">
                 <input class="mdl-slider mdl-js-slider" type="range" id="unlearn-steps" min="10" max="500" step="10">
             </p>
+            <div class="select">
+                <select id="unlearn-method">
+                    <option value="ascent">Gradient ascent</option>
+                    <option value="finetune">Fine-tune on retain</option>
+                </select>
+            </div>
             <button class="basic-button" id="forget-orange">Forget Orange</button>
             <button class="basic-button" id="forget-blue">Forget Blue</button>
             <button class="basic-button" id="forget-misclassified">Forget misclassified</button>
             <button class="basic-button" id="retrain-without">Retrain without forgotten</button>
+            <p class="adv-help" style="margin-top:8px;">Selection: drag a rectangle on the plot (brush) to pick points, or forget the N nearest to the last-clicked point.</p>
+            <button class="basic-button" id="unlearn-brush-toggle">Brush-select: off</button>
+            <button class="basic-button" id="forget-selected">Forget selected</button>
+            <label for="forget-nearest-n">Nearest N:&nbsp;<span class="value" id="forget-nearest-n-val">10</span></label>
+            <p class="slider">
+                <input class="mdl-slider mdl-js-slider" type="range" id="forget-nearest-n" min="1" max="50" step="1">
+            </p>
+            <button class="basic-button" id="forget-nearest">Forget nearest N to last click</button>
+            <button class="basic-button" id="unlearn-relearn">Relearn-time probe</button>
             <div class="adv-readout" id="unlearn-readout"></div>
         </div>
 
