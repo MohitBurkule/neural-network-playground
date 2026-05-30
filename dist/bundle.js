@@ -89172,6 +89172,9 @@ var Player = (function () {
             this.callback(this.isPlaying);
         }
     };
+    Player.prototype.isActive = function () {
+        return this.isPlaying;
+    };
     Player.prototype.start = function (localTimerIndex) {
         var _this = this;
         var timer = d3.timer(function () {
@@ -89179,11 +89182,19 @@ var Player = (function () {
                 timer.stop();
                 return;
             }
-            oneStep();
+            var steps = Math.max(1, uxStepsPerTick | 0);
+            for (var s = 0; s < steps; s++) {
+                oneStep();
+                if (!_this.isPlaying) {
+                    break;
+                }
+            }
         });
     };
     return Player;
 }());
+var uxStepsPerTick = 1;
+var uxAfterStep = null;
 var state = state_1.State.deserializeState();
 state.getHiddenProps().forEach(function (prop) {
     if (prop in INPUTS) {
@@ -90252,6 +90263,9 @@ function oneStep() {
     lossTrain = getLoss(network, state.trainData);
     lossTest = getLoss(network, state.testData);
     updateUI();
+    if (uxAfterStep) {
+        uxAfterStep();
+    }
 }
 function getOutputWeights(network) {
     var weights = [];
@@ -91360,6 +91374,586 @@ document.querySelector("#add-activation").addEventListener("click", function () 
     parametersChanged = true;
     reset();
 });
+function uxToast(message, isWarning) {
+    if (isWarning === void 0) { isWarning = false; }
+    var container = document.getElementById("ux-toast-container");
+    if (!container) {
+        container = document.createElement("div");
+        container.id = "ux-toast-container";
+        document.body.appendChild(container);
+    }
+    var toast = document.createElement("div");
+    toast.className = "ux-toast" + (isWarning ? " ux-toast-warn" : "");
+    toast.textContent = message;
+    container.appendChild(toast);
+    void toast.offsetWidth;
+    toast.classList.add("ux-toast-show");
+    setTimeout(function () {
+        toast.classList.remove("ux-toast-show");
+        setTimeout(function () {
+            if (toast.parentNode) {
+                toast.parentNode.removeChild(toast);
+            }
+        }, 350);
+    }, isWarning ? 4000 : 2000);
+}
+var UX_PREFS_KEY = "nnpg-ux-prefs";
+function uxLoadPrefs() {
+    try {
+        var raw = window.localStorage.getItem(UX_PREFS_KEY);
+        return raw ? JSON.parse(raw) : {};
+    }
+    catch (e) {
+        return {};
+    }
+}
+function uxSavePrefs(patch) {
+    try {
+        var prefs = uxLoadPrefs();
+        for (var k in patch) {
+            prefs[k] = patch[k];
+        }
+        window.localStorage.setItem(UX_PREFS_KEY, JSON.stringify(prefs));
+    }
+    catch (e) { }
+}
+function uxCopyShareLink() {
+    try {
+        state.serialize();
+    }
+    catch (e) { }
+    var url = window.location.href;
+    var done = function () { return uxToast("Share link copied!"); };
+    var fallback = function () {
+        try {
+            var ta = document.createElement("textarea");
+            ta.value = url;
+            ta.style.position = "fixed";
+            ta.style.opacity = "0";
+            document.body.appendChild(ta);
+            ta.select();
+            document.execCommand("copy");
+            document.body.removeChild(ta);
+            done();
+        }
+        catch (e) {
+            uxToast("Copy failed; URL: " + url, true);
+        }
+    };
+    if (navigator.clipboard && navigator.clipboard.writeText) {
+        navigator.clipboard.writeText(url).then(done, fallback);
+    }
+    else {
+        fallback();
+    }
+}
+function uxApplyDarkMode(on) {
+    var dark = document.getElementById("dark-style");
+    var light = document.getElementById("light-style");
+    if (dark) {
+        dark.disabled = !on;
+    }
+    if (light) {
+        light.disabled = on;
+    }
+    document.body.classList.toggle("ux-dark", on);
+    var toggle = document.getElementById("dark-mode-toggle");
+    if (toggle) {
+        toggle.checked = on;
+    }
+}
+function uxSetFeatures(active) {
+    for (var key in INPUTS) {
+        if (state[key] !== undefined) {
+            state[key] = active.indexOf(key) !== -1;
+        }
+    }
+    ["x", "y", "xSquared", "ySquared", "xTimesY", "sinX", "sinY"].forEach(function (k) {
+        state[k] = active.indexOf(k) !== -1;
+    });
+}
+var UX_PRESETS = [
+    {
+        name: "Spiral solver (tanh, 4x8)",
+        apply: function () {
+            state.problem = state_1.Problem.CLASSIFICATION;
+            if (state_1.datasets["spiral"]) {
+                state.dataset = state_1.datasets["spiral"];
+            }
+            state.networkShape = [8, 8, 8, 8];
+            state.numHiddenLayers = 4;
+            state.activation = state_1.activations["tanh"];
+            state.learningRate = 0.03;
+            state.regularization = null;
+            state.regularizationRate = 0;
+            state.batchSize = 10;
+            state.noise = 0;
+            uxSetFeatures(["x", "y", "xSquared", "ySquared", "xTimesY", "sinX", "sinY"]);
+        }
+    },
+    {
+        name: "XOR minimal",
+        apply: function () {
+            state.problem = state_1.Problem.CLASSIFICATION;
+            if (state_1.datasets["xor"]) {
+                state.dataset = state_1.datasets["xor"];
+            }
+            state.networkShape = [2];
+            state.numHiddenLayers = 1;
+            state.activation = state_1.activations["tanh"];
+            state.learningRate = 0.1;
+            state.regularization = null;
+            state.regularizationRate = 0;
+            state.batchSize = 10;
+            uxSetFeatures(["xTimesY"]);
+        }
+    },
+    {
+        name: "Circle (relu)",
+        apply: function () {
+            state.problem = state_1.Problem.CLASSIFICATION;
+            if (state_1.datasets["circle"]) {
+                state.dataset = state_1.datasets["circle"];
+            }
+            state.networkShape = [4, 2];
+            state.numHiddenLayers = 2;
+            state.activation = state_1.activations["relu"];
+            state.learningRate = 0.03;
+            uxSetFeatures(["x", "y"]);
+        }
+    },
+    {
+        name: "Deep & narrow",
+        apply: function () {
+            state.problem = state_1.Problem.CLASSIFICATION;
+            if (state_1.datasets["spiral"]) {
+                state.dataset = state_1.datasets["spiral"];
+            }
+            state.networkShape = [3, 3, 3, 3, 3, 3];
+            state.numHiddenLayers = 6;
+            state.activation = state_1.activations["relu"];
+            state.learningRate = 0.03;
+            uxSetFeatures(["x", "y"]);
+        }
+    },
+    {
+        name: "Wide & shallow",
+        apply: function () {
+            state.problem = state_1.Problem.CLASSIFICATION;
+            if (state_1.datasets["circle"]) {
+                state.dataset = state_1.datasets["circle"];
+            }
+            state.networkShape = [12];
+            state.numHiddenLayers = 1;
+            state.activation = state_1.activations["tanh"];
+            state.learningRate = 0.03;
+            uxSetFeatures(["x", "y"]);
+        }
+    },
+    {
+        name: "Regression plane",
+        apply: function () {
+            state.problem = state_1.Problem.REGRESSION;
+            if (state_1.regDatasets["reg-plane"]) {
+                state.regDataset = state_1.regDatasets["reg-plane"];
+            }
+            state.networkShape = [3];
+            state.numHiddenLayers = 1;
+            state.activation = state_1.activations["tanh"];
+            state.learningRate = 0.03;
+            uxSetFeatures(["x", "y"]);
+        }
+    },
+    {
+        name: "Robust (adv training on)",
+        apply: function () {
+            state.problem = state_1.Problem.CLASSIFICATION;
+            if (state_1.datasets["spiral"]) {
+                state.dataset = state_1.datasets["spiral"];
+            }
+            state.networkShape = [8, 8];
+            state.numHiddenLayers = 2;
+            state.activation = state_1.activations["relu"];
+            state.learningRate = 0.03;
+            state.adversarialTraining = true;
+            state.advEpsilon = 0.5;
+            state.noise = 20;
+            uxSetFeatures(["x", "y"]);
+        }
+    },
+    {
+        name: "Overfit demo (no reg, tiny train)",
+        apply: function () {
+            state.problem = state_1.Problem.CLASSIFICATION;
+            if (state_1.datasets["spiral"]) {
+                state.dataset = state_1.datasets["spiral"];
+            }
+            state.networkShape = [8, 8, 8];
+            state.numHiddenLayers = 3;
+            state.activation = state_1.activations["relu"];
+            state.learningRate = 0.1;
+            state.regularization = null;
+            state.regularizationRate = 0;
+            state.percTrainData = 10;
+            state.noise = 25;
+            uxSetFeatures(["x", "y", "xSquared", "ySquared", "xTimesY"]);
+        }
+    }
+];
+function uxApplyPreset(index) {
+    var preset = UX_PRESETS[index];
+    if (!preset) {
+        return;
+    }
+    preset.apply();
+    state.serialize();
+    d3.select("#activations").property("value", (0, state_1.getKeyFromValue)(state_1.activations, state.activation));
+    d3.select("#learningRate").property("value", state.learningRate);
+    d3.select("#problem").property("value", state.problem === state_1.Problem.REGRESSION ? "regression" : "classification");
+    var dsKey = (0, state_1.getKeyFromValue)(state_1.datasets, state.dataset);
+    d3.selectAll("canvas[data-dataset]").classed("selected", false);
+    if (dsKey) {
+        d3.select("canvas[data-dataset=".concat(dsKey, "]")).classed("selected", true);
+    }
+    generateData();
+    reset();
+    uxToast("Applied preset: " + preset.name);
+}
+var uxSnapshot = null;
+function uxTakeSnapshot() {
+    if (network == null) {
+        uxToast("No network to snapshot.", true);
+        return;
+    }
+    var biases = {};
+    var links = {};
+    nn.forEachNode(network, true, function (node) {
+        biases[node.id] = node.bias;
+        node.inputLinks.forEach(function (link) { links[link.id] = link.weight; });
+    });
+    uxSnapshot = { biases: biases, links: links };
+    uxToast("Snapshot saved.");
+}
+function uxRestoreSnapshot() {
+    if (network == null || uxSnapshot == null) {
+        uxToast("No snapshot to restore.", true);
+        return;
+    }
+    nn.forEachNode(network, true, function (node) {
+        if (uxSnapshot.biases[node.id] != null) {
+            node.bias = uxSnapshot.biases[node.id];
+        }
+        node.inputLinks.forEach(function (link) {
+            if (uxSnapshot.links[link.id] != null) {
+                link.weight = uxSnapshot.links[link.id];
+            }
+        });
+    });
+    lossTrain = getLoss(network, state.trainData);
+    lossTest = getLoss(network, state.testData);
+    drawNetwork(network);
+    updateUI(true);
+    uxToast("Snapshot restored.");
+}
+function uxRandomizeWeights() {
+    if (network == null) {
+        uxToast("No network.", true);
+        return;
+    }
+    Math.seedrandom(Math.random().toFixed(8));
+    nn.applyWeightInit(network, state_1.weightInits[state.weightInit]);
+    applyFrozenLayers();
+    iter = 0;
+    lossTrain = getLoss(network, state.trainData);
+    lossTest = getLoss(network, state.testData);
+    drawNetwork(network);
+    updateUI(true);
+    uxToast("Weights re-initialized.");
+}
+function initUXFeatures() {
+    var prefs = uxLoadPrefs();
+    var darkToggle = document.getElementById("dark-mode-toggle");
+    var darkOn = prefs.darkMode === true;
+    uxApplyDarkMode(darkOn);
+    if (darkToggle) {
+        darkToggle.addEventListener("change", function () {
+            uxApplyDarkMode(darkToggle.checked);
+            uxSavePrefs({ darkMode: darkToggle.checked });
+        });
+    }
+    var copyBtn = document.getElementById("ux-copy-link");
+    if (copyBtn) {
+        copyBtn.addEventListener("click", uxCopyShareLink);
+    }
+    var presetSel = document.getElementById("ux-preset-select");
+    if (presetSel) {
+        UX_PRESETS.forEach(function (p, i) {
+            var opt = document.createElement("option");
+            opt.value = String(i);
+            opt.text = p.name;
+            presetSel.appendChild(opt);
+        });
+        presetSel.addEventListener("change", function () {
+            var v = presetSel.value;
+            if (v === "") {
+                return;
+            }
+            uxApplyPreset(+v);
+            presetSel.value = "";
+        });
+    }
+    var speedSlider = document.getElementById("ux-speed");
+    if (speedSlider) {
+        if (typeof prefs.stepsPerTick === "number") {
+            speedSlider.value = String(prefs.stepsPerTick);
+        }
+        uxStepsPerTick = +speedSlider.value || 1;
+        var speedLabel_1 = document.getElementById("ux-speed-value");
+        if (speedLabel_1) {
+            speedLabel_1.textContent = String(uxStepsPerTick);
+        }
+        speedSlider.addEventListener("input", function () {
+            uxStepsPerTick = Math.max(1, +speedSlider.value || 1);
+            if (speedLabel_1) {
+                speedLabel_1.textContent = String(uxStepsPerTick);
+            }
+            uxSavePrefs({ stepsPerTick: uxStepsPerTick });
+        });
+    }
+    var convChk = document.getElementById("ux-conv-enable");
+    var convThreshInput = document.getElementById("ux-conv-threshold");
+    var convWindow = [];
+    var runNRemaining = 0;
+    uxAfterStep = function () {
+        if (!isFinite(lossTrain) || !isFinite(lossTest)) {
+            if (player.isActive()) {
+                player.pause();
+                uxToast("Loss became NaN/Infinity — training paused.", true);
+            }
+            runNRemaining = 0;
+            convWindow = [];
+            return;
+        }
+        if (runNRemaining > 0) {
+            runNRemaining--;
+            if (runNRemaining === 0) {
+                player.pause();
+                uxToast("Finished requested epochs.");
+            }
+        }
+        if (convChk && convChk.checked) {
+            var thr = convThreshInput ? +convThreshInput.value : 0.0001;
+            convWindow.push(lossTrain);
+            if (convWindow.length > 20) {
+                convWindow.shift();
+            }
+            if (convWindow.length >= 20) {
+                var max = Math.max.apply(null, convWindow);
+                var min = Math.min.apply(null, convWindow);
+                if (max - min < thr && player.isActive()) {
+                    player.pause();
+                    convWindow = [];
+                    uxToast("Converged (loss change < " + thr + ") — paused.");
+                }
+            }
+        }
+        uxTickStatus();
+    };
+    var runNBtn = document.getElementById("ux-run-n-btn");
+    var runNInput = document.getElementById("ux-run-n");
+    if (runNBtn && runNInput) {
+        runNBtn.addEventListener("click", function () {
+            var n = Math.max(1, parseInt(runNInput.value, 10) || 0);
+            runNRemaining = n;
+            if (iter === 0) {
+                simulationStarted();
+            }
+            if (!player.isActive()) {
+                player.playOrPause();
+            }
+        });
+    }
+    var lrNum = document.getElementById("ux-lr-num");
+    if (lrNum) {
+        lrNum.value = String(state.learningRate);
+        lrNum.addEventListener("change", function () {
+            var v = parseFloat(lrNum.value);
+            if (isFinite(v) && v > 0) {
+                state.learningRate = v;
+                state.serialize();
+                parametersChanged = true;
+                d3.select("#learningRate").property("value", v);
+                uxToast("Learning rate set to " + v);
+            }
+        });
+    }
+    var randBtn = document.getElementById("ux-randomize-weights");
+    if (randBtn) {
+        randBtn.addEventListener("click", uxRandomizeWeights);
+    }
+    var snapBtn = document.getElementById("ux-snapshot");
+    var restoreBtn = document.getElementById("ux-restore");
+    if (snapBtn) {
+        snapBtn.addEventListener("click", uxTakeSnapshot);
+    }
+    if (restoreBtn) {
+        restoreBtn.addEventListener("click", uxRestoreSnapshot);
+    }
+    var clearBtn = document.getElementById("ux-clear-storage");
+    if (clearBtn) {
+        clearBtn.addEventListener("click", function () {
+            try {
+                window.localStorage.removeItem(UX_PREFS_KEY);
+                window.localStorage.removeItem("nnpg-onboard-dismissed");
+            }
+            catch (e) { }
+            window.location.hash = "";
+            window.location.reload();
+        });
+    }
+    var fsBtn = document.getElementById("ux-fullscreen");
+    if (fsBtn) {
+        fsBtn.addEventListener("click", function () {
+            var el = document.querySelector(".column.output");
+            if (!el) {
+                return;
+            }
+            var doc = document;
+            if (!doc.fullscreenElement) {
+                if (el.requestFullscreen) {
+                    el.requestFullscreen().catch(function () { });
+                }
+            }
+            else {
+                if (doc.exitFullscreen) {
+                    doc.exitFullscreen().catch(function () { });
+                }
+            }
+        });
+    }
+    var savedPanels = prefs.openPanels || {};
+    d3.selectAll("details[id]").each(function () {
+        var el = this;
+        if (savedPanels[el.id] !== undefined) {
+            el.open = !!savedPanels[el.id];
+        }
+        el.addEventListener("toggle", function () {
+            var cur = uxLoadPrefs().openPanels || {};
+            cur[el.id] = el.open;
+            uxSavePrefs({ openPanels: cur });
+        });
+    });
+    var banner = document.getElementById("ux-onboard");
+    var dismissed = false;
+    try {
+        dismissed = window.localStorage.getItem("nnpg-onboard-dismissed") === "1";
+    }
+    catch (e) { }
+    if (banner) {
+        if (dismissed) {
+            banner.style.display = "none";
+        }
+        var dismissBtn = document.getElementById("ux-onboard-dismiss");
+        if (dismissBtn) {
+            dismissBtn.addEventListener("click", function () {
+                banner.style.display = "none";
+                try {
+                    window.localStorage.setItem("nnpg-onboard-dismissed", "1");
+                }
+                catch (e) { }
+            });
+        }
+    }
+    var helpOverlay = document.getElementById("ux-help-overlay");
+    var helpBtn = document.getElementById("ux-help-btn");
+    var helpClose = document.getElementById("ux-help-close");
+    var toggleHelp = function (show) {
+        if (!helpOverlay) {
+            return;
+        }
+        var visible = helpOverlay.style.display !== "none";
+        var next = show === undefined ? !visible : show;
+        helpOverlay.style.display = next ? "flex" : "none";
+    };
+    if (helpBtn) {
+        helpBtn.addEventListener("click", function () { return toggleHelp(); });
+    }
+    if (helpClose) {
+        helpClose.addEventListener("click", function () { return toggleHelp(false); });
+    }
+    document.addEventListener("keydown", function (ev) {
+        var target = ev.target;
+        var tag = target && target.tagName ? target.tagName.toLowerCase() : "";
+        if (tag === "input" || tag === "textarea" || tag === "select" ||
+            (target && target.isContentEditable)) {
+            return;
+        }
+        if (ev.metaKey || ev.ctrlKey || ev.altKey) {
+            return;
+        }
+        var key = ev.key;
+        if (key === " " || key === "Spacebar") {
+            ev.preventDefault();
+            if (iter === 0) {
+                simulationStarted();
+            }
+            player.playOrPause();
+        }
+        else if (key === "s" || key === "S") {
+            player.pause();
+            if (iter === 0) {
+                simulationStarted();
+            }
+            oneStep();
+        }
+        else if (key === "r" || key === "R") {
+            reset();
+            userHasInteracted();
+        }
+        else if (key === "d" || key === "D") {
+            generateData();
+            parametersChanged = true;
+        }
+        else if (key === "?") {
+            toggleHelp();
+        }
+        else if (key === "Escape") {
+            toggleHelp(false);
+        }
+    });
+    uxTickStatus();
+}
+var uxLastStatusTime = 0;
+var uxLastStatusIter = 0;
+var uxStepsPerSec = 0;
+function uxTickStatus() {
+    var now = (typeof performance !== "undefined" && performance.now) ?
+        performance.now() : Date.now();
+    if (uxLastStatusTime !== 0) {
+        var dt = (now - uxLastStatusTime) / 1000;
+        if (dt > 0) {
+            var inst = (iter - uxLastStatusIter) / dt;
+            uxStepsPerSec = uxStepsPerSec === 0 ? inst : uxStepsPerSec * 0.8 + inst * 0.2;
+        }
+    }
+    uxLastStatusTime = now;
+    uxLastStatusIter = iter;
+    var set = function (id, txt) {
+        var el = document.getElementById(id);
+        if (el) {
+            el.textContent = txt;
+        }
+    };
+    set("ux-status-epoch", String(iter));
+    set("ux-status-losstrain", isFinite(lossTrain) ? lossTrain.toFixed(3) : "NaN");
+    set("ux-status-losstest", isFinite(lossTest) ? lossTest.toFixed(3) : "NaN");
+    var at = document.getElementById("acc-train");
+    var ate = document.getElementById("acc-test");
+    set("ux-status-acctrain", at ? (at.textContent || "—") : "—");
+    set("ux-status-acctest", ate ? (ate.textContent || "—") : "—");
+    set("ux-status-sps", uxStepsPerSec ? uxStepsPerSec.toFixed(1) : "0");
+}
+initUXFeatures();
 
 },{"./customdataset":1030,"./dataset":1031,"./dataset3d":1032,"./heatmap":1033,"./linechart":1034,"./nn":1035,"./state":1037,"./threeview":1038,"d3":9,"mathjs":937}],1037:[function(require,module,exports){
 "use strict";

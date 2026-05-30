@@ -67,6 +67,53 @@ Modified by David Cato
         <p class="l--page" style="display: flex;justify-content: center;">Made with ❤️ by Google, improved by Mohit Burkule</p>
     </header>
 
+    <!-- UX onboarding hint banner (feature 17) -->
+    <div id="ux-onboard" class="l--page">
+        <span>Tip: press <b>Space</b> to play/pause, <b>S</b> to step, <b>R</b> to reset, <b>D</b> to regenerate data, and <b>?</b> for all shortcuts. Pick a preset below to get started.</span>
+        <button id="ux-onboard-dismiss" type="button">Got it</button>
+    </div>
+
+    <!-- UX toolbar (features 1, 3, 5, 10, 4-help) -->
+    <div id="ux-toolbar" class="l--page">
+        <button id="ux-copy-link" type="button" title="Copy a shareable link with the current configuration">Copy share link</button>
+        <label class="ux-inline" title="Apply a curated configuration and reset">Preset:
+            <select id="ux-preset-select"><option value="">— Model zoo —</option></select>
+        </label>
+        <label class="ux-inline" title="How many training steps to run per animation frame">Speed:
+            <input type="range" id="ux-speed" min="1" max="50" step="1" value="1">
+            <span id="ux-speed-value">1</span>
+        </label>
+        <label class="ux-inline" title="Run exactly this many steps, then pause">Run
+            <input type="number" id="ux-run-n" min="1" value="100" style="width:60px">
+            <button id="ux-run-n-btn" type="button">epochs</button>
+        </label>
+        <label class="ux-inline" title="Pause automatically when training loss stops changing">
+            <input type="checkbox" id="ux-conv-enable"> Auto-stop
+            <input type="number" id="ux-conv-threshold" step="0.0001" min="0" value="0.0005" style="width:70px" title="Loss-change threshold over the last 20 steps">
+        </label>
+        <button id="ux-randomize-weights" type="button" title="Re-initialize weights without changing architecture or data">Randomize weights</button>
+        <button id="ux-snapshot" type="button" title="Save current weights & biases in memory">Snapshot</button>
+        <button id="ux-restore" type="button" title="Restore the last in-memory snapshot">Restore</button>
+        <button id="ux-clear-storage" type="button" title="Clear saved preferences and reload cleanly">Reset view</button>
+        <button id="ux-help-btn" type="button" title="Keyboard shortcuts (?)">?</button>
+    </div>
+
+    <!-- UX keyboard help overlay (feature 4) -->
+    <div id="ux-help-overlay" style="display:none">
+        <div class="ux-help-card">
+            <h3>Keyboard shortcuts</h3>
+            <ul>
+                <li><b>Space</b> — play / pause</li>
+                <li><b>S</b> — single step</li>
+                <li><b>R</b> — reset network</li>
+                <li><b>D</b> — regenerate data</li>
+                <li><b>?</b> — toggle this help</li>
+                <li><b>Esc</b> — close this help</li>
+            </ul>
+            <button id="ux-help-close" type="button">Close</button>
+        </div>
+    </div>
+
     <!-- Top Controls -->
     <div id="top-controls">
         <div class="container l--page">
@@ -103,13 +150,14 @@ Modified by David Cato
                         <option value="10">10</option>
                     </select>
                 </div>
+                <input type="number" id="ux-lr-num" step="0.0001" min="0" value="0.03" style="width:80px;margin-top:4px" title="Set an arbitrary learning rate">
             </div>
             <div class="control ui-seed">
         <label for="seed">Random Seed</label>
         <input type="text" id="seed" value="0.12345" />
       </div>
       <div class="control ui-activation">
-                <label for="activations">Activation</label>
+                <label for="activations" title="Nonlinearity applied at each neuron. ReLU/tanh are common defaults.">Activation</label>
                 <div class="select">
                     <select id="activations">
                         <option value="relu">ReLU</option>
@@ -141,7 +189,7 @@ Modified by David Cato
                 </div>
             </div>
             <div class="control ui-optimizer">
-                <label for="optimizer">Optimizer</label>
+                <label for="optimizer" title="Algorithm used to update weights from gradients (SGD, Adam, ...).">Optimizer</label>
                 <div class="select">
                     <select id="optimizer">
                         <option value="sgd">SGD</option>
@@ -214,7 +262,7 @@ Modified by David Cato
                 <input type="checkbox" id="layer-norm">
             </div>
             <div class="control ui-regularization">
-                <label for="regularizations">Regularization</label>
+                <label for="regularizations" title="Penalty on weights to reduce overfitting (L1 sparsity, L2 weight decay).">Regularization</label>
                 <div class="select">
                     <select id="regularizations">
                         <option value="none">None</option>
@@ -224,7 +272,7 @@ Modified by David Cato
                 </div>
             </div>
             <div class="control ui-regularizationRate">
-                <label for="regularRate">Regularization rate</label>
+                <label for="regularRate" title="Strength of the regularization penalty.">Regularization rate</label>
                 <div class="select">
                     <select id="regularRate">
                         <option value="0">0</option>
@@ -408,13 +456,13 @@ Modified by David Cato
                     </p>
                 </div>
                 <div class="ui-noise">
-                    <label for="noise">Noise:&nbsp;&nbsp;<span class="value">XX</span></label>
+                    <label for="noise" title="Amount of random jitter added to the generated data.">Noise:&nbsp;&nbsp;<span class="value">XX</span></label>
                     <p class="slider">
                         <input class="mdl-slider mdl-js-slider" type="range" id="noise" min="0" max="50" step="5">
                     </p>
                 </div>
                 <div class="ui-batchSize">
-                    <label for="batchSize">Batch size:&nbsp;&nbsp;<span class="value">XX</span></label>
+                    <label for="batchSize" title="Number of examples accumulated before each weight update.">Batch size:&nbsp;&nbsp;<span class="value">XX</span></label>
                     <p class="slider">
                         <input class="mdl-slider mdl-js-slider" type="range" id="batchSize" min="1" max="30" step="1">
                     </p>
@@ -515,7 +563,16 @@ Modified by David Cato
 
         <!-- Output Column -->
         <div class="column output">
-            <h4>Output</h4>
+            <h4>Output
+                <button id="ux-fullscreen" type="button" title="Toggle fullscreen for the output area" style="float:right">⛶</button>
+            </h4>
+            <!-- Compact status bar (feature 12) -->
+            <div id="ux-status-bar">
+                <span>epoch <b id="ux-status-epoch">0</b></span>
+                <span>loss <b id="ux-status-losstrain">—</b>/<b id="ux-status-losstest">—</b></span>
+                <span>acc <b id="ux-status-acctrain">—</b>/<b id="ux-status-acctest">—</b></span>
+                <span><b id="ux-status-sps">0</b> steps/s</span>
+            </div>
             <div class="metrics">
                 <div class="output-stats ui-percTrainData">
                     <span>Test loss</span>

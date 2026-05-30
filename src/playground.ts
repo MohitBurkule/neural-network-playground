@@ -160,16 +160,34 @@ class Player {
     }
   }
 
+  isActive(): boolean {
+    return this.isPlaying;
+  }
+
   private start(localTimerIndex: number) {
     const timer = d3.timer(() => {
       if (localTimerIndex < this.timerIndex) {
         timer.stop();  // Done.
         return;
       }
-      oneStep();
+      // Run a configurable number of steps per animation tick so training can
+      // proceed faster. Defaults to 1 to preserve the original behavior.
+      let steps = Math.max(1, uxStepsPerTick | 0);
+      for (let s = 0; s < steps; s++) {
+        oneStep();
+        if (!this.isPlaying) {
+          break;  // A hook (NaN / convergence / run-N) paused us mid-batch.
+        }
+      }
     });
   }
 }
+
+// ===== UX features: shared module-level state (see initUXFeatures) =====
+/** Number of training steps executed per animation tick (speed control). */
+let uxStepsPerTick = 1;
+/** Hook invoked after each oneStep() to power convergence / run-N / NaN logic. */
+let uxAfterStep: (() => void) | null = null;
 
 let state = State.deserializeState();
 
@@ -1465,6 +1483,9 @@ function oneStep(): void {
   lossTrain = getLoss(network, state.trainData);
   lossTest = getLoss(network, state.testData);
   updateUI();
+  if (uxAfterStep) {
+    uxAfterStep();
+  }
 }
 
 export function getOutputWeights(network: nn.Node[][]): number[] {
@@ -2683,3 +2704,569 @@ document.querySelector("#add-activation").addEventListener("click", () => {
   parametersChanged = true;
   reset();
 })
+
+// ===========================================================================
+// UX / sharing / quality-of-life features.
+// All wiring lives here to avoid double-binding controls set up in makeGUI().
+// ===========================================================================
+
+/** Lightweight toast/notification helper (feature 18). */
+function uxToast(message: string, isWarning = false): void {
+  let container = document.getElementById("ux-toast-container");
+  if (!container) {
+    container = document.createElement("div");
+    container.id = "ux-toast-container";
+    document.body.appendChild(container);
+  }
+  let toast = document.createElement("div");
+  toast.className = "ux-toast" + (isWarning ? " ux-toast-warn" : "");
+  toast.textContent = message;
+  container.appendChild(toast);
+  // Force reflow so the transition runs.
+  void toast.offsetWidth;
+  toast.classList.add("ux-toast-show");
+  setTimeout(() => {
+    toast.classList.remove("ux-toast-show");
+    setTimeout(() => {
+      if (toast.parentNode) {
+        toast.parentNode.removeChild(toast);
+      }
+    }, 350);
+  }, isWarning ? 4000 : 2000);
+}
+
+const UX_PREFS_KEY = "nnpg-ux-prefs";
+
+function uxLoadPrefs(): any {
+  try {
+    let raw = window.localStorage.getItem(UX_PREFS_KEY);
+    return raw ? JSON.parse(raw) : {};
+  } catch (e) {
+    return {};
+  }
+}
+
+function uxSavePrefs(patch: any): void {
+  try {
+    let prefs = uxLoadPrefs();
+    for (let k in patch) {
+      prefs[k] = patch[k];
+    }
+    window.localStorage.setItem(UX_PREFS_KEY, JSON.stringify(prefs));
+  } catch (e) { /* localStorage unavailable */ }
+}
+
+/** Feature 1: copy a full share link (state lives in the URL hash). */
+function uxCopyShareLink(): void {
+  try { state.serialize(); } catch (e) { /* ignore */ }
+  let url = window.location.href;
+  let done = () => uxToast("Share link copied!");
+  let fallback = () => {
+    try {
+      let ta = document.createElement("textarea");
+      ta.value = url;
+      ta.style.position = "fixed";
+      ta.style.opacity = "0";
+      document.body.appendChild(ta);
+      ta.select();
+      document.execCommand("copy");
+      document.body.removeChild(ta);
+      done();
+    } catch (e) {
+      uxToast("Copy failed; URL: " + url, true);
+    }
+  };
+  if (navigator.clipboard && navigator.clipboard.writeText) {
+    navigator.clipboard.writeText(url).then(done, fallback);
+  } else {
+    fallback();
+  }
+}
+
+/** Feature 2: dark mode toggle, persisted in localStorage. */
+function uxApplyDarkMode(on: boolean): void {
+  let dark = document.getElementById("dark-style") as HTMLLinkElement;
+  let light = document.getElementById("light-style") as HTMLLinkElement;
+  if (dark) { (dark as any).disabled = !on; }
+  if (light) { (light as any).disabled = on; }
+  document.body.classList.toggle("ux-dark", on);
+  let toggle = document.getElementById("dark-mode-toggle") as HTMLInputElement;
+  if (toggle) { toggle.checked = on; }
+}
+
+/** Feature 3: curated preset configurations ("Model zoo"). */
+interface UxPreset {
+  name: string;
+  apply: () => void;
+}
+
+function uxSetFeatures(active: string[]): void {
+  for (let key in INPUTS) {
+    if (state[key] !== undefined) {
+      state[key] = active.indexOf(key) !== -1;
+    }
+  }
+  // The canonical input toggles.
+  ["x", "y", "xSquared", "ySquared", "xTimesY", "sinX", "sinY"].forEach(k => {
+    state[k] = active.indexOf(k) !== -1;
+  });
+}
+
+const UX_PRESETS: UxPreset[] = [
+  {
+    name: "Spiral solver (tanh, 4x8)",
+    apply: () => {
+      state.problem = Problem.CLASSIFICATION;
+      if (datasets["spiral"]) { state.dataset = datasets["spiral"]; }
+      state.networkShape = [8, 8, 8, 8];
+      state.numHiddenLayers = 4;
+      state.activation = activations["tanh"];
+      state.learningRate = 0.03;
+      state.regularization = null;
+      state.regularizationRate = 0;
+      state.batchSize = 10;
+      state.noise = 0;
+      uxSetFeatures(["x", "y", "xSquared", "ySquared", "xTimesY", "sinX", "sinY"]);
+    }
+  },
+  {
+    name: "XOR minimal",
+    apply: () => {
+      state.problem = Problem.CLASSIFICATION;
+      if (datasets["xor"]) { state.dataset = datasets["xor"]; }
+      state.networkShape = [2];
+      state.numHiddenLayers = 1;
+      state.activation = activations["tanh"];
+      state.learningRate = 0.1;
+      state.regularization = null;
+      state.regularizationRate = 0;
+      state.batchSize = 10;
+      uxSetFeatures(["xTimesY"]);
+    }
+  },
+  {
+    name: "Circle (relu)",
+    apply: () => {
+      state.problem = Problem.CLASSIFICATION;
+      if (datasets["circle"]) { state.dataset = datasets["circle"]; }
+      state.networkShape = [4, 2];
+      state.numHiddenLayers = 2;
+      state.activation = activations["relu"];
+      state.learningRate = 0.03;
+      uxSetFeatures(["x", "y"]);
+    }
+  },
+  {
+    name: "Deep & narrow",
+    apply: () => {
+      state.problem = Problem.CLASSIFICATION;
+      if (datasets["spiral"]) { state.dataset = datasets["spiral"]; }
+      state.networkShape = [3, 3, 3, 3, 3, 3];
+      state.numHiddenLayers = 6;
+      state.activation = activations["relu"];
+      state.learningRate = 0.03;
+      uxSetFeatures(["x", "y"]);
+    }
+  },
+  {
+    name: "Wide & shallow",
+    apply: () => {
+      state.problem = Problem.CLASSIFICATION;
+      if (datasets["circle"]) { state.dataset = datasets["circle"]; }
+      state.networkShape = [12];
+      state.numHiddenLayers = 1;
+      state.activation = activations["tanh"];
+      state.learningRate = 0.03;
+      uxSetFeatures(["x", "y"]);
+    }
+  },
+  {
+    name: "Regression plane",
+    apply: () => {
+      state.problem = Problem.REGRESSION;
+      if (regDatasets["reg-plane"]) { state.regDataset = regDatasets["reg-plane"]; }
+      state.networkShape = [3];
+      state.numHiddenLayers = 1;
+      state.activation = activations["tanh"];
+      state.learningRate = 0.03;
+      uxSetFeatures(["x", "y"]);
+    }
+  },
+  {
+    name: "Robust (adv training on)",
+    apply: () => {
+      state.problem = Problem.CLASSIFICATION;
+      if (datasets["spiral"]) { state.dataset = datasets["spiral"]; }
+      state.networkShape = [8, 8];
+      state.numHiddenLayers = 2;
+      state.activation = activations["relu"];
+      state.learningRate = 0.03;
+      state.adversarialTraining = true;
+      state.advEpsilon = 0.5;
+      state.noise = 20;
+      uxSetFeatures(["x", "y"]);
+    }
+  },
+  {
+    name: "Overfit demo (no reg, tiny train)",
+    apply: () => {
+      state.problem = Problem.CLASSIFICATION;
+      if (datasets["spiral"]) { state.dataset = datasets["spiral"]; }
+      state.networkShape = [8, 8, 8];
+      state.numHiddenLayers = 3;
+      state.activation = activations["relu"];
+      state.learningRate = 0.1;
+      state.regularization = null;
+      state.regularizationRate = 0;
+      state.percTrainData = 10;
+      state.noise = 25;
+      uxSetFeatures(["x", "y", "xSquared", "ySquared", "xTimesY"]);
+    }
+  }
+];
+
+function uxApplyPreset(index: number): void {
+  let preset = UX_PRESETS[index];
+  if (!preset) { return; }
+  preset.apply();
+  state.serialize();
+  // Sync the controls that reset() does not itself reflect.
+  d3.select("#activations").property("value",
+      getKeyFromValue(activations, state.activation));
+  d3.select("#learningRate").property("value", state.learningRate);
+  d3.select("#problem").property("value",
+      state.problem === Problem.REGRESSION ? "regression" : "classification");
+  let dsKey = getKeyFromValue(datasets, state.dataset);
+  d3.selectAll("canvas[data-dataset]").classed("selected", false);
+  if (dsKey) {
+    d3.select(`canvas[data-dataset=${dsKey}]`).classed("selected", true);
+  }
+  generateData();
+  reset();
+  uxToast("Applied preset: " + preset.name);
+}
+
+/** Feature 14/15: snapshot & weight helpers (in memory). */
+let uxSnapshot: {biases: {[id: string]: number}; links: {[id: string]: number}} | null = null;
+
+function uxTakeSnapshot(): void {
+  if (network == null) { uxToast("No network to snapshot.", true); return; }
+  let biases: {[id: string]: number} = {};
+  let links: {[id: string]: number} = {};
+  nn.forEachNode(network, true, node => {
+    biases[node.id] = node.bias;
+    node.inputLinks.forEach(link => { links[link.id] = link.weight; });
+  });
+  uxSnapshot = {biases, links};
+  uxToast("Snapshot saved.");
+}
+
+function uxRestoreSnapshot(): void {
+  if (network == null || uxSnapshot == null) {
+    uxToast("No snapshot to restore.", true);
+    return;
+  }
+  nn.forEachNode(network, true, node => {
+    if (uxSnapshot.biases[node.id] != null) { node.bias = uxSnapshot.biases[node.id]; }
+    node.inputLinks.forEach(link => {
+      if (uxSnapshot.links[link.id] != null) { link.weight = uxSnapshot.links[link.id]; }
+    });
+  });
+  lossTrain = getLoss(network, state.trainData);
+  lossTest = getLoss(network, state.testData);
+  drawNetwork(network);
+  updateUI(true);
+  uxToast("Snapshot restored.");
+}
+
+function uxRandomizeWeights(): void {
+  if (network == null) { uxToast("No network.", true); return; }
+  Math.seedrandom(Math.random().toFixed(8));
+  nn.applyWeightInit(network, weightInits[state.weightInit]);
+  applyFrozenLayers();
+  iter = 0;
+  lossTrain = getLoss(network, state.trainData);
+  lossTest = getLoss(network, state.testData);
+  drawNetwork(network);
+  updateUI(true);
+  uxToast("Weights re-initialized.");
+}
+
+/** Main entry point for all UX features. */
+function initUXFeatures(): void {
+  let prefs = uxLoadPrefs();
+
+  // ---- Feature 18 already defined (uxToast) ----
+
+  // ---- Feature 2: dark mode ----
+  let darkToggle = document.getElementById("dark-mode-toggle") as HTMLInputElement;
+  let darkOn = prefs.darkMode === true;
+  uxApplyDarkMode(darkOn);
+  if (darkToggle) {
+    darkToggle.addEventListener("change", () => {
+      uxApplyDarkMode(darkToggle.checked);
+      uxSavePrefs({darkMode: darkToggle.checked});
+    });
+  }
+
+  // ---- Feature 1: copy share link ----
+  let copyBtn = document.getElementById("ux-copy-link");
+  if (copyBtn) { copyBtn.addEventListener("click", uxCopyShareLink); }
+
+  // ---- Feature 3: presets dropdown ----
+  let presetSel = document.getElementById("ux-preset-select") as HTMLSelectElement;
+  if (presetSel) {
+    UX_PRESETS.forEach((p, i) => {
+      let opt = document.createElement("option");
+      opt.value = String(i);
+      opt.text = p.name;
+      presetSel.appendChild(opt);
+    });
+    presetSel.addEventListener("change", () => {
+      let v = presetSel.value;
+      if (v === "") { return; }
+      uxApplyPreset(+v);
+      presetSel.value = "";
+    });
+  }
+
+  // ---- Feature 5: steps-per-tick speed control ----
+  let speedSlider = document.getElementById("ux-speed") as HTMLInputElement;
+  if (speedSlider) {
+    if (typeof prefs.stepsPerTick === "number") {
+      speedSlider.value = String(prefs.stepsPerTick);
+    }
+    uxStepsPerTick = +speedSlider.value || 1;
+    let speedLabel = document.getElementById("ux-speed-value");
+    if (speedLabel) { speedLabel.textContent = String(uxStepsPerTick); }
+    speedSlider.addEventListener("input", () => {
+      uxStepsPerTick = Math.max(1, +speedSlider.value || 1);
+      if (speedLabel) { speedLabel.textContent = String(uxStepsPerTick); }
+      uxSavePrefs({stepsPerTick: uxStepsPerTick});
+    });
+  }
+
+  // ---- Feature 7: auto-stop on convergence ----
+  let convChk = document.getElementById("ux-conv-enable") as HTMLInputElement;
+  let convThreshInput = document.getElementById("ux-conv-threshold") as HTMLInputElement;
+  let convWindow: number[] = [];
+
+  // ---- Feature 6: run N epochs then stop ----
+  let runNRemaining = 0;
+
+  // ---- Feature 8/6/7: after-step hook ----
+  uxAfterStep = () => {
+    // Pause-on-NaN (feature 8).
+    if (!isFinite(lossTrain) || !isFinite(lossTest)) {
+      if (player.isActive()) {
+        player.pause();
+        uxToast("Loss became NaN/Infinity — training paused.", true);
+      }
+      runNRemaining = 0;
+      convWindow = [];
+      return;
+    }
+    // Run-N (feature 6).
+    if (runNRemaining > 0) {
+      runNRemaining--;
+      if (runNRemaining === 0) {
+        player.pause();
+        uxToast("Finished requested epochs.");
+      }
+    }
+    // Convergence auto-stop (feature 7).
+    if (convChk && convChk.checked) {
+      let thr = convThreshInput ? +convThreshInput.value : 0.0001;
+      convWindow.push(lossTrain);
+      if (convWindow.length > 20) { convWindow.shift(); }
+      if (convWindow.length >= 20) {
+        let max = Math.max.apply(null, convWindow);
+        let min = Math.min.apply(null, convWindow);
+        if (max - min < thr && player.isActive()) {
+          player.pause();
+          convWindow = [];
+          uxToast("Converged (loss change < " + thr + ") — paused.");
+        }
+      }
+    }
+    // Status bar steps/sec (feature 12).
+    uxTickStatus();
+  };
+
+  // ---- Feature 6 button ----
+  let runNBtn = document.getElementById("ux-run-n-btn");
+  let runNInput = document.getElementById("ux-run-n") as HTMLInputElement;
+  if (runNBtn && runNInput) {
+    runNBtn.addEventListener("click", () => {
+      let n = Math.max(1, parseInt(runNInput.value, 10) || 0);
+      runNRemaining = n;
+      if (iter === 0) { simulationStarted(); }
+      if (!player.isActive()) { player.playOrPause(); }
+    });
+  }
+
+  // ---- Feature 13: numerical LR input ----
+  let lrNum = document.getElementById("ux-lr-num") as HTMLInputElement;
+  if (lrNum) {
+    lrNum.value = String(state.learningRate);
+    lrNum.addEventListener("change", () => {
+      let v = parseFloat(lrNum.value);
+      if (isFinite(v) && v > 0) {
+        state.learningRate = v;
+        state.serialize();
+        parametersChanged = true;
+        d3.select("#learningRate").property("value", v);
+        uxToast("Learning rate set to " + v);
+      }
+    });
+  }
+
+  // ---- Feature 14: randomize weights ----
+  let randBtn = document.getElementById("ux-randomize-weights");
+  if (randBtn) { randBtn.addEventListener("click", uxRandomizeWeights); }
+
+  // ---- Feature 15: snapshot / restore ----
+  let snapBtn = document.getElementById("ux-snapshot");
+  let restoreBtn = document.getElementById("ux-restore");
+  if (snapBtn) { snapBtn.addEventListener("click", uxTakeSnapshot); }
+  if (restoreBtn) { restoreBtn.addEventListener("click", uxRestoreSnapshot); }
+
+  // ---- Feature 10: reset view / clear localStorage ----
+  let clearBtn = document.getElementById("ux-clear-storage");
+  if (clearBtn) {
+    clearBtn.addEventListener("click", () => {
+      try {
+        window.localStorage.removeItem(UX_PREFS_KEY);
+        window.localStorage.removeItem("nnpg-onboard-dismissed");
+      } catch (e) { /* ignore */ }
+      window.location.hash = "";
+      window.location.reload();
+    });
+  }
+
+  // ---- Feature 11: fullscreen toggle for output area ----
+  let fsBtn = document.getElementById("ux-fullscreen");
+  if (fsBtn) {
+    fsBtn.addEventListener("click", () => {
+      let el = document.querySelector(".column.output") as any;
+      if (!el) { return; }
+      let doc = document as any;
+      if (!doc.fullscreenElement) {
+        if (el.requestFullscreen) { el.requestFullscreen().catch(() => {}); }
+      } else {
+        if (doc.exitFullscreen) { doc.exitFullscreen().catch(() => {}); }
+      }
+    });
+  }
+
+  // ---- Feature 16: persisted UI prefs for analysis panels ----
+  // Restore open/closed <details> panels and remember changes.
+  let savedPanels = prefs.openPanels || {};
+  d3.selectAll("details[id]").each(function() {
+    let el = this as HTMLDetailsElement;
+    if (savedPanels[el.id] !== undefined) {
+      el.open = !!savedPanels[el.id];
+    }
+    el.addEventListener("toggle", () => {
+      let cur = uxLoadPrefs().openPanels || {};
+      cur[el.id] = el.open;
+      uxSavePrefs({openPanels: cur});
+    });
+  });
+
+  // ---- Feature 17: onboarding hint banner ----
+  let banner = document.getElementById("ux-onboard");
+  let dismissed = false;
+  try { dismissed = window.localStorage.getItem("nnpg-onboard-dismissed") === "1"; } catch (e) {}
+  if (banner) {
+    if (dismissed) {
+      banner.style.display = "none";
+    }
+    let dismissBtn = document.getElementById("ux-onboard-dismiss");
+    if (dismissBtn) {
+      dismissBtn.addEventListener("click", () => {
+        banner.style.display = "none";
+        try { window.localStorage.setItem("nnpg-onboard-dismissed", "1"); } catch (e) {}
+      });
+    }
+  }
+
+  // ---- Feature 4: keyboard shortcuts + help overlay ----
+  let helpOverlay = document.getElementById("ux-help-overlay");
+  let helpBtn = document.getElementById("ux-help-btn");
+  let helpClose = document.getElementById("ux-help-close");
+  let toggleHelp = (show?: boolean) => {
+    if (!helpOverlay) { return; }
+    let visible = helpOverlay.style.display !== "none";
+    let next = show === undefined ? !visible : show;
+    helpOverlay.style.display = next ? "flex" : "none";
+  };
+  if (helpBtn) { helpBtn.addEventListener("click", () => toggleHelp()); }
+  if (helpClose) { helpClose.addEventListener("click", () => toggleHelp(false)); }
+
+  document.addEventListener("keydown", (ev: KeyboardEvent) => {
+    let target = ev.target as HTMLElement;
+    let tag = target && target.tagName ? target.tagName.toLowerCase() : "";
+    if (tag === "input" || tag === "textarea" || tag === "select" ||
+        (target && target.isContentEditable)) {
+      return;  // Don't hijack typing.
+    }
+    if (ev.metaKey || ev.ctrlKey || ev.altKey) { return; }
+    let key = ev.key;
+    if (key === " " || key === "Spacebar") {
+      ev.preventDefault();
+      if (iter === 0) { simulationStarted(); }
+      player.playOrPause();
+    } else if (key === "s" || key === "S") {
+      player.pause();
+      if (iter === 0) { simulationStarted(); }
+      oneStep();
+    } else if (key === "r" || key === "R") {
+      reset();
+      userHasInteracted();
+    } else if (key === "d" || key === "D") {
+      generateData();
+      parametersChanged = true;
+    } else if (key === "?") {
+      toggleHelp();
+    } else if (key === "Escape") {
+      toggleHelp(false);
+    }
+  });
+
+  // Initialise the status bar once.
+  uxTickStatus();
+}
+
+// ---- Feature 12: compact status bar (reads existing readouts) ----
+let uxLastStatusTime = 0;
+let uxLastStatusIter = 0;
+let uxStepsPerSec = 0;
+function uxTickStatus(): void {
+  let now = (typeof performance !== "undefined" && performance.now) ?
+      performance.now() : Date.now();
+  if (uxLastStatusTime !== 0) {
+    let dt = (now - uxLastStatusTime) / 1000;
+    if (dt > 0) {
+      let inst = (iter - uxLastStatusIter) / dt;
+      // Exponential smoothing for a stable readout.
+      uxStepsPerSec = uxStepsPerSec === 0 ? inst : uxStepsPerSec * 0.8 + inst * 0.2;
+    }
+  }
+  uxLastStatusTime = now;
+  uxLastStatusIter = iter;
+  let set = (id: string, txt: string) => {
+    let el = document.getElementById(id);
+    if (el) { el.textContent = txt; }
+  };
+  set("ux-status-epoch", String(iter));
+  set("ux-status-losstrain", isFinite(lossTrain) ? lossTrain.toFixed(3) : "NaN");
+  set("ux-status-losstest", isFinite(lossTest) ? lossTest.toFixed(3) : "NaN");
+  let at = document.getElementById("acc-train");
+  let ate = document.getElementById("acc-test");
+  set("ux-status-acctrain", at ? (at.textContent || "—") : "—");
+  set("ux-status-acctest", ate ? (ate.textContent || "—") : "—");
+  set("ux-status-sps", uxStepsPerSec ? uxStepsPerSec.toFixed(1) : "0");
+}
+
+initUXFeatures();
