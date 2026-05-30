@@ -1196,6 +1196,7 @@ function updateUI(firstStep = false) {
   updateClassificationMetricsUI();
   updateAnalysis();
   updateTrainingConfigSummary();
+  interpAfterUpdate();
 
   // Now "draw" it as JavaScript
   d3.select("#network-as-javascript").text(nn.compileNetworkToJs(network));
@@ -3156,12 +3157,632 @@ function makeAnalysisGUI(): void {
   d3.select("#an-landscape-btn").on("click", () => computeLossLandscape());
 }
 
+// ============================================================================
+// Interpretability (2D classification only; degrades gracefully otherwise).
+// ============================================================================
+
+let ablatedNeuronId: string = null;          // id of currently ablated neuron
+let ablatedSavedWeights: number[] = null;    // its outgoing weights, for restore
+let confidenceContourOn = false;
+
+/** True when interpretability tools are meaningful. */
+function interpEnabled(): boolean {
+  return state.problem === Problem.CLASSIFICATION && !state.threeD;
+}
+
+/** List hidden-layer nodes as {id, label}. */
+function hiddenNodes(): {id: string; label: string}[] {
+  let out: {id: string; label: string}[] = [];
+  if (!network) { return out; }
+  for (let l = 1; l < network.length - 1; l++) {
+    network[l].forEach((node, i) => {
+      out.push({id: node.id, label: `L${l} N${i + 1} (${node.id})`});
+    });
+  }
+  return out;
+}
+
+function findNode(id: string): nn.Node {
+  let found: nn.Node = null;
+  nn.forEachNode(network, true, n => { if (n.id === id) { found = n; } });
+  return found;
+}
+
+/** Output prediction for raw (x, y), respecting current ablation. */
+function interpPredict(x: number, y: number): number {
+  return nn.forwardProp(network, constructInput(x, y),
+      state.weightQuantization, state.layerNorm);
+}
+
+/** Simple horizontal/vertical bar chart of labelled values into an svg. */
+function drawBarChart(selector: string, items: {label: string; value: number}[],
+    color = "#0877bd"): void {
+  let svg = d3.select(selector);
+  svg.selectAll("*").remove();
+  if (!items.length) { return; }
+  let w = +svg.attr("width"), h = +svg.attr("height");
+  let m = {l: 70, r: 10, t: 6, b: 6};
+  let maxAbs = d3.max(items, d => Math.abs(d.value)) || 1;
+  let x = d3.scaleLinear().domain([-maxAbs, maxAbs]).range([m.l, w - m.r]);
+  let y = d3.scaleBand().domain(items.map(d => d.label))
+      .range([m.t, h - m.b]).padding(0.2);
+  let zero = x(0);
+  svg.append("line").attr("x1", zero).attr("x2", zero)
+    .attr("y1", m.t).attr("y2", h - m.b).attr("stroke", "#ccc");
+  svg.selectAll("rect.bar").data(items).enter().append("rect")
+    .attr("class", "bar")
+    .attr("x", d => d.value >= 0 ? zero : x(d.value))
+    .attr("y", d => y(d.label))
+    .attr("width", d => Math.abs(x(d.value) - zero))
+    .attr("height", y.bandwidth())
+    .attr("fill", d => d.value >= 0 ? color : "#f59322");
+  svg.selectAll("text.lbl").data(items).enter().append("text")
+    .attr("class", "lbl")
+    .attr("x", 2).attr("y", d => y(d.label) + y.bandwidth() / 2 + 3)
+    .attr("font-size", "9px").attr("fill", "#666")
+    .text(d => d.label);
+}
+
+/** Small line chart (x,y points) into an svg with given domains. */
+function drawLineChart(selector: string, pts: {x: number; y: number}[],
+    yDom: [number, number], title?: string): void {
+  let svg = d3.select(selector);
+  svg.selectAll("*").remove();
+  if (!pts.length) { return; }
+  let w = +svg.attr("width"), h = +svg.attr("height");
+  let m = 24;
+  let xs = d3.scaleLinear()
+      .domain(d3.extent(pts, d => d.x) as [number, number]).range([m, w - 6]);
+  let ys = d3.scaleLinear().domain(yDom).range([h - m, 6]);
+  svg.append("g").attr("transform", `translate(0,${h - m})`)
+    .call(d3.axisBottom(xs).ticks(4) as any);
+  svg.append("g").attr("transform", `translate(${m},0)`)
+    .call(d3.axisLeft(ys).ticks(3) as any);
+  let line = d3.line<{x: number; y: number}>().x(d => xs(d.x)).y(d => ys(d.y));
+  svg.append("path").datum(pts).attr("fill", "none")
+    .attr("stroke", "#0877bd").attr("stroke-width", 2).attr("d", line as any);
+  if (title) {
+    svg.append("text").attr("x", m).attr("y", 12).attr("font-size", "9px")
+      .attr("fill", "#666").text(title);
+  }
+}
+
+// ---- 1. Saliency field ----
+function computeSaliencyField(): void {
+  let g = heatmapOverlay();
+  g.selectAll("g.ip-saliency").remove();
+  let grp = g.append("g").attr("class", "ip-saliency");
+  let N = 9, h = 1e-2;
+  let step = (2 * HM_MAXSCALE) / (N + 1);
+  let maxMag = 0;
+  let vecs: {x: number; y: number; gx: number; gy: number; mag: number}[] = [];
+  for (let i = 1; i <= N; i++) {
+    for (let j = 1; j <= N; j++) {
+      let x = -HM_MAXSCALE + i * step;
+      let y = -HM_MAXSCALE + j * step;
+      let gx = (interpPredict(x + h, y) - interpPredict(x - h, y)) / (2 * h);
+      let gy = (interpPredict(x, y + h) - interpPredict(x, y - h)) / (2 * h);
+      let mag = Math.hypot(gx, gy);
+      maxMag = Math.max(maxMag, mag);
+      vecs.push({x, y, gx, gy, mag});
+    }
+  }
+  let L = step * HM_FACTOR * 0.45;
+  for (let v of vecs) {
+    let [px, py] = dataToPx(v.x, v.y);
+    let n = v.mag || 1;
+    let x1 = px + (v.gx / n) * L;
+    let y1 = py - (v.gy / n) * L;
+    let op = maxMag ? 0.25 + 0.75 * (v.mag / maxMag) : 0.5;
+    grp.append("line").attr("x1", px).attr("y1", py).attr("x2", x1).attr("y2", y1)
+      .attr("stroke", "#333").attr("stroke-width", 1).attr("opacity", op);
+    grp.append("circle").attr("cx", x1).attr("cy", y1).attr("r", 1.5)
+      .attr("fill", "#333").attr("opacity", op);
+  }
+  d3.select("#ip-saliency-out").text(
+    `Drew ${vecs.length} gradient arrows. Max |grad|=${maxMag.toFixed(3)}.`);
+}
+
+// ---- 2. Occlusion sensitivity ----
+function computeOcclusion(): void {
+  let ids = constructInputIds();
+  let data = sampleSubset(state.testData.concat(state.trainData), 150);
+  if (!data.length) { return; }
+  // Mean of each feature across data, for "zeroing" semantics we set to mean.
+  let base = data.map(p => interpPredict(p.x, p.y));
+  let items: {label: string; value: number}[] = [];
+  for (let fi = 0; fi < ids.length; fi++) {
+    let sum = 0;
+    for (let k = 0; k < data.length; k++) {
+      let full = constructInput(data[k].x, data[k].y);
+      full[fi] = 0;
+      let out = nn.forwardProp(network, full,
+          state.weightQuantization, state.layerNorm);
+      sum += Math.abs(out - base[k]);
+    }
+    items.push({label: INPUTS[ids[fi]].label, value: sum / data.length});
+  }
+  drawBarChart("#ip-occlusion-chart", items, "#0877bd");
+}
+
+// ---- 3. Drop-feature importance ----
+function computeDropFeature(): void {
+  let ids = constructInputIds();
+  let data = state.trainData.concat(state.testData);
+  if (!data.length) { return; }
+  let means = ids.map((_, fi) => d3.mean(data,
+      p => constructInput(p.x, p.y)[fi]) || 0);
+  let baseAcc = 0;
+  for (let p of data) {
+    if (Math.sign(interpPredict(p.x, p.y)) === Math.sign(p.label)) { baseAcc++; }
+  }
+  baseAcc /= data.length;
+  let items: {label: string; value: number}[] = [];
+  for (let fi = 0; fi < ids.length; fi++) {
+    let correct = 0;
+    for (let p of data) {
+      let full = constructInput(p.x, p.y);
+      full[fi] = means[fi];
+      let out = nn.forwardProp(network, full,
+          state.weightQuantization, state.layerNorm);
+      if (Math.sign(out) === Math.sign(p.label)) { correct++; }
+    }
+    items.push({label: INPUTS[ids[fi]].label, value: baseAcc - correct / data.length});
+  }
+  drawBarChart("#ip-dropfeat-chart", items, "#0877bd");
+}
+
+// ---- 4. Partial dependence ----
+function computePDP(): void {
+  let data = sampleSubset(state.trainData.concat(state.testData), 120);
+  if (!data.length) { return; }
+  let N = 21;
+  let mk = (vary: "x" | "y") => {
+    let pts: {x: number; y: number}[] = [];
+    for (let i = 0; i < N; i++) {
+      let v = -HM_MAXSCALE + (2 * HM_MAXSCALE) * i / (N - 1);
+      let sum = 0;
+      for (let p of data) {
+        let px = vary === "x" ? v : p.x;
+        let py = vary === "y" ? v : p.y;
+        sum += interpPredict(px, py);
+      }
+      pts.push({x: v, y: sum / data.length});
+    }
+    return pts;
+  };
+  drawLineChart("#ip-pdp-x", mk("x"), [-1, 1], "PDP over x");
+  drawLineChart("#ip-pdp-y", mk("y"), [-1, 1], "PDP over y");
+}
+
+// ---- 5. Neuron ablation ----
+function setAblation(id: string | null): void {
+  // Restore previous ablation if any.
+  if (ablatedNeuronId != null && ablatedSavedWeights != null) {
+    let prev = findNode(ablatedNeuronId);
+    if (prev) {
+      prev.outputs.forEach((lk, i) => { lk.weight = ablatedSavedWeights[i]; });
+    }
+    ablatedNeuronId = null;
+    ablatedSavedWeights = null;
+  }
+  if (id != null) {
+    let node = findNode(id);
+    if (node) {
+      ablatedSavedWeights = node.outputs.map(lk => lk.weight);
+      node.outputs.forEach(lk => { lk.weight = 0; });
+      ablatedNeuronId = id;
+    }
+  }
+}
+
+function applyAblationToggle(): void {
+  let on = (document.getElementById("ip-ablate-toggle") as HTMLInputElement).checked;
+  let id = (d3.select("#ip-ablate-neuron").property("value") as string) || null;
+  let accBefore = accuracy(state.testData);
+  if (on && id) {
+    setAblation(id);
+  } else {
+    setAblation(null);
+  }
+  let accAfter = accuracy(state.testData);
+  updateUI();
+  d3.select("#ip-ablate-out").text(
+    (on && id ? `Ablated ${id}. ` : `Restored. `) +
+    `Test acc ${(accBefore * 100).toFixed(1)}% -> ${(accAfter * 100).toFixed(1)}%`);
+}
+
+// ---- 6. Activation maximization ----
+function computeActMax(): void {
+  let id = (d3.select("#ip-actmax-neuron").property("value") as string);
+  let node = findNode(id);
+  if (!node) { return; }
+  let best = {x: 0, y: 0, act: -Infinity};
+  let N = 40;
+  for (let i = 0; i <= N; i++) {
+    for (let j = 0; j <= N; j++) {
+      let x = -HM_MAXSCALE + (2 * HM_MAXSCALE) * i / N;
+      let y = -HM_MAXSCALE + (2 * HM_MAXSCALE) * j / N;
+      nn.forwardProp(network, constructInput(x, y),
+          state.weightQuantization, state.layerNorm);
+      if (node.output > best.act) { best = {x, y, act: node.output}; }
+    }
+  }
+  // Local gradient-ascent refinement.
+  let step = (2 * HM_MAXSCALE) / N, h = 1e-2;
+  let x = best.x, y = best.y;
+  for (let s = 0; s < 30; s++) {
+    let f = (xx: number, yy: number) => {
+      nn.forwardProp(network, constructInput(xx, yy),
+          state.weightQuantization, state.layerNorm);
+      return node.output;
+    };
+    let gx = (f(x + h, y) - f(x - h, y)) / (2 * h);
+    let gy = (f(x, y + h) - f(x, y - h)) / (2 * h);
+    x = Math.max(-HM_MAXSCALE, Math.min(HM_MAXSCALE, x + step * 0.3 * Math.sign(gx)));
+    y = Math.max(-HM_MAXSCALE, Math.min(HM_MAXSCALE, y + step * 0.3 * Math.sign(gy)));
+  }
+  let act = (function() {
+    nn.forwardProp(network, constructInput(x, y),
+        state.weightQuantization, state.layerNorm);
+    return node.output;
+  })();
+  let g = heatmapOverlay();
+  g.selectAll("g.ip-actmax").remove();
+  let grp = g.append("g").attr("class", "ip-actmax");
+  let [px, py] = dataToPx(x, y);
+  grp.append("circle").attr("cx", px).attr("cy", py).attr("r", 7)
+    .attr("fill", "none").attr("stroke", "#7b2").attr("stroke-width", 3);
+  d3.select("#ip-actmax-out").text(
+    `Max activation ${act.toFixed(3)} at (${x.toFixed(2)}, ${y.toFixed(2)}).`);
+}
+
+// ---- 7. Counterfactual ----
+function computeCounterfactual(): void {
+  let p = lastClickedPoint ||
+      (state.testData.length ? state.testData[0] : null);
+  if (!p) { d3.select("#ip-counterfactual-out").text("Click a point first."); return; }
+  let origClass = Math.sign(interpPredict(p.x, p.y)) || 1;
+  let best: {x: number; y: number; d: number} = null;
+  for (let r = 0.2; r <= 4 && !best; r += 0.2) {
+    for (let a = 0; a < 24; a++) {
+      let ang = (a / 24) * 2 * Math.PI;
+      let x = p.x + r * Math.cos(ang);
+      let y = p.y + r * Math.sin(ang);
+      if (Math.abs(x) > HM_MAXSCALE || Math.abs(y) > HM_MAXSCALE) { continue; }
+      if ((Math.sign(interpPredict(x, y)) || 1) !== origClass) {
+        let d = Math.hypot(x - p.x, y - p.y);
+        if (!best || d < best.d) { best = {x, y, d}; }
+      }
+    }
+    if (best) { break; }
+  }
+  let g = heatmapOverlay();
+  g.selectAll("g.ip-cf").remove();
+  if (!best) { d3.select("#ip-counterfactual-out").text("No counterfactual found nearby."); return; }
+  let grp = g.append("g").attr("class", "ip-cf");
+  let [x0, y0] = dataToPx(p.x, p.y);
+  let [x1, y1] = dataToPx(best.x, best.y);
+  grp.append("line").attr("x1", x0).attr("y1", y0).attr("x2", x1).attr("y2", y1)
+    .attr("stroke", "#b07").attr("stroke-width", 2);
+  grp.append("circle").attr("cx", x1).attr("cy", y1).attr("r", 4).attr("fill", "#b07");
+  d3.select("#ip-counterfactual-out").text(
+    `From (${p.x.toFixed(2)},${p.y.toFixed(2)}) to ` +
+    `(${best.x.toFixed(2)},${best.y.toFixed(2)}), dist ${best.d.toFixed(2)}.`);
+}
+
+// ---- 8. PCA of hidden activations ----
+function lastHiddenActivations(p: Example2D): number[] {
+  nn.forwardProp(network, constructInput(p.x, p.y),
+      state.weightQuantization, state.layerNorm);
+  let l = network.length - 2;          // last hidden layer index
+  if (l < 1) { return []; }
+  return network[l].map(n => n.output);
+}
+
+function computePCA(): void {
+  let data = sampleSubset(state.testData.concat(state.trainData), 200);
+  let rows = data.map(p => ({a: lastHiddenActivations(p), label: p.label}))
+      .filter(r => r.a.length > 0);
+  let svg = d3.select("#ip-pca-chart");
+  svg.selectAll("*").remove();
+  if (rows.length < 2 || rows[0].a.length < 1) {
+    svg.append("text").attr("x", 8).attr("y", 20).attr("font-size", "10px")
+      .text("Need >=1 hidden neuron.");
+    return;
+  }
+  let dim = rows[0].a.length;
+  let mean = new Array(dim).fill(0);
+  for (let r of rows) { for (let k = 0; k < dim; k++) { mean[k] += r.a[k]; } }
+  for (let k = 0; k < dim; k++) { mean[k] /= rows.length; }
+  let X = rows.map(r => r.a.map((v, k) => v - mean[k]));
+  // Covariance matrix.
+  let cov: number[][] = [];
+  for (let i = 0; i < dim; i++) {
+    cov[i] = new Array(dim).fill(0);
+    for (let j = 0; j < dim; j++) {
+      let s = 0;
+      for (let r of X) { s += r[i] * r[j]; }
+      cov[i][j] = s / rows.length;
+    }
+  }
+  let powerIter = (m: number[][]): number[] => {
+    let v = new Array(dim).fill(0).map(() => Math.random());
+    for (let it = 0; it < 100; it++) {
+      let nv = new Array(dim).fill(0);
+      for (let i = 0; i < dim; i++) {
+        for (let j = 0; j < dim; j++) { nv[i] += m[i][j] * v[j]; }
+      }
+      let norm = Math.hypot(...nv) || 1;
+      v = nv.map(x => x / norm);
+    }
+    return v;
+  };
+  let pc1 = powerIter(cov);
+  let lam1 = 0;
+  { let mv = new Array(dim).fill(0);
+    for (let i = 0; i < dim; i++) { for (let j = 0; j < dim; j++) { mv[i] += cov[i][j] * pc1[j]; } }
+    for (let i = 0; i < dim; i++) { lam1 += pc1[i] * mv[i]; } }
+  // Deflate.
+  let cov2 = cov.map((row, i) => row.map((val, j) => val - lam1 * pc1[i] * pc1[j]));
+  let pc2 = dim > 1 ? powerIter(cov2) : new Array(dim).fill(0);
+  let proj = X.map((r, idx) => ({
+    x: r.reduce((s, v, k) => s + v * pc1[k], 0),
+    y: r.reduce((s, v, k) => s + v * pc2[k], 0),
+    label: rows[idx].label
+  }));
+  let w = +svg.attr("width"), h = +svg.attr("height"), m = 8;
+  let xs = d3.scaleLinear().domain(d3.extent(proj, d => d.x) as [number, number])
+      .range([m, w - m]);
+  let ys = d3.scaleLinear().domain(d3.extent(proj, d => d.y) as [number, number])
+      .range([h - m, m]);
+  svg.selectAll("circle").data(proj).enter().append("circle")
+    .attr("cx", d => xs(d.x)).attr("cy", d => ys(d.y)).attr("r", 2.5)
+    .attr("fill", d => d.label > 0 ? "#0877bd" : "#f59322").attr("opacity", 0.7);
+}
+
+// ---- 9. Decision-tree surrogate (CART, depth<=3) ----
+interface TreeNode {
+  leaf?: boolean; cls?: number;
+  feat?: number; thr?: number; left?: TreeNode; right?: TreeNode;
+}
+function fitSurrogate(): void {
+  let data = sampleSubset(state.trainData.concat(state.testData), 200);
+  let samples = data.map(p => ({
+    f: [p.x, p.y], cls: Math.sign(interpPredict(p.x, p.y)) || 1
+  }));
+  if (!samples.length) { return; }
+  let gini = (s: typeof samples) => {
+    if (!s.length) { return 0; }
+    let pos = s.filter(d => d.cls > 0).length / s.length;
+    return 1 - pos * pos - (1 - pos) * (1 - pos);
+  };
+  let majority = (s: typeof samples) =>
+    s.filter(d => d.cls > 0).length >= s.length / 2 ? 1 : -1;
+  let build = (s: typeof samples, depth: number): TreeNode => {
+    if (depth >= 3 || s.length < 4 || gini(s) === 0) {
+      return {leaf: true, cls: majority(s)};
+    }
+    let best: {gain: number; feat: number; thr: number} = null;
+    let parent = gini(s);
+    for (let feat = 0; feat < 2; feat++) {
+      let vals = s.map(d => d.f[feat]).sort((a, b) => a - b);
+      for (let i = 1; i < vals.length; i++) {
+        let thr = (vals[i - 1] + vals[i]) / 2;
+        let L = s.filter(d => d.f[feat] <= thr);
+        let R = s.filter(d => d.f[feat] > thr);
+        if (!L.length || !R.length) { continue; }
+        let g = parent - (L.length * gini(L) + R.length * gini(R)) / s.length;
+        if (!best || g > best.gain) { best = {gain: g, feat, thr}; }
+      }
+    }
+    if (!best || best.gain <= 1e-9) { return {leaf: true, cls: majority(s)}; }
+    return {
+      feat: best.feat, thr: best.thr,
+      left: build(s.filter(d => d.f[best.feat] <= best.thr), depth + 1),
+      right: build(s.filter(d => d.f[best.feat] > best.thr), depth + 1)
+    };
+  };
+  let tree = build(samples, 0);
+  let predict = (t: TreeNode, f: number[]): number => {
+    while (!t.leaf) { t = f[t.feat] <= t.thr ? t.left : t.right; }
+    return t.cls;
+  };
+  let agree = samples.filter(d => predict(tree, d.f) === d.cls).length;
+  let render = (t: TreeNode, ind: string): string => {
+    if (t.leaf) { return `${ind}-> class ${t.cls > 0 ? "+1" : "-1"}\n`; }
+    let name = t.feat === 0 ? "x" : "y";
+    return `${ind}${name} <= ${t.thr.toFixed(2)}?\n` +
+      render(t.left, ind + "  ") + render(t.right, ind + "  ");
+  };
+  d3.select("#ip-surrogate-out").text(
+    `Fidelity: ${(100 * agree / samples.length).toFixed(1)}%\n` + render(tree, ""));
+}
+
+// ---- 10/11. Confidence contours + entropy ----
+function drawConfidenceContours(): void {
+  let g = heatmapOverlay();
+  g.selectAll("g.ip-contour").remove();
+  if (!confidenceContourOn || !interpEnabled()) { return; }
+  let grp = g.append("g").attr("class", "ip-contour");
+  let N = 60;
+  let grid: number[] = [];
+  for (let j = 0; j < N; j++) {
+    for (let i = 0; i < N; i++) {
+      let x = -HM_MAXSCALE + (2 * HM_MAXSCALE) * i / (N - 1);
+      let y = HM_MAXSCALE - (2 * HM_MAXSCALE) * j / (N - 1);
+      grid.push(Math.abs(interpPredict(x, y)));
+    }
+  }
+  let cellW = (HM_FACTOR * 2 * HM_MAXSCALE) / (N - 1);
+  let levels = [0.25, 0.5, 0.75];
+  let colors = ["#999", "#666", "#333"];
+  // Marching-squares-lite: draw segment midpoints where a level crossing occurs.
+  for (let li = 0; li < levels.length; li++) {
+    let lev = levels[li];
+    for (let j = 0; j < N - 1; j++) {
+      for (let i = 0; i < N - 1; i++) {
+        let a = grid[j * N + i], b = grid[j * N + i + 1];
+        let c = grid[(j + 1) * N + i];
+        let px = HM_PADDING + i * cellW, py = HM_PADDING + j * cellW;
+        if ((a - lev) * (b - lev) < 0) {
+          let t = (lev - a) / (b - a);
+          grp.append("circle").attr("cx", px + t * cellW).attr("cy", py)
+            .attr("r", 0.8).attr("fill", colors[li]);
+        }
+        if ((a - lev) * (c - lev) < 0) {
+          let t = (lev - a) / (c - a);
+          grp.append("circle").attr("cx", px).attr("cy", py + t * cellW)
+            .attr("r", 0.8).attr("fill", colors[li]);
+        }
+      }
+    }
+  }
+}
+
+function computeGridEntropy(): void {
+  let N = 50, total = 0, confTotal = 0;
+  for (let i = 0; i < N; i++) {
+    for (let j = 0; j < N; j++) {
+      let x = -HM_MAXSCALE + (2 * HM_MAXSCALE) * i / (N - 1);
+      let y = -HM_MAXSCALE + (2 * HM_MAXSCALE) * j / (N - 1);
+      let out = interpPredict(x, y);
+      // Map output in [-1,1] to probability p in [0,1].
+      let p = Math.min(1, Math.max(0, (out + 1) / 2));
+      let e = (p === 0 || p === 1) ? 0 :
+        -(p * Math.log2(p) + (1 - p) * Math.log2(1 - p));
+      total += e;
+      confTotal += Math.abs(out);
+    }
+  }
+  let n = N * N;
+  d3.select("#ip-entropy-out").text(
+    `Mean entropy: ${(total / n).toFixed(3)} bits\n` +
+    `Mean confidence |out|: ${(confTotal / n).toFixed(3)}`);
+}
+
+// ---- 12. What-if inspector ----
+function whatIfInspect(): void {
+  let p = lastClickedPoint ||
+      (state.testData.length ? state.testData[0] : null);
+  if (!p) { d3.select("#ip-whatif-out").text("Click a point first."); return; }
+  let out = interpPredict(p.x, p.y);
+  let lines = [`(${p.x.toFixed(2)}, ${p.y.toFixed(2)}) -> ` +
+    `${out.toFixed(3)} [${out >= 0 ? "+1 blue" : "-1 orange"}]`];
+  for (let l = 1; l < network.length; l++) {
+    let vals = network[l].map(n => n.output.toFixed(2)).join(", ");
+    lines.push(`L${l}: ${vals}`);
+  }
+  d3.select("#ip-whatif-out").text(lines.join("\n"));
+}
+
+// ---- 13. k-NN baseline ----
+function computeKNN(): void {
+  let train = state.trainData, test = state.testData;
+  if (!train.length || !test.length) {
+    d3.select("#ip-knn-out").text("Need train and test data."); return;
+  }
+  let k = Math.min(5, train.length);
+  let correct = 0;
+  for (let q of test) {
+    let nbrs = train.map(t => ({d: dist2(q, t), label: t.label}))
+      .sort((a, b) => a.d - b.d).slice(0, k);
+    let s = nbrs.reduce((acc, n) => acc + Math.sign(n.label), 0);
+    let pred = s >= 0 ? 1 : -1;
+    if (pred === Math.sign(q.label)) { correct++; }
+  }
+  let knnAcc = correct / test.length;
+  let netAcc = accuracy(test);
+  d3.select("#ip-knn-out").text(
+    `k=${k}-NN test acc: ${(knnAcc * 100).toFixed(1)}%\n` +
+    `Network test acc: ${(netAcc * 100).toFixed(1)}%`);
+}
+
+// ---- 14. Per-feature contribution at a point ----
+function computeContributions(): void {
+  let p = lastClickedPoint ||
+      (state.testData.length ? state.testData[0] : null);
+  if (!p) { return; }
+  let ids = constructInputIds();
+  let base = interpPredict(p.x, p.y);
+  let baseInput = constructInput(p.x, p.y);
+  let means = ids.map((_, fi) => d3.mean(
+      state.trainData.concat(state.testData), q => constructInput(q.x, q.y)[fi]) || 0);
+  let items: {label: string; value: number}[] = [];
+  for (let fi = 0; fi < ids.length; fi++) {
+    let perturbed = baseInput.slice();
+    perturbed[fi] = means[fi];
+    let out = nn.forwardProp(network, perturbed,
+        state.weightQuantization, state.layerNorm);
+    items.push({label: INPUTS[ids[fi]].label, value: base - out});
+  }
+  drawBarChart("#ip-contrib-chart", items, "#0877bd");
+}
+
+/** Populate the two neuron-select dropdowns from current hidden layers. */
+function refreshNeuronSelects(): void {
+  let nodes = hiddenNodes();
+  for (let sel of ["#ip-ablate-neuron", "#ip-actmax-neuron"]) {
+    let prev = d3.select(sel).property("value");
+    let s = d3.select(sel);
+    s.selectAll("option").remove();
+    s.selectAll("option").data(nodes).enter().append("option")
+      .attr("value", d => d.id).text(d => d.label);
+    if (nodes.some(n => n.id === prev)) { s.property("value", prev); }
+  }
+}
+
+/** Per-step hook: keep dropdowns current and redraw contours if enabled. */
+function interpAfterUpdate(): void {
+  let note = document.getElementById("interp-nonclass-note");
+  let grid = document.querySelector(".interp-grid") as HTMLElement;
+  if (note && grid) {
+    let ok = interpEnabled();
+    note.style.display = ok ? "none" : "block";
+    grid.style.display = ok ? "flex" : "none";
+  }
+  if (!interpEnabled()) { return; }
+  refreshNeuronSelects();
+  drawConfidenceContours();
+}
+
+function makeInterpGUI(): void {
+  d3.select("#interp-toggle").on("click", () => {
+    let sec = document.getElementById("interp-section");
+    if (sec) { sec.classList.toggle("collapsed"); }
+  });
+  d3.select("#ip-saliency").on("click", computeSaliencyField);
+  d3.select("#ip-occlusion").on("click", computeOcclusion);
+  d3.select("#ip-dropfeat").on("click", computeDropFeature);
+  d3.select("#ip-pdp").on("click", computePDP);
+  d3.select("#ip-ablate-neuron").on("change", () => {
+    if ((document.getElementById("ip-ablate-toggle") as HTMLInputElement).checked) {
+      applyAblationToggle();
+    }
+  });
+  d3.select("#ip-ablate-toggle").on("change", applyAblationToggle);
+  d3.select("#ip-actmax").on("click", computeActMax);
+  d3.select("#ip-counterfactual").on("click", computeCounterfactual);
+  d3.select("#ip-pca").on("click", computePCA);
+  d3.select("#ip-surrogate").on("click", fitSurrogate);
+  d3.select("#ip-contour-toggle").on("change", function() {
+    confidenceContourOn = (this as any).checked;
+    drawConfidenceContours();
+  });
+  d3.select("#ip-entropy").on("click", computeGridEntropy);
+  d3.select("#ip-whatif").on("click", whatIfInspect);
+  d3.select("#ip-knn").on("click", computeKNN);
+  d3.select("#ip-contrib").on("click", computeContributions);
+  refreshNeuronSelects();
+}
+
 drawDatasetThumbnails();
 initTutorial();
 makeGUI();
 makeAdvancedGUI();
 makeFineTuneGUI();
 makeAnalysisGUI();
+makeInterpGUI();
 generateData(true);
 reset(true);
 hideControls();

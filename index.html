@@ -714,7 +714,7 @@ Modified by David Cato
                     </label>
                 </div>
                 <div class="adv-labs-link" style="margin-top:10px;font-size:12px;opacity:.7;">
-                    Advanced labs: <a href="cnn.html">CNN</a> &middot; <a href="transformer.html">Transformer</a> &middot; <a href="autoencoder.html">Autoencoder</a>
+                    Advanced labs: <a href="cnn.html">CNN</a> &middot; <a href="transformer.html">Transformer</a> &middot; <a href="autoencoder.html">Autoencoder</a> &middot; <a href="rnn.html">RNN</a>
                 </div>
             </div>
         </div>
@@ -818,6 +818,114 @@ Modified by David Cato
             <div class="an-panel-title">Loss landscape 1D slice</div>
             <svg id="an-landscape" width="220" height="160"></svg>
           </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Interpretability -->
+    <div class="l--page interp-section" id="interp-section">
+      <h4 class="analysis-header" id="interp-toggle">
+        <i class="material-icons" id="interp-arrow">keyboard_arrow_down</i>
+        Interpretability
+      </h4>
+      <div id="interp-body">
+        <p class="interp-note" id="interp-nonclass-note" style="display:none;">
+          Interpretability tools require 2D classification mode.
+        </p>
+        <div class="interp-grid">
+
+          <div class="interp-panel">
+            <div class="interp-panel-title">Input saliency field</div>
+            <button class="basic-button" id="ip-saliency">Compute saliency field</button>
+            <div class="interp-readout" id="ip-saliency-out"></div>
+          </div>
+
+          <div class="interp-panel">
+            <div class="interp-panel-title">Occlusion sensitivity (per feature)</div>
+            <button class="basic-button" id="ip-occlusion">Compute occlusion</button>
+            <svg id="ip-occlusion-chart" width="240" height="150"></svg>
+          </div>
+
+          <div class="interp-panel">
+            <div class="interp-panel-title">Drop-feature importance</div>
+            <button class="basic-button" id="ip-dropfeat">Compute importance</button>
+            <svg id="ip-dropfeat-chart" width="240" height="150"></svg>
+          </div>
+
+          <div class="interp-panel">
+            <div class="interp-panel-title">Partial dependence (x, y)</div>
+            <button class="basic-button" id="ip-pdp">Compute PDP</button>
+            <svg id="ip-pdp-x" width="240" height="120"></svg>
+            <svg id="ip-pdp-y" width="240" height="120"></svg>
+          </div>
+
+          <div class="interp-panel">
+            <div class="interp-panel-title">Neuron ablation</div>
+            <div class="select">
+              <select id="ip-ablate-neuron"></select>
+            </div>
+            <label class="mdl-checkbox mdl-js-checkbox" for="ip-ablate-toggle" style="display:block;margin-top:6px;">
+              <input type="checkbox" id="ip-ablate-toggle" class="mdl-checkbox__input">
+              <span class="mdl-checkbox__label label">Ablate selected neuron</span>
+            </label>
+            <div class="interp-readout" id="ip-ablate-out"></div>
+          </div>
+
+          <div class="interp-panel">
+            <div class="interp-panel-title">Activation maximization</div>
+            <div class="select">
+              <select id="ip-actmax-neuron"></select>
+            </div>
+            <button class="basic-button" id="ip-actmax">Find max-activating input</button>
+            <div class="interp-readout" id="ip-actmax-out"></div>
+          </div>
+
+          <div class="interp-panel">
+            <div class="interp-panel-title">Counterfactual (clicked point)</div>
+            <button class="basic-button" id="ip-counterfactual">Find counterfactual</button>
+            <div class="interp-readout" id="ip-counterfactual-out"></div>
+          </div>
+
+          <div class="interp-panel">
+            <div class="interp-panel-title">Hidden-activation PCA (2D)</div>
+            <button class="basic-button" id="ip-pca">Compute PCA</button>
+            <svg id="ip-pca-chart" width="240" height="200"></svg>
+          </div>
+
+          <div class="interp-panel">
+            <div class="interp-panel-title">Decision-tree surrogate</div>
+            <button class="basic-button" id="ip-surrogate">Fit surrogate tree</button>
+            <div class="interp-readout" id="ip-surrogate-out"></div>
+          </div>
+
+          <div class="interp-panel">
+            <div class="interp-panel-title">Confidence contours / entropy</div>
+            <label class="mdl-checkbox mdl-js-checkbox" for="ip-contour-toggle" style="display:block;">
+              <input type="checkbox" id="ip-contour-toggle" class="mdl-checkbox__input">
+              <span class="mdl-checkbox__label label">Show iso-confidence contours</span>
+            </label>
+            <button class="basic-button" id="ip-entropy">Compute grid entropy</button>
+            <div class="interp-readout" id="ip-entropy-out"></div>
+          </div>
+
+          <div class="interp-panel">
+            <div class="interp-panel-title">What-if point inspector</div>
+            <button class="basic-button" id="ip-whatif">Inspect last clicked point</button>
+            <div class="interp-readout" id="ip-whatif-out"></div>
+          </div>
+
+          <div class="interp-panel">
+            <div class="interp-panel-title">k-NN baseline</div>
+            <button class="basic-button" id="ip-knn">Compute k-NN accuracy</button>
+            <div class="interp-readout" id="ip-knn-out"></div>
+          </div>
+
+          <div class="interp-panel">
+            <div class="interp-panel-title">Per-feature contribution (clicked point)</div>
+            <button class="basic-button" id="ip-contrib">Compute contributions</button>
+            <svg id="ip-contrib-chart" width="240" height="150"></svg>
+          </div>
+
         </div>
       </div>
     </div>

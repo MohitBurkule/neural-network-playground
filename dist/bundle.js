@@ -90226,6 +90226,7 @@ function updateUI(firstStep) {
     updateClassificationMetricsUI();
     updateAnalysis();
     updateTrainingConfigSummary();
+    interpAfterUpdate();
     d3.select("#network-as-javascript").text(nn.compileNetworkToJs(network));
 }
 function pct(v) {
@@ -91969,12 +91970,665 @@ function makeAnalysisGUI() {
     d3.select("#an-export-json").on("click", function () { return exportMetricsJson(); });
     d3.select("#an-landscape-btn").on("click", function () { return computeLossLandscape(); });
 }
+var ablatedNeuronId = null;
+var ablatedSavedWeights = null;
+var confidenceContourOn = false;
+function interpEnabled() {
+    return state.problem === state_1.Problem.CLASSIFICATION && !state.threeD;
+}
+function hiddenNodes() {
+    var out = [];
+    if (!network) {
+        return out;
+    }
+    var _loop_3 = function (l) {
+        network[l].forEach(function (node, i) {
+            out.push({ id: node.id, label: "L".concat(l, " N").concat(i + 1, " (").concat(node.id, ")") });
+        });
+    };
+    for (var l = 1; l < network.length - 1; l++) {
+        _loop_3(l);
+    }
+    return out;
+}
+function findNode(id) {
+    var found = null;
+    nn.forEachNode(network, true, function (n) { if (n.id === id) {
+        found = n;
+    } });
+    return found;
+}
+function interpPredict(x, y) {
+    return nn.forwardProp(network, constructInput(x, y), state.weightQuantization, state.layerNorm);
+}
+function drawBarChart(selector, items, color) {
+    if (color === void 0) { color = "#0877bd"; }
+    var svg = d3.select(selector);
+    svg.selectAll("*").remove();
+    if (!items.length) {
+        return;
+    }
+    var w = +svg.attr("width"), h = +svg.attr("height");
+    var m = { l: 70, r: 10, t: 6, b: 6 };
+    var maxAbs = d3.max(items, function (d) { return Math.abs(d.value); }) || 1;
+    var x = d3.scaleLinear().domain([-maxAbs, maxAbs]).range([m.l, w - m.r]);
+    var y = d3.scaleBand().domain(items.map(function (d) { return d.label; }))
+        .range([m.t, h - m.b]).padding(0.2);
+    var zero = x(0);
+    svg.append("line").attr("x1", zero).attr("x2", zero)
+        .attr("y1", m.t).attr("y2", h - m.b).attr("stroke", "#ccc");
+    svg.selectAll("rect.bar").data(items).enter().append("rect")
+        .attr("class", "bar")
+        .attr("x", function (d) { return d.value >= 0 ? zero : x(d.value); })
+        .attr("y", function (d) { return y(d.label); })
+        .attr("width", function (d) { return Math.abs(x(d.value) - zero); })
+        .attr("height", y.bandwidth())
+        .attr("fill", function (d) { return d.value >= 0 ? color : "#f59322"; });
+    svg.selectAll("text.lbl").data(items).enter().append("text")
+        .attr("class", "lbl")
+        .attr("x", 2).attr("y", function (d) { return y(d.label) + y.bandwidth() / 2 + 3; })
+        .attr("font-size", "9px").attr("fill", "#666")
+        .text(function (d) { return d.label; });
+}
+function drawLineChart(selector, pts, yDom, title) {
+    var svg = d3.select(selector);
+    svg.selectAll("*").remove();
+    if (!pts.length) {
+        return;
+    }
+    var w = +svg.attr("width"), h = +svg.attr("height");
+    var m = 24;
+    var xs = d3.scaleLinear()
+        .domain(d3.extent(pts, function (d) { return d.x; })).range([m, w - 6]);
+    var ys = d3.scaleLinear().domain(yDom).range([h - m, 6]);
+    svg.append("g").attr("transform", "translate(0,".concat(h - m, ")"))
+        .call(d3.axisBottom(xs).ticks(4));
+    svg.append("g").attr("transform", "translate(".concat(m, ",0)"))
+        .call(d3.axisLeft(ys).ticks(3));
+    var line = d3.line().x(function (d) { return xs(d.x); }).y(function (d) { return ys(d.y); });
+    svg.append("path").datum(pts).attr("fill", "none")
+        .attr("stroke", "#0877bd").attr("stroke-width", 2).attr("d", line);
+    if (title) {
+        svg.append("text").attr("x", m).attr("y", 12).attr("font-size", "9px")
+            .attr("fill", "#666").text(title);
+    }
+}
+function computeSaliencyField() {
+    var g = heatmapOverlay();
+    g.selectAll("g.ip-saliency").remove();
+    var grp = g.append("g").attr("class", "ip-saliency");
+    var N = 9, h = 1e-2;
+    var step = (2 * HM_MAXSCALE) / (N + 1);
+    var maxMag = 0;
+    var vecs = [];
+    for (var i = 1; i <= N; i++) {
+        for (var j = 1; j <= N; j++) {
+            var x = -HM_MAXSCALE + i * step;
+            var y = -HM_MAXSCALE + j * step;
+            var gx = (interpPredict(x + h, y) - interpPredict(x - h, y)) / (2 * h);
+            var gy = (interpPredict(x, y + h) - interpPredict(x, y - h)) / (2 * h);
+            var mag = Math.hypot(gx, gy);
+            maxMag = Math.max(maxMag, mag);
+            vecs.push({ x: x, y: y, gx: gx, gy: gy, mag: mag });
+        }
+    }
+    var L = step * HM_FACTOR * 0.45;
+    for (var _i = 0, vecs_1 = vecs; _i < vecs_1.length; _i++) {
+        var v = vecs_1[_i];
+        var _a = dataToPx(v.x, v.y), px = _a[0], py = _a[1];
+        var n = v.mag || 1;
+        var x1 = px + (v.gx / n) * L;
+        var y1 = py - (v.gy / n) * L;
+        var op = maxMag ? 0.25 + 0.75 * (v.mag / maxMag) : 0.5;
+        grp.append("line").attr("x1", px).attr("y1", py).attr("x2", x1).attr("y2", y1)
+            .attr("stroke", "#333").attr("stroke-width", 1).attr("opacity", op);
+        grp.append("circle").attr("cx", x1).attr("cy", y1).attr("r", 1.5)
+            .attr("fill", "#333").attr("opacity", op);
+    }
+    d3.select("#ip-saliency-out").text("Drew ".concat(vecs.length, " gradient arrows. Max |grad|=").concat(maxMag.toFixed(3), "."));
+}
+function computeOcclusion() {
+    var ids = constructInputIds();
+    var data = sampleSubset(state.testData.concat(state.trainData), 150);
+    if (!data.length) {
+        return;
+    }
+    var base = data.map(function (p) { return interpPredict(p.x, p.y); });
+    var items = [];
+    for (var fi = 0; fi < ids.length; fi++) {
+        var sum = 0;
+        for (var k = 0; k < data.length; k++) {
+            var full = constructInput(data[k].x, data[k].y);
+            full[fi] = 0;
+            var out = nn.forwardProp(network, full, state.weightQuantization, state.layerNorm);
+            sum += Math.abs(out - base[k]);
+        }
+        items.push({ label: INPUTS[ids[fi]].label, value: sum / data.length });
+    }
+    drawBarChart("#ip-occlusion-chart", items, "#0877bd");
+}
+function computeDropFeature() {
+    var ids = constructInputIds();
+    var data = state.trainData.concat(state.testData);
+    if (!data.length) {
+        return;
+    }
+    var means = ids.map(function (_, fi) { return d3.mean(data, function (p) { return constructInput(p.x, p.y)[fi]; }) || 0; });
+    var baseAcc = 0;
+    for (var _i = 0, data_2 = data; _i < data_2.length; _i++) {
+        var p = data_2[_i];
+        if (Math.sign(interpPredict(p.x, p.y)) === Math.sign(p.label)) {
+            baseAcc++;
+        }
+    }
+    baseAcc /= data.length;
+    var items = [];
+    for (var fi = 0; fi < ids.length; fi++) {
+        var correct = 0;
+        for (var _a = 0, data_3 = data; _a < data_3.length; _a++) {
+            var p = data_3[_a];
+            var full = constructInput(p.x, p.y);
+            full[fi] = means[fi];
+            var out = nn.forwardProp(network, full, state.weightQuantization, state.layerNorm);
+            if (Math.sign(out) === Math.sign(p.label)) {
+                correct++;
+            }
+        }
+        items.push({ label: INPUTS[ids[fi]].label, value: baseAcc - correct / data.length });
+    }
+    drawBarChart("#ip-dropfeat-chart", items, "#0877bd");
+}
+function computePDP() {
+    var data = sampleSubset(state.trainData.concat(state.testData), 120);
+    if (!data.length) {
+        return;
+    }
+    var N = 21;
+    var mk = function (vary) {
+        var pts = [];
+        for (var i = 0; i < N; i++) {
+            var v = -HM_MAXSCALE + (2 * HM_MAXSCALE) * i / (N - 1);
+            var sum = 0;
+            for (var _i = 0, data_4 = data; _i < data_4.length; _i++) {
+                var p = data_4[_i];
+                var px = vary === "x" ? v : p.x;
+                var py = vary === "y" ? v : p.y;
+                sum += interpPredict(px, py);
+            }
+            pts.push({ x: v, y: sum / data.length });
+        }
+        return pts;
+    };
+    drawLineChart("#ip-pdp-x", mk("x"), [-1, 1], "PDP over x");
+    drawLineChart("#ip-pdp-y", mk("y"), [-1, 1], "PDP over y");
+}
+function setAblation(id) {
+    if (ablatedNeuronId != null && ablatedSavedWeights != null) {
+        var prev = findNode(ablatedNeuronId);
+        if (prev) {
+            prev.outputs.forEach(function (lk, i) { lk.weight = ablatedSavedWeights[i]; });
+        }
+        ablatedNeuronId = null;
+        ablatedSavedWeights = null;
+    }
+    if (id != null) {
+        var node = findNode(id);
+        if (node) {
+            ablatedSavedWeights = node.outputs.map(function (lk) { return lk.weight; });
+            node.outputs.forEach(function (lk) { lk.weight = 0; });
+            ablatedNeuronId = id;
+        }
+    }
+}
+function applyAblationToggle() {
+    var on = document.getElementById("ip-ablate-toggle").checked;
+    var id = d3.select("#ip-ablate-neuron").property("value") || null;
+    var accBefore = accuracy(state.testData);
+    if (on && id) {
+        setAblation(id);
+    }
+    else {
+        setAblation(null);
+    }
+    var accAfter = accuracy(state.testData);
+    updateUI();
+    d3.select("#ip-ablate-out").text((on && id ? "Ablated ".concat(id, ". ") : "Restored. ") +
+        "Test acc ".concat((accBefore * 100).toFixed(1), "% -> ").concat((accAfter * 100).toFixed(1), "%"));
+}
+function computeActMax() {
+    var id = d3.select("#ip-actmax-neuron").property("value");
+    var node = findNode(id);
+    if (!node) {
+        return;
+    }
+    var best = { x: 0, y: 0, act: -Infinity };
+    var N = 40;
+    for (var i = 0; i <= N; i++) {
+        for (var j = 0; j <= N; j++) {
+            var x_2 = -HM_MAXSCALE + (2 * HM_MAXSCALE) * i / N;
+            var y_1 = -HM_MAXSCALE + (2 * HM_MAXSCALE) * j / N;
+            nn.forwardProp(network, constructInput(x_2, y_1), state.weightQuantization, state.layerNorm);
+            if (node.output > best.act) {
+                best = { x: x_2, y: y_1, act: node.output };
+            }
+        }
+    }
+    var step = (2 * HM_MAXSCALE) / N, h = 1e-2;
+    var x = best.x, y = best.y;
+    for (var s = 0; s < 30; s++) {
+        var f = function (xx, yy) {
+            nn.forwardProp(network, constructInput(xx, yy), state.weightQuantization, state.layerNorm);
+            return node.output;
+        };
+        var gx = (f(x + h, y) - f(x - h, y)) / (2 * h);
+        var gy = (f(x, y + h) - f(x, y - h)) / (2 * h);
+        x = Math.max(-HM_MAXSCALE, Math.min(HM_MAXSCALE, x + step * 0.3 * Math.sign(gx)));
+        y = Math.max(-HM_MAXSCALE, Math.min(HM_MAXSCALE, y + step * 0.3 * Math.sign(gy)));
+    }
+    var act = (function () {
+        nn.forwardProp(network, constructInput(x, y), state.weightQuantization, state.layerNorm);
+        return node.output;
+    })();
+    var g = heatmapOverlay();
+    g.selectAll("g.ip-actmax").remove();
+    var grp = g.append("g").attr("class", "ip-actmax");
+    var _a = dataToPx(x, y), px = _a[0], py = _a[1];
+    grp.append("circle").attr("cx", px).attr("cy", py).attr("r", 7)
+        .attr("fill", "none").attr("stroke", "#7b2").attr("stroke-width", 3);
+    d3.select("#ip-actmax-out").text("Max activation ".concat(act.toFixed(3), " at (").concat(x.toFixed(2), ", ").concat(y.toFixed(2), ")."));
+}
+function computeCounterfactual() {
+    var p = lastClickedPoint ||
+        (state.testData.length ? state.testData[0] : null);
+    if (!p) {
+        d3.select("#ip-counterfactual-out").text("Click a point first.");
+        return;
+    }
+    var origClass = Math.sign(interpPredict(p.x, p.y)) || 1;
+    var best = null;
+    for (var r = 0.2; r <= 4 && !best; r += 0.2) {
+        for (var a = 0; a < 24; a++) {
+            var ang = (a / 24) * 2 * Math.PI;
+            var x = p.x + r * Math.cos(ang);
+            var y = p.y + r * Math.sin(ang);
+            if (Math.abs(x) > HM_MAXSCALE || Math.abs(y) > HM_MAXSCALE) {
+                continue;
+            }
+            if ((Math.sign(interpPredict(x, y)) || 1) !== origClass) {
+                var d = Math.hypot(x - p.x, y - p.y);
+                if (!best || d < best.d) {
+                    best = { x: x, y: y, d: d };
+                }
+            }
+        }
+        if (best) {
+            break;
+        }
+    }
+    var g = heatmapOverlay();
+    g.selectAll("g.ip-cf").remove();
+    if (!best) {
+        d3.select("#ip-counterfactual-out").text("No counterfactual found nearby.");
+        return;
+    }
+    var grp = g.append("g").attr("class", "ip-cf");
+    var _a = dataToPx(p.x, p.y), x0 = _a[0], y0 = _a[1];
+    var _b = dataToPx(best.x, best.y), x1 = _b[0], y1 = _b[1];
+    grp.append("line").attr("x1", x0).attr("y1", y0).attr("x2", x1).attr("y2", y1)
+        .attr("stroke", "#b07").attr("stroke-width", 2);
+    grp.append("circle").attr("cx", x1).attr("cy", y1).attr("r", 4).attr("fill", "#b07");
+    d3.select("#ip-counterfactual-out").text("From (".concat(p.x.toFixed(2), ",").concat(p.y.toFixed(2), ") to ") +
+        "(".concat(best.x.toFixed(2), ",").concat(best.y.toFixed(2), "), dist ").concat(best.d.toFixed(2), "."));
+}
+function lastHiddenActivations(p) {
+    nn.forwardProp(network, constructInput(p.x, p.y), state.weightQuantization, state.layerNorm);
+    var l = network.length - 2;
+    if (l < 1) {
+        return [];
+    }
+    return network[l].map(function (n) { return n.output; });
+}
+function computePCA() {
+    var data = sampleSubset(state.testData.concat(state.trainData), 200);
+    var rows = data.map(function (p) { return ({ a: lastHiddenActivations(p), label: p.label }); })
+        .filter(function (r) { return r.a.length > 0; });
+    var svg = d3.select("#ip-pca-chart");
+    svg.selectAll("*").remove();
+    if (rows.length < 2 || rows[0].a.length < 1) {
+        svg.append("text").attr("x", 8).attr("y", 20).attr("font-size", "10px")
+            .text("Need >=1 hidden neuron.");
+        return;
+    }
+    var dim = rows[0].a.length;
+    var mean = new Array(dim).fill(0);
+    for (var _i = 0, rows_1 = rows; _i < rows_1.length; _i++) {
+        var r = rows_1[_i];
+        for (var k = 0; k < dim; k++) {
+            mean[k] += r.a[k];
+        }
+    }
+    for (var k = 0; k < dim; k++) {
+        mean[k] /= rows.length;
+    }
+    var X = rows.map(function (r) { return r.a.map(function (v, k) { return v - mean[k]; }); });
+    var cov = [];
+    for (var i = 0; i < dim; i++) {
+        cov[i] = new Array(dim).fill(0);
+        for (var j = 0; j < dim; j++) {
+            var s = 0;
+            for (var _a = 0, X_1 = X; _a < X_1.length; _a++) {
+                var r = X_1[_a];
+                s += r[i] * r[j];
+            }
+            cov[i][j] = s / rows.length;
+        }
+    }
+    var powerIter = function (m) {
+        var v = new Array(dim).fill(0).map(function () { return Math.random(); });
+        var _loop_4 = function (it_1) {
+            var nv = new Array(dim).fill(0);
+            for (var i = 0; i < dim; i++) {
+                for (var j = 0; j < dim; j++) {
+                    nv[i] += m[i][j] * v[j];
+                }
+            }
+            var norm = Math.hypot.apply(Math, nv) || 1;
+            v = nv.map(function (x) { return x / norm; });
+        };
+        for (var it_1 = 0; it_1 < 100; it_1++) {
+            _loop_4(it_1);
+        }
+        return v;
+    };
+    var pc1 = powerIter(cov);
+    var lam1 = 0;
+    {
+        var mv = new Array(dim).fill(0);
+        for (var i = 0; i < dim; i++) {
+            for (var j = 0; j < dim; j++) {
+                mv[i] += cov[i][j] * pc1[j];
+            }
+        }
+        for (var i = 0; i < dim; i++) {
+            lam1 += pc1[i] * mv[i];
+        }
+    }
+    var cov2 = cov.map(function (row, i) { return row.map(function (val, j) { return val - lam1 * pc1[i] * pc1[j]; }); });
+    var pc2 = dim > 1 ? powerIter(cov2) : new Array(dim).fill(0);
+    var proj = X.map(function (r, idx) { return ({
+        x: r.reduce(function (s, v, k) { return s + v * pc1[k]; }, 0),
+        y: r.reduce(function (s, v, k) { return s + v * pc2[k]; }, 0),
+        label: rows[idx].label
+    }); });
+    var w = +svg.attr("width"), h = +svg.attr("height"), m = 8;
+    var xs = d3.scaleLinear().domain(d3.extent(proj, function (d) { return d.x; }))
+        .range([m, w - m]);
+    var ys = d3.scaleLinear().domain(d3.extent(proj, function (d) { return d.y; }))
+        .range([h - m, m]);
+    svg.selectAll("circle").data(proj).enter().append("circle")
+        .attr("cx", function (d) { return xs(d.x); }).attr("cy", function (d) { return ys(d.y); }).attr("r", 2.5)
+        .attr("fill", function (d) { return d.label > 0 ? "#0877bd" : "#f59322"; }).attr("opacity", 0.7);
+}
+function fitSurrogate() {
+    var data = sampleSubset(state.trainData.concat(state.testData), 200);
+    var samples = data.map(function (p) { return ({
+        f: [p.x, p.y], cls: Math.sign(interpPredict(p.x, p.y)) || 1
+    }); });
+    if (!samples.length) {
+        return;
+    }
+    var gini = function (s) {
+        if (!s.length) {
+            return 0;
+        }
+        var pos = s.filter(function (d) { return d.cls > 0; }).length / s.length;
+        return 1 - pos * pos - (1 - pos) * (1 - pos);
+    };
+    var majority = function (s) {
+        return s.filter(function (d) { return d.cls > 0; }).length >= s.length / 2 ? 1 : -1;
+    };
+    var build = function (s, depth) {
+        if (depth >= 3 || s.length < 4 || gini(s) === 0) {
+            return { leaf: true, cls: majority(s) };
+        }
+        var best = null;
+        var parent = gini(s);
+        var _loop_5 = function (feat) {
+            var vals = s.map(function (d) { return d.f[feat]; }).sort(function (a, b) { return a - b; });
+            var _loop_6 = function (i) {
+                var thr = (vals[i - 1] + vals[i]) / 2;
+                var L = s.filter(function (d) { return d.f[feat] <= thr; });
+                var R = s.filter(function (d) { return d.f[feat] > thr; });
+                if (!L.length || !R.length) {
+                    return "continue";
+                }
+                var g = parent - (L.length * gini(L) + R.length * gini(R)) / s.length;
+                if (!best || g > best.gain) {
+                    best = { gain: g, feat: feat, thr: thr };
+                }
+            };
+            for (var i = 1; i < vals.length; i++) {
+                _loop_6(i);
+            }
+        };
+        for (var feat = 0; feat < 2; feat++) {
+            _loop_5(feat);
+        }
+        if (!best || best.gain <= 1e-9) {
+            return { leaf: true, cls: majority(s) };
+        }
+        return {
+            feat: best.feat, thr: best.thr,
+            left: build(s.filter(function (d) { return d.f[best.feat] <= best.thr; }), depth + 1),
+            right: build(s.filter(function (d) { return d.f[best.feat] > best.thr; }), depth + 1)
+        };
+    };
+    var tree = build(samples, 0);
+    var predict = function (t, f) {
+        while (!t.leaf) {
+            t = f[t.feat] <= t.thr ? t.left : t.right;
+        }
+        return t.cls;
+    };
+    var agree = samples.filter(function (d) { return predict(tree, d.f) === d.cls; }).length;
+    var render = function (t, ind) {
+        if (t.leaf) {
+            return "".concat(ind, "-> class ").concat(t.cls > 0 ? "+1" : "-1", "\n");
+        }
+        var name = t.feat === 0 ? "x" : "y";
+        return "".concat(ind).concat(name, " <= ").concat(t.thr.toFixed(2), "?\n") +
+            render(t.left, ind + "  ") + render(t.right, ind + "  ");
+    };
+    d3.select("#ip-surrogate-out").text("Fidelity: ".concat((100 * agree / samples.length).toFixed(1), "%\n") + render(tree, ""));
+}
+function drawConfidenceContours() {
+    var g = heatmapOverlay();
+    g.selectAll("g.ip-contour").remove();
+    if (!confidenceContourOn || !interpEnabled()) {
+        return;
+    }
+    var grp = g.append("g").attr("class", "ip-contour");
+    var N = 60;
+    var grid = [];
+    for (var j = 0; j < N; j++) {
+        for (var i = 0; i < N; i++) {
+            var x = -HM_MAXSCALE + (2 * HM_MAXSCALE) * i / (N - 1);
+            var y = HM_MAXSCALE - (2 * HM_MAXSCALE) * j / (N - 1);
+            grid.push(Math.abs(interpPredict(x, y)));
+        }
+    }
+    var cellW = (HM_FACTOR * 2 * HM_MAXSCALE) / (N - 1);
+    var levels = [0.25, 0.5, 0.75];
+    var colors = ["#999", "#666", "#333"];
+    for (var li = 0; li < levels.length; li++) {
+        var lev = levels[li];
+        for (var j = 0; j < N - 1; j++) {
+            for (var i = 0; i < N - 1; i++) {
+                var a = grid[j * N + i], b = grid[j * N + i + 1];
+                var c = grid[(j + 1) * N + i];
+                var px = HM_PADDING + i * cellW, py = HM_PADDING + j * cellW;
+                if ((a - lev) * (b - lev) < 0) {
+                    var t = (lev - a) / (b - a);
+                    grp.append("circle").attr("cx", px + t * cellW).attr("cy", py)
+                        .attr("r", 0.8).attr("fill", colors[li]);
+                }
+                if ((a - lev) * (c - lev) < 0) {
+                    var t = (lev - a) / (c - a);
+                    grp.append("circle").attr("cx", px).attr("cy", py + t * cellW)
+                        .attr("r", 0.8).attr("fill", colors[li]);
+                }
+            }
+        }
+    }
+}
+function computeGridEntropy() {
+    var N = 50, total = 0, confTotal = 0;
+    for (var i = 0; i < N; i++) {
+        for (var j = 0; j < N; j++) {
+            var x = -HM_MAXSCALE + (2 * HM_MAXSCALE) * i / (N - 1);
+            var y = -HM_MAXSCALE + (2 * HM_MAXSCALE) * j / (N - 1);
+            var out = interpPredict(x, y);
+            var p = Math.min(1, Math.max(0, (out + 1) / 2));
+            var e = (p === 0 || p === 1) ? 0 :
+                -(p * Math.log2(p) + (1 - p) * Math.log2(1 - p));
+            total += e;
+            confTotal += Math.abs(out);
+        }
+    }
+    var n = N * N;
+    d3.select("#ip-entropy-out").text("Mean entropy: ".concat((total / n).toFixed(3), " bits\n") +
+        "Mean confidence |out|: ".concat((confTotal / n).toFixed(3)));
+}
+function whatIfInspect() {
+    var p = lastClickedPoint ||
+        (state.testData.length ? state.testData[0] : null);
+    if (!p) {
+        d3.select("#ip-whatif-out").text("Click a point first.");
+        return;
+    }
+    var out = interpPredict(p.x, p.y);
+    var lines = ["(".concat(p.x.toFixed(2), ", ").concat(p.y.toFixed(2), ") -> ") +
+            "".concat(out.toFixed(3), " [").concat(out >= 0 ? "+1 blue" : "-1 orange", "]")];
+    for (var l = 1; l < network.length; l++) {
+        var vals = network[l].map(function (n) { return n.output.toFixed(2); }).join(", ");
+        lines.push("L".concat(l, ": ").concat(vals));
+    }
+    d3.select("#ip-whatif-out").text(lines.join("\n"));
+}
+function computeKNN() {
+    var train = state.trainData, test = state.testData;
+    if (!train.length || !test.length) {
+        d3.select("#ip-knn-out").text("Need train and test data.");
+        return;
+    }
+    var k = Math.min(5, train.length);
+    var correct = 0;
+    var _loop_7 = function (q) {
+        var nbrs = train.map(function (t) { return ({ d: dist2(q, t), label: t.label }); })
+            .sort(function (a, b) { return a.d - b.d; }).slice(0, k);
+        var s = nbrs.reduce(function (acc, n) { return acc + Math.sign(n.label); }, 0);
+        var pred = s >= 0 ? 1 : -1;
+        if (pred === Math.sign(q.label)) {
+            correct++;
+        }
+    };
+    for (var _i = 0, test_1 = test; _i < test_1.length; _i++) {
+        var q = test_1[_i];
+        _loop_7(q);
+    }
+    var knnAcc = correct / test.length;
+    var netAcc = accuracy(test);
+    d3.select("#ip-knn-out").text("k=".concat(k, "-NN test acc: ").concat((knnAcc * 100).toFixed(1), "%\n") +
+        "Network test acc: ".concat((netAcc * 100).toFixed(1), "%"));
+}
+function computeContributions() {
+    var p = lastClickedPoint ||
+        (state.testData.length ? state.testData[0] : null);
+    if (!p) {
+        return;
+    }
+    var ids = constructInputIds();
+    var base = interpPredict(p.x, p.y);
+    var baseInput = constructInput(p.x, p.y);
+    var means = ids.map(function (_, fi) { return d3.mean(state.trainData.concat(state.testData), function (q) { return constructInput(q.x, q.y)[fi]; }) || 0; });
+    var items = [];
+    for (var fi = 0; fi < ids.length; fi++) {
+        var perturbed = baseInput.slice();
+        perturbed[fi] = means[fi];
+        var out = nn.forwardProp(network, perturbed, state.weightQuantization, state.layerNorm);
+        items.push({ label: INPUTS[ids[fi]].label, value: base - out });
+    }
+    drawBarChart("#ip-contrib-chart", items, "#0877bd");
+}
+function refreshNeuronSelects() {
+    var nodes = hiddenNodes();
+    var _loop_8 = function (sel) {
+        var prev = d3.select(sel).property("value");
+        var s = d3.select(sel);
+        s.selectAll("option").remove();
+        s.selectAll("option").data(nodes).enter().append("option")
+            .attr("value", function (d) { return d.id; }).text(function (d) { return d.label; });
+        if (nodes.some(function (n) { return n.id === prev; })) {
+            s.property("value", prev);
+        }
+    };
+    for (var _i = 0, _a = ["#ip-ablate-neuron", "#ip-actmax-neuron"]; _i < _a.length; _i++) {
+        var sel = _a[_i];
+        _loop_8(sel);
+    }
+}
+function interpAfterUpdate() {
+    var note = document.getElementById("interp-nonclass-note");
+    var grid = document.querySelector(".interp-grid");
+    if (note && grid) {
+        var ok = interpEnabled();
+        note.style.display = ok ? "none" : "block";
+        grid.style.display = ok ? "flex" : "none";
+    }
+    if (!interpEnabled()) {
+        return;
+    }
+    refreshNeuronSelects();
+    drawConfidenceContours();
+}
+function makeInterpGUI() {
+    d3.select("#interp-toggle").on("click", function () {
+        var sec = document.getElementById("interp-section");
+        if (sec) {
+            sec.classList.toggle("collapsed");
+        }
+    });
+    d3.select("#ip-saliency").on("click", computeSaliencyField);
+    d3.select("#ip-occlusion").on("click", computeOcclusion);
+    d3.select("#ip-dropfeat").on("click", computeDropFeature);
+    d3.select("#ip-pdp").on("click", computePDP);
+    d3.select("#ip-ablate-neuron").on("change", function () {
+        if (document.getElementById("ip-ablate-toggle").checked) {
+            applyAblationToggle();
+        }
+    });
+    d3.select("#ip-ablate-toggle").on("change", applyAblationToggle);
+    d3.select("#ip-actmax").on("click", computeActMax);
+    d3.select("#ip-counterfactual").on("click", computeCounterfactual);
+    d3.select("#ip-pca").on("click", computePCA);
+    d3.select("#ip-surrogate").on("click", fitSurrogate);
+    d3.select("#ip-contour-toggle").on("change", function () {
+        confidenceContourOn = this.checked;
+        drawConfidenceContours();
+    });
+    d3.select("#ip-entropy").on("click", computeGridEntropy);
+    d3.select("#ip-whatif").on("click", whatIfInspect);
+    d3.select("#ip-knn").on("click", computeKNN);
+    d3.select("#ip-contrib").on("click", computeContributions);
+    refreshNeuronSelects();
+}
 drawDatasetThumbnails();
 initTutorial();
 makeGUI();
 makeAdvancedGUI();
 makeFineTuneGUI();
 makeAnalysisGUI();
+makeInterpGUI();
 generateData(true);
 reset(true);
 hideControls();
