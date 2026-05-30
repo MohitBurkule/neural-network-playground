@@ -1344,3 +1344,21 @@ body.ux-dark .ux-help-card { background: #2b2b2b; color: #eee; }
 body.ux-dark #ux-status-bar { color: #bbb; }
 body.ux-dark #ux-status-bar b { color: #fff; }
 
+/* Training-methodology panel */
+#tm-panel { font-size: 13px; }
+#tm-panel .tm-group {
+  border: 1px solid #ddd;
+  border-radius: 4px;
+  padding: 8px 10px;
+  min-width: 200px;
+}
+#tm-panel .tm-readout {
+  margin-top: 6px;
+  font-size: 12px;
+  color: #555;
+  line-height: 1.4;
+}
+#tm-panel .ux-inline { display: block; margin: 4px 0; }
+body.ux-dark #tm-panel .tm-group { border-color: #444; }
+body.ux-dark #tm-panel .tm-readout { color: #bbb; }
+

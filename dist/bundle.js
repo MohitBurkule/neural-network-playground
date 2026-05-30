@@ -88602,6 +88602,47 @@ var Errors = (function () {
         },
         der: function (output, target) { return output - target; }
     };
+    Errors.HINGE = {
+        error: function (output, target) {
+            return Math.max(0, 1 - output * target);
+        },
+        der: function (output, target) {
+            return (1 - output * target > 0) ? -target : 0;
+        }
+    };
+    Errors.LOGLOSS = {
+        error: function (output, target) {
+            var eps = 1e-7;
+            var p = Math.min(1 - eps, Math.max(eps, (output + 1) / 2));
+            var t = (target + 1) / 2;
+            return -(t * Math.log(p) + (1 - t) * Math.log(1 - p));
+        },
+        der: function (output, target) {
+            var eps = 1e-7;
+            var p = Math.min(1 - eps, Math.max(eps, (output + 1) / 2));
+            var t = (target + 1) / 2;
+            return 0.5 * (p - t) / (p * (1 - p));
+        }
+    };
+    Errors.HUBER = {
+        error: function (output, target) {
+            var d = output - target;
+            var delta = 1;
+            return Math.abs(d) <= delta ?
+                0.5 * d * d : delta * (Math.abs(d) - 0.5 * delta);
+        },
+        der: function (output, target) {
+            var d = output - target;
+            var delta = 1;
+            return Math.abs(d) <= delta ? d : delta * Math.sign(d);
+        }
+    };
+    Errors.ABSOLUTE = {
+        error: function (output, target) { return Math.abs(output - target); },
+        der: function (output, target) {
+            return output > target ? 1 : (output < target ? -1 : 0);
+        }
+    };
     return Errors;
 }());
 exports.Errors = Errors;
@@ -89358,6 +89399,8 @@ var Player = (function () {
 }());
 var uxStepsPerTick = 1;
 var uxAfterStep = null;
+var tmEarlyStopBest = Infinity;
+var tmEarlyStopWait = 0;
 var state = state_1.State.deserializeState();
 state.getHiddenProps().forEach(function (prop) {
     if (prop in INPUTS) {
@@ -90063,13 +90106,38 @@ function updateDecisionBoundary(network, firstTime) {
         }
     }
 }
+function currentErrorFunc() {
+    return state_1.lossFunctions[state.lossFunction] || nn.Errors.SQUARE;
+}
+function classWeightFor(dataPoints) {
+    if (!state.classWeighting || dataPoints.length === 0) {
+        return function () { return 1; };
+    }
+    var pos = 0, neg = 0;
+    for (var i = 0; i < dataPoints.length; i++) {
+        if (dataPoints[i].label >= 0) {
+            pos++;
+        }
+        else {
+            neg++;
+        }
+    }
+    if (pos === 0 || neg === 0) {
+        return function () { return 1; };
+    }
+    var n = dataPoints.length;
+    var wPos = n / (2 * pos);
+    var wNeg = n / (2 * neg);
+    return function (label) { return label >= 0 ? wPos : wNeg; };
+}
 function getLoss(network, dataPoints) {
+    var errFunc = currentErrorFunc();
     var loss = 0;
     for (var i = 0; i < dataPoints.length; i++) {
         var dataPoint = dataPoints[i];
         var input = constructInput(dataPoint.x, dataPoint.y);
         var output = nn.forwardProp(network, input, state.weightQuantization, state.layerNorm);
-        loss += nn.Errors.SQUARE.error(output, dataPoint.label);
+        loss += errFunc.error(output, dataPoint.label);
     }
     return loss / dataPoints.length;
 }
@@ -90157,6 +90225,7 @@ function updateUI(firstStep) {
     lineChart.addDataPoint([lossTrain, lossTest]);
     updateClassificationMetricsUI();
     updateAnalysis();
+    updateTrainingConfigSummary();
     d3.select("#network-as-javascript").text(nn.compileNetworkToJs(network));
 }
 function pct(v) {
@@ -90429,6 +90498,42 @@ function effectiveLearningRate() {
             return base;
     }
 }
+function gaussianNoise() {
+    var u = 0, v = 0;
+    while (u === 0) {
+        u = Math.random();
+    }
+    while (v === 0) {
+        v = Math.random();
+    }
+    return Math.sqrt(-2 * Math.log(u)) * Math.cos(2 * Math.PI * v);
+}
+function scaledErrorFunc(base, scale) {
+    if (scale === 1) {
+        return base;
+    }
+    return {
+        error: function (o, t) { return base.error(o, t); },
+        der: function (o, t) { return scale * base.der(o, t); }
+    };
+}
+function addGradientNoise(net, eta, t) {
+    if (eta <= 0) {
+        return;
+    }
+    var std = Math.sqrt(eta / Math.pow(1 + t, 0.55));
+    nn.forEachNode(net, true, function (node) {
+        if (node.numAccumulatedDers > 0) {
+            node.accInputDer += gaussianNoise() * std * node.numAccumulatedDers;
+        }
+        for (var j = 0; j < node.inputLinks.length; j++) {
+            var link = node.inputLinks[j];
+            if (link.numAccumulatedDers > 0) {
+                link.accErrorDer += gaussianNoise() * std * link.numAccumulatedDers;
+            }
+        }
+    });
+}
 function oneStep() {
     iter++;
     if (state.threeD) {
@@ -90437,16 +90542,39 @@ function oneStep() {
     }
     var optimizerType = state_1.optimizers[state.optimizer] || nn.OptimizerType.SGD;
     var lr = effectiveLearningRate();
-    state.trainData.forEach(function (point, i) {
-        var input = constructInput(point.x, point.y);
+    var errFunc = currentErrorFunc();
+    var weightOf = classWeightFor(state.trainData);
+    var order = state.trainData;
+    if (state.epochShuffle) {
+        order = state.trainData.slice();
+        (0, dataset_1.shuffle)(order);
+    }
+    order.forEach(function (point, i) {
+        var px = point.x, py = point.y;
+        if (state.inputJitter > 0) {
+            px += gaussianNoise() * state.inputJitter;
+            py += gaussianNoise() * state.inputJitter;
+        }
+        var w = weightOf(point.label);
+        var input = constructInput(px, py);
         nn.forwardProp(network, input, state.weightQuantization, state.layerNorm, state.dropout, true, state.batchNorm);
-        nn.backProp(network, point.label, nn.Errors.SQUARE);
+        nn.backProp(network, point.label, scaledErrorFunc(errFunc, w));
+        if (state.mixup && state.trainData.length > 1 && Math.random() < 0.5) {
+            var other = state.trainData[Math.floor(Math.random() * state.trainData.length)];
+            var lam = Math.random();
+            var mx = lam * point.x + (1 - lam) * other.x;
+            var my = lam * point.y + (1 - lam) * other.y;
+            var mTarget = lam * point.label + (1 - lam) * other.label;
+            nn.forwardProp(network, constructInput(mx, my), state.weightQuantization, state.layerNorm, state.dropout, true, state.batchNorm);
+            nn.backProp(network, mTarget, errFunc);
+        }
         if (state.adversarialTraining) {
             var adv = perturb(point);
             nn.forwardProp(network, constructInput(adv.x, adv.y), state.weightQuantization, state.layerNorm, state.dropout, true, state.batchNorm);
-            nn.backProp(network, point.label, nn.Errors.SQUARE);
+            nn.backProp(network, point.label, errFunc);
         }
         if ((i + 1) % state.batchSize === 0) {
+            addGradientNoise(network, state.gradientNoise, iter);
             nn.updateWeights(network, lr, state.regularization, state.regularizationRate, optimizerType, state.gradClip, state.weightDecay);
         }
     });
@@ -90473,6 +90601,13 @@ function getOutputWeights(network) {
 }
 function reset(onStartup) {
     if (onStartup === void 0) { onStartup = false; }
+    tmEarlyStopBest = Infinity;
+    tmEarlyStopWait = 0;
+    var esBadge = (typeof document !== "undefined") ?
+        document.getElementById("tm-earlystop-badge") : null;
+    if (esBadge) {
+        esBadge.style.display = "none";
+    }
     lineChart.reset();
     trainingHistory = [];
     weightMagHistory = [];
@@ -90613,8 +90748,29 @@ function generateData(firstTime) {
     var splitIndex = Math.floor(data.length * state.percTrainData / 100);
     state.trainData = data.slice(0, splitIndex);
     state.testData = data.slice(splitIndex);
+    if (state.labelNoise > 0 && state.problem === state_1.Problem.CLASSIFICATION) {
+        var frac_1 = state.labelNoise / 100;
+        state.trainData.forEach(function (p) {
+            if (Math.random() < frac_1) {
+                p.label = -p.label;
+            }
+        });
+    }
     heatMap.updatePoints(state.trainData);
     heatMap.updateTestPoints(state.showTestData ? state.testData : []);
+}
+function reshuffleSplit() {
+    var all = state.trainData.concat(state.testData);
+    if (all.length === 0) {
+        return;
+    }
+    (0, dataset_1.shuffle)(all);
+    var splitIndex = Math.floor(all.length * state.percTrainData / 100);
+    state.trainData = all.slice(0, splitIndex);
+    state.testData = all.slice(splitIndex);
+    heatMap.updatePoints(state.trainData);
+    heatMap.updateTestPoints(state.showTestData ? state.testData : []);
+    reset();
 }
 var firstInteraction = true;
 var parametersChanged = false;
@@ -92166,6 +92322,427 @@ function uxRandomizeWeights() {
     updateUI(true);
     uxToast("Weights re-initialized.");
 }
+function buildFreshNetwork() {
+    var inputIds = constructInputIds();
+    var shape = [inputIds.length].concat(state.networkShape).concat([1]);
+    var net = nn.buildNetwork(shape, state.activation, nn.Activations.TANH, inputIds, state.initZero);
+    nn.applyWeightInit(net, state_1.weightInits[state.weightInit]);
+    return net;
+}
+function lossOf(net, data) {
+    var errFunc = currentErrorFunc();
+    var loss = 0;
+    for (var i = 0; i < data.length; i++) {
+        var out = nn.forwardProp(net, constructInput(data[i].x, data[i].y), state.weightQuantization, state.layerNorm);
+        loss += errFunc.error(out, data[i].label);
+    }
+    return data.length ? loss / data.length : 0;
+}
+function accuracyOf(net, data) {
+    var correct = 0;
+    for (var i = 0; i < data.length; i++) {
+        var out = nn.forwardProp(net, constructInput(data[i].x, data[i].y), state.weightQuantization, state.layerNorm);
+        if ((out >= 0 ? 1 : -1) === (data[i].label >= 0 ? 1 : -1)) {
+            correct++;
+        }
+    }
+    return data.length ? correct / data.length : 0;
+}
+function trainNetwork(net, data, epochs, lr) {
+    var optimizerType = state_1.optimizers[state.optimizer] || nn.OptimizerType.SGD;
+    var errFunc = currentErrorFunc();
+    for (var e = 0; e < epochs; e++) {
+        data.forEach(function (point, i) {
+            nn.forwardProp(net, constructInput(point.x, point.y), state.weightQuantization, state.layerNorm, state.dropout, true, state.batchNorm);
+            nn.backProp(net, point.label, errFunc);
+            if ((i + 1) % state.batchSize === 0) {
+                nn.updateWeights(net, lr, state.regularization, state.regularizationRate, optimizerType, state.gradClip, state.weightDecay);
+            }
+        });
+    }
+}
+function bootstrapSample(data) {
+    var out = [];
+    for (var i = 0; i < data.length; i++) {
+        out.push(data[Math.floor(Math.random() * data.length)]);
+    }
+    return out;
+}
+function mean(xs) {
+    return xs.reduce(function (a, b) { return a + b; }, 0) / (xs.length || 1);
+}
+function std(xs) {
+    var m = mean(xs);
+    return Math.sqrt(mean(xs.map(function (x) { return (x - m) * (x - m); })));
+}
+function runKFoldCV(k, epochs) {
+    var data = state.trainData.slice();
+    if (data.length < k) {
+        uxToast("Not enough training data for " + k + " folds.", true);
+        return;
+    }
+    (0, dataset_1.shuffle)(data);
+    var accs = [];
+    var losses = [];
+    var foldSize = Math.floor(data.length / k);
+    var lr = state.learningRate;
+    for (var f = 0; f < k; f++) {
+        var start = f * foldSize;
+        var end = f === k - 1 ? data.length : start + foldSize;
+        var valFold = data.slice(start, end);
+        var trainFold = data.slice(0, start).concat(data.slice(end));
+        var net = buildFreshNetwork();
+        trainNetwork(net, trainFold, epochs, lr);
+        accs.push(accuracyOf(net, valFold));
+        losses.push(lossOf(net, valFold));
+    }
+    var readout = document.getElementById("tm-cv-readout");
+    if (readout) {
+        readout.innerHTML =
+            "k=" + k + " folds, " + epochs + " epochs/fold<br>" +
+                "Val accuracy: " + (mean(accs) * 100).toFixed(1) + "% ± " +
+                (std(accs) * 100).toFixed(1) + "%<br>" +
+                "Val loss: " + mean(losses).toFixed(3) + " ± " + std(losses).toFixed(3);
+    }
+    uxToast("k-fold CV done: " + (mean(accs) * 100).toFixed(1) + "% mean acc.");
+}
+function runLRFinder() {
+    var data = state.trainData;
+    if (data.length === 0) {
+        uxToast("No training data.", true);
+        return;
+    }
+    var lrMin = 1e-4, lrMax = 3;
+    var steps = 25;
+    var results = [];
+    var net = buildFreshNetwork();
+    for (var s = 0; s < steps; s++) {
+        var lr = lrMin * Math.pow(lrMax / lrMin, s / (steps - 1));
+        trainNetwork(net, data, 1, lr);
+        var loss = lossOf(net, data);
+        results.push({ lr: lr, loss: loss });
+        if (!isFinite(loss) || loss > 1e3) {
+            break;
+        }
+    }
+    var best = results.reduce(function (a, b) { return b.loss < a.loss ? b : a; }, results[0]);
+    var suggested = best.lr / 10;
+    plotLRFinder(results, suggested);
+    var readout = document.getElementById("tm-lrf-readout");
+    if (readout) {
+        readout.textContent = "Suggested LR ~ " + suggested.toPrecision(2) +
+            " (min loss " + best.loss.toFixed(3) + " at LR " +
+            best.lr.toPrecision(2) + ")";
+    }
+    uxToast("LR finder done. Suggested ~ " + suggested.toPrecision(2));
+}
+function plotLRFinder(results, suggested) {
+    var svg = d3.select("#tm-lrf-plot");
+    if (svg.empty()) {
+        return;
+    }
+    svg.selectAll("*").remove();
+    var W = 260, H = 140, m = { t: 8, r: 8, b: 24, l: 36 };
+    svg.attr("width", W).attr("height", H);
+    var x = d3.scaleLog()
+        .domain([results[0].lr, results[results.length - 1].lr])
+        .range([m.l, W - m.r]);
+    var maxLoss = d3.max(results, function (d) { return d.loss; }) || 1;
+    var y = d3.scaleLinear().domain([0, maxLoss]).range([H - m.b, m.t]);
+    var line = d3.line()
+        .x(function (d) { return x(d.lr); }).y(function (d) { return y(d.loss); });
+    svg.append("path").datum(results)
+        .attr("fill", "none").attr("stroke", "#f59322").attr("stroke-width", 2)
+        .attr("d", line);
+    svg.append("line")
+        .attr("x1", x(suggested)).attr("x2", x(suggested))
+        .attr("y1", m.t).attr("y2", H - m.b)
+        .attr("stroke", "#0877bd").attr("stroke-dasharray", "3,3");
+    svg.append("g").attr("transform", "translate(0," + (H - m.b) + ")")
+        .call(d3.axisBottom(x).ticks(4, "~g"));
+    svg.append("g").attr("transform", "translate(" + m.l + ",0)")
+        .call(d3.axisLeft(y).ticks(4));
+}
+function runEnsemble(n, bagging) {
+    if (state.trainData.length === 0) {
+        uxToast("No training data.", true);
+        return;
+    }
+    var epochs = 30;
+    var lr = state.learningRate;
+    var members = [];
+    for (var i = 0; i < n; i++) {
+        var net = buildFreshNetwork();
+        var trainSet = bagging ? bootstrapSample(state.trainData) : state.trainData;
+        trainNetwork(net, trainSet, epochs, lr);
+        members.push(net);
+    }
+    var xScale = d3.scaleLinear().domain([0, DENSITY - 1]).range(xDomain);
+    var yScale = d3.scaleLinear().domain([DENSITY - 1, 0]).range(xDomain);
+    var mat = new Array(DENSITY);
+    for (var i = 0; i < DENSITY; i++) {
+        mat[i] = new Array(DENSITY);
+        for (var j = 0; j < DENSITY; j++) {
+            var xv = xScale(i), yv = yScale(j);
+            var sum = 0;
+            for (var mIdx = 0; mIdx < members.length; mIdx++) {
+                sum += nn.forwardProp(members[mIdx], constructInput(xv, yv), state.weightQuantization, state.layerNorm);
+            }
+            mat[i][j] = sum / members.length;
+        }
+    }
+    heatMap.updateBackground(mat, state.discretize);
+    var single = accuracyOf(members[0], state.testData);
+    var ensCorrect = 0;
+    for (var t = 0; t < state.testData.length; t++) {
+        var p = state.testData[t];
+        var sum = 0;
+        for (var mIdx = 0; mIdx < members.length; mIdx++) {
+            sum += nn.forwardProp(members[mIdx], constructInput(p.x, p.y), state.weightQuantization, state.layerNorm);
+        }
+        var avg = sum / members.length;
+        if ((avg >= 0 ? 1 : -1) === (p.label >= 0 ? 1 : -1)) {
+            ensCorrect++;
+        }
+    }
+    var ensAcc = state.testData.length ? ensCorrect / state.testData.length : 0;
+    var readout = document.getElementById("tm-ensemble-readout");
+    if (readout) {
+        readout.innerHTML = "N=" + n + (bagging ? " (bagging)" : "") + "<br>" +
+            "Single test acc: " + (single * 100).toFixed(1) + "%<br>" +
+            "Ensemble test acc: " + (ensAcc * 100).toFixed(1) + "%";
+    }
+    uxToast("Ensemble drawn (avg of " + n + "). Reset to restore the live model.");
+}
+var tmWeightNoiseSnapshot = null;
+function applyWeightNoise(sigma) {
+    if (network == null) {
+        uxToast("No network.", true);
+        return;
+    }
+    var biases = {};
+    var links = {};
+    nn.forEachNode(network, true, function (node) {
+        biases[node.id] = node.bias;
+        node.inputLinks.forEach(function (link) { links[link.id] = link.weight; });
+    });
+    tmWeightNoiseSnapshot = { biases: biases, links: links };
+    var accBefore = accuracyOf(network, state.testData);
+    nn.forEachNode(network, true, function (node) {
+        node.bias += gaussianNoise() * sigma;
+        node.inputLinks.forEach(function (link) { link.weight += gaussianNoise() * sigma; });
+    });
+    var accAfter = accuracyOf(network, state.testData);
+    lossTrain = getLoss(network, state.trainData);
+    lossTest = getLoss(network, state.testData);
+    drawNetwork(network);
+    updateUI(true);
+    var readout = document.getElementById("tm-weightnoise-readout");
+    if (readout) {
+        readout.innerHTML = "σ=" + sigma + "<br>" +
+            "Test acc: " + (accBefore * 100).toFixed(1) + "% → " +
+            (accAfter * 100).toFixed(1) + "% (Δ " +
+            ((accAfter - accBefore) * 100).toFixed(1) + " pts)";
+    }
+}
+function restoreWeightNoise() {
+    if (network == null || tmWeightNoiseSnapshot == null) {
+        uxToast("Nothing to restore.", true);
+        return;
+    }
+    nn.forEachNode(network, true, function (node) {
+        if (tmWeightNoiseSnapshot.biases[node.id] != null) {
+            node.bias = tmWeightNoiseSnapshot.biases[node.id];
+        }
+        node.inputLinks.forEach(function (link) {
+            if (tmWeightNoiseSnapshot.links[link.id] != null) {
+                link.weight = tmWeightNoiseSnapshot.links[link.id];
+            }
+        });
+    });
+    lossTrain = getLoss(network, state.trainData);
+    lossTest = getLoss(network, state.testData);
+    drawNetwork(network);
+    updateUI(true);
+    uxToast("Weights restored.");
+}
+function updateTrainingConfigSummary() {
+    var el = document.getElementById("tm-config-summary");
+    if (!el) {
+        return;
+    }
+    var lossKey = (0, state_1.getKeyFromValue)(state_1.lossFunctions, currentErrorFunc()) ||
+        state.lossFunction;
+    var regKey = (0, state_1.getKeyFromValue)(state_1.regularizations, state.regularization) || "none";
+    var parts = [
+        "loss: " + lossKey,
+        "optimizer: " + state.optimizer,
+        "lr: " + state.learningRate,
+        "lr-schedule: " + state.lrSchedule,
+        "batch: " + state.batchSize,
+        "reg: " + regKey + " (" + state.regularizationRate + ")",
+        "dropout: " + state.dropout,
+        "weight-decay: " + state.weightDecay,
+        "class-weighting: " + (state.classWeighting ? "on" : "off"),
+        "label-noise: " + state.labelNoise + "%",
+        "input-jitter: " + state.inputJitter,
+        "mixup: " + (state.mixup ? "on" : "off"),
+        "grad-noise: " + state.gradientNoise,
+        "epoch-shuffle: " + (state.epochShuffle ? "on" : "off")
+    ];
+    el.innerHTML = parts.join("<br>");
+}
+function tmEarlyStopCheck() {
+    var chk = document.getElementById("tm-earlystop-enable");
+    if (!chk || !chk.checked) {
+        tmEarlyStopBest = Infinity;
+        tmEarlyStopWait = 0;
+        return;
+    }
+    var patienceInput = document.getElementById("tm-earlystop-patience");
+    var patience = patienceInput ? Math.max(1, +patienceInput.value || 10) : 10;
+    if (lossTest < tmEarlyStopBest - 1e-6) {
+        tmEarlyStopBest = lossTest;
+        tmEarlyStopWait = 0;
+    }
+    else {
+        tmEarlyStopWait++;
+        if (tmEarlyStopWait >= patience && player.isActive()) {
+            player.pause();
+            tmEarlyStopWait = 0;
+            tmEarlyStopBest = Infinity;
+            var badge = document.getElementById("tm-earlystop-badge");
+            if (badge) {
+                badge.style.display = "inline";
+            }
+            uxToast("Stopped early (no test-loss improvement for " + patience + " evals).");
+        }
+    }
+}
+function initTrainingMethodologyGUI() {
+    var lossSel = d3.select("#loss-function");
+    if (!lossSel.empty()) {
+        lossSel.property("value", state.lossFunction);
+        lossSel.on("change.tm", function () {
+            state.lossFunction = this.value;
+            state.serialize();
+            parametersChanged = true;
+            updateTrainingConfigSummary();
+            reset();
+        });
+    }
+    var cw = d3.select("#tm-class-weighting");
+    if (!cw.empty()) {
+        cw.property("checked", state.classWeighting);
+        cw.on("change.tm", function () {
+            state.classWeighting = this.checked;
+            state.serialize();
+            updateTrainingConfigSummary();
+        });
+    }
+    var ln = d3.select("#tm-label-noise");
+    if (!ln.empty()) {
+        ln.property("value", state.labelNoise);
+        d3.select("#tm-label-noise-val").text(String(state.labelNoise));
+        ln.on("input.tm", function () {
+            state.labelNoise = +this.value;
+            d3.select("#tm-label-noise-val").text(String(state.labelNoise));
+            state.serialize();
+            updateTrainingConfigSummary();
+            generateData();
+            reset();
+        });
+    }
+    var mx = d3.select("#tm-mixup");
+    if (!mx.empty()) {
+        mx.property("checked", state.mixup);
+        mx.on("change.tm", function () {
+            state.mixup = this.checked;
+            state.serialize();
+            updateTrainingConfigSummary();
+        });
+    }
+    var ij = d3.select("#tm-input-jitter");
+    if (!ij.empty()) {
+        ij.property("value", state.inputJitter);
+        d3.select("#tm-input-jitter-val").text(String(state.inputJitter));
+        ij.on("input.tm", function () {
+            state.inputJitter = +this.value;
+            d3.select("#tm-input-jitter-val").text(String(state.inputJitter));
+            state.serialize();
+            updateTrainingConfigSummary();
+        });
+    }
+    var gnoise = d3.select("#tm-grad-noise");
+    if (!gnoise.empty()) {
+        gnoise.property("value", state.gradientNoise);
+        d3.select("#tm-grad-noise-val").text(String(state.gradientNoise));
+        gnoise.on("input.tm", function () {
+            state.gradientNoise = +this.value;
+            d3.select("#tm-grad-noise-val").text(String(state.gradientNoise));
+            state.serialize();
+            updateTrainingConfigSummary();
+        });
+    }
+    var es = d3.select("#tm-epoch-shuffle");
+    if (!es.empty()) {
+        es.property("checked", state.epochShuffle);
+        es.on("change.tm", function () {
+            state.epochShuffle = this.checked;
+            state.serialize();
+            updateTrainingConfigSummary();
+        });
+    }
+    var esBadge = document.getElementById("tm-earlystop-badge");
+    var esChk = d3.select("#tm-earlystop-enable");
+    if (!esChk.empty()) {
+        esChk.on("change.tm", function () {
+            tmEarlyStopBest = Infinity;
+            tmEarlyStopWait = 0;
+            if (esBadge) {
+                esBadge.style.display = "none";
+            }
+        });
+    }
+    var cvBtn = document.getElementById("tm-cv-btn");
+    if (cvBtn) {
+        cvBtn.addEventListener("click", function () {
+            var kInput = document.getElementById("tm-cv-k");
+            var k = kInput ? Math.max(2, +kInput.value || 5) : 5;
+            runKFoldCV(k, 30);
+        });
+    }
+    var lrfBtn = document.getElementById("tm-lrf-btn");
+    if (lrfBtn) {
+        lrfBtn.addEventListener("click", function () { return runLRFinder(); });
+    }
+    var ensBtn = document.getElementById("tm-ensemble-btn");
+    if (ensBtn) {
+        ensBtn.addEventListener("click", function () {
+            var nInput = document.getElementById("tm-ensemble-n");
+            var n = nInput ? Math.max(2, +nInput.value || 5) : 5;
+            var bagChk = document.getElementById("tm-ensemble-bagging");
+            runEnsemble(n, bagChk ? bagChk.checked : false);
+        });
+    }
+    var wnBtn = document.getElementById("tm-weightnoise-btn");
+    if (wnBtn) {
+        wnBtn.addEventListener("click", function () {
+            var sInput = document.getElementById("tm-weightnoise-sigma");
+            var sigma = sInput ? Math.max(0, +sInput.value || 0.1) : 0.1;
+            applyWeightNoise(sigma);
+        });
+    }
+    var wnRestore = document.getElementById("tm-weightnoise-restore");
+    if (wnRestore) {
+        wnRestore.addEventListener("click", function () { return restoreWeightNoise(); });
+    }
+    var reshufBtn = document.getElementById("tm-reshuffle-split");
+    if (reshufBtn) {
+        reshufBtn.addEventListener("click", function () { return reshuffleSplit(); });
+    }
+    updateTrainingConfigSummary();
+}
 function initUXFeatures() {
     var prefs = uxLoadPrefs();
     var darkToggle = document.getElementById("dark-mode-toggle");
@@ -92253,6 +92830,7 @@ function initUXFeatures() {
                 }
             }
         }
+        tmEarlyStopCheck();
         uxTickStatus();
     };
     var runNBtn = document.getElementById("ux-run-n-btn");
@@ -92449,12 +93027,13 @@ function uxTickStatus() {
     set("ux-status-acctest", ate ? (ate.textContent || "—") : "—");
     set("ux-status-sps", uxStepsPerSec ? uxStepsPerSec.toFixed(1) : "0");
 }
+initTrainingMethodologyGUI();
 initUXFeatures();
 
 },{"./adversarial":1030,"./customdataset":1031,"./dataset":1032,"./dataset3d":1033,"./heatmap":1034,"./linechart":1035,"./nn":1036,"./state":1038,"./threeview":1039,"./unlearning":1040,"d3":9,"mathjs":937}],1038:[function(require,module,exports){
 "use strict";
 Object.defineProperty(exports, "__esModule", { value: true });
-exports.State = exports.problems = exports.Problem = exports.Type = exports.regDatasets = exports.datasets = exports.weightQuantizations = exports.regularizations = exports.activations = exports.lrSchedules = exports.weightInits = exports.optimizers = void 0;
+exports.State = exports.problems = exports.Problem = exports.Type = exports.regDatasets = exports.datasets = exports.weightQuantizations = exports.regularizations = exports.activations = exports.lrSchedules = exports.weightInits = exports.lossFunctions = exports.optimizers = void 0;
 exports.getKeyFromValue = getKeyFromValue;
 var nn = require("./nn");
 var dataset = require("./dataset");
@@ -92470,6 +93049,13 @@ exports.optimizers = {
     "amsgrad": nn.OptimizerType.AMSGRAD,
     "nadam": nn.OptimizerType.NADAM,
     "adamw": nn.OptimizerType.ADAMW
+};
+exports.lossFunctions = {
+    "square": nn.Errors.SQUARE,
+    "hinge": nn.Errors.HINGE,
+    "logloss": nn.Errors.LOGLOSS,
+    "huber": nn.Errors.HUBER,
+    "absolute": nn.Errors.ABSOLUTE
 };
 exports.weightInits = {
     "random-uniform": nn.WeightInit.RANDOM_UNIFORM,
@@ -92656,6 +93242,13 @@ var State = (function () {
         this.advMethod = "fgsm";
         this.threeD = false;
         this.threeDDataset = "blobs";
+        this.lossFunction = "square";
+        this.classWeighting = false;
+        this.labelNoise = 0;
+        this.mixup = false;
+        this.inputJitter = 0;
+        this.gradientNoise = 0;
+        this.epochShuffle = false;
         this.dataset = dataset.classifyCircleData;
         this.regDataset = dataset.regressPlane;
         this.trainData = [];
@@ -92805,7 +93398,14 @@ var State = (function () {
         { name: "advEpsilon", type: Type.NUMBER },
         { name: "advMethod", type: Type.STRING },
         { name: "threeD", type: Type.BOOLEAN },
-        { name: "threeDDataset", type: Type.STRING }
+        { name: "threeDDataset", type: Type.STRING },
+        { name: "lossFunction", type: Type.STRING },
+        { name: "classWeighting", type: Type.BOOLEAN },
+        { name: "labelNoise", type: Type.NUMBER },
+        { name: "mixup", type: Type.BOOLEAN },
+        { name: "inputJitter", type: Type.NUMBER },
+        { name: "gradientNoise", type: Type.NUMBER },
+        { name: "epochShuffle", type: Type.BOOLEAN }
     ];
     return State;
 }());
