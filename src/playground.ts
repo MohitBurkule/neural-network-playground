@@ -21,6 +21,8 @@ import {
   regDatasets,
   activations,
   optimizers,
+  weightInits,
+  lrSchedules,
   problems,
   regularizations,
   weightQuantizations,
@@ -414,6 +416,62 @@ function makeGUI() {
     reset();
   });
   layerNormCheckbox.property("checked", state.layerNorm);
+
+  let weightInitDropdown = d3.select("#weight-init").on("change", function() {
+    state.weightInit = (this as any).value;
+    state.serialize();
+    userHasInteracted();
+    parametersChanged = true;
+    reset();
+  });
+  weightInitDropdown.property("value", state.weightInit);
+
+  let lrScheduleDropdown = d3.select("#lr-schedule").on("change", function() {
+    state.lrSchedule = (this as any).value;
+    state.serialize();
+    userHasInteracted();
+    parametersChanged = true;
+  });
+  lrScheduleDropdown.property("value", state.lrSchedule);
+
+  let dropoutSlider = d3.select("#dropout").on("input", function() {
+    state.dropout = +(this as any).value;
+    d3.select("label[for='dropout'] .value").text(state.dropout);
+    state.serialize();
+    userHasInteracted();
+    parametersChanged = true;
+  });
+  dropoutSlider.property("value", state.dropout);
+  d3.select("label[for='dropout'] .value").text(state.dropout);
+
+  let gradClipSlider = d3.select("#grad-clip").on("input", function() {
+    state.gradClip = +(this as any).value;
+    d3.select("label[for='grad-clip'] .value").text(state.gradClip);
+    state.serialize();
+    userHasInteracted();
+    parametersChanged = true;
+  });
+  gradClipSlider.property("value", state.gradClip);
+  d3.select("label[for='grad-clip'] .value").text(state.gradClip);
+
+  let weightDecaySlider = d3.select("#weight-decay").on("input", function() {
+    state.weightDecay = +(this as any).value;
+    d3.select("label[for='weight-decay'] .value").text(state.weightDecay);
+    state.serialize();
+    userHasInteracted();
+    parametersChanged = true;
+  });
+  weightDecaySlider.property("value", state.weightDecay);
+  d3.select("label[for='weight-decay'] .value").text(state.weightDecay);
+
+  let batchNormCheckbox = d3.select("#batch-norm").on("change", function() {
+    state.batchNorm = (this as any).checked;
+    state.serialize();
+    userHasInteracted();
+    parametersChanged = true;
+    reset();
+  });
+  batchNormCheckbox.property("checked", state.batchNorm);
 
   let regularDropdown = d3.select("#regularizations").on("change",
       function() {
@@ -1057,6 +1115,7 @@ function updateUI(firstStep = false) {
   d3.select("#loss-train").text(humanReadable(lossTrain));
   d3.select("#loss-test").text(humanReadable(lossTest));
   d3.select("#iter-number").text(addCommas(zeroPad(iter)));
+  d3.select("#effective-lr").text(effectiveLearningRate().toPrecision(3));
   lineChart.addDataPoint([lossTrain, lossTest]);
   updateClassificationMetricsUI();
 
@@ -1325,6 +1384,43 @@ function exitThreeD(): void {
   reset();
 }
 
+/**
+ * Computes the effective learning rate for the current iteration based on the
+ * selected schedule. "constant" returns the base rate unchanged.
+ */
+function effectiveLearningRate(): number {
+  let base = state.learningRate;
+  let t = iter;
+  const TOTAL = 1000;  // reference horizon for annealing schedules
+  switch (state.lrSchedule) {
+    case "step":
+      // Halve the rate every 200 iterations.
+      return base * Math.pow(0.5, Math.floor(t / 200));
+    case "exponential":
+      return base * Math.exp(-0.002 * t);
+    case "cosine":
+      return base * 0.5 * (1 + Math.cos(Math.PI * Math.min(t, TOTAL) / TOTAL));
+    case "warmup-decay": {
+      let warmup = 100;
+      if (t < warmup) return base * (t / warmup);
+      let p = Math.min(1, (t - warmup) / (TOTAL - warmup));
+      return base * (1 - p);
+    }
+    case "onecycle": {
+      let half = TOTAL / 2;
+      let tt = Math.min(t, TOTAL);
+      // Ramp 0.1*base -> base over first half, back down over second half.
+      if (tt < half) {
+        return base * (0.1 + 0.9 * (tt / half));
+      }
+      return base * (1 - 0.9 * ((tt - half) / half));
+    }
+    case "constant":
+    default:
+      return base;
+  }
+}
+
 function oneStep(): void {
   iter++;
   if (state.threeD) {
@@ -1332,20 +1428,24 @@ function oneStep(): void {
     return;
   }
   let optimizerType = optimizers[state.optimizer] || nn.OptimizerType.SGD;
+  let lr = effectiveLearningRate();
   state.trainData.forEach((point, i) => {
     let input = constructInput(point.x, point.y);
-    nn.forwardProp(network, input, state.weightQuantization, state.layerNorm);
+    nn.forwardProp(network, input, state.weightQuantization, state.layerNorm,
+        state.dropout, true, state.batchNorm);
     nn.backProp(network, point.label, nn.Errors.SQUARE);
     if (state.adversarialTraining) {
       // Train also on an on-the-fly adversarial perturbation of this point.
       let adv = perturb(point);
       nn.forwardProp(network, constructInput(adv.x, adv.y),
-          state.weightQuantization, state.layerNorm);
+          state.weightQuantization, state.layerNorm,
+          state.dropout, true, state.batchNorm);
       nn.backProp(network, point.label, nn.Errors.SQUARE);
     }
     if ((i + 1) % state.batchSize === 0) {
-      nn.updateWeights(network, state.learningRate, state.regularization,
-          state.regularizationRate, optimizerType);
+      nn.updateWeights(network, lr, state.regularization,
+          state.regularizationRate, optimizerType, state.gradClip,
+          state.weightDecay);
     }
   });
   // Compute the loss.
@@ -1399,6 +1499,7 @@ function reset(onStartup=false) {
       nn.Activations.LINEAR : nn.Activations.TANH;
   network = nn.buildNetwork(shape, state.activation, outputActivation,
 constructInputIds(), state.initZero);
+  nn.applyWeightInit(network, weightInits[state.weightInit]);
   applyFrozenLayers();
   lossTrain = getLoss(network, state.trainData);
   lossTest = getLoss(network, state.testData);

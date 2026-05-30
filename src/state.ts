@@ -27,6 +27,32 @@ export let optimizers: {[key: string]: nn.OptimizerType} = {
   "momentum": nn.OptimizerType.MOMENTUM,
   "rmsprop": nn.OptimizerType.RMSPROP,
   "adam": nn.OptimizerType.ADAM,
+  "nesterov": nn.OptimizerType.NESTEROV,
+  "adagrad": nn.OptimizerType.ADAGRAD,
+  "adadelta": nn.OptimizerType.ADADELTA,
+  "amsgrad": nn.OptimizerType.AMSGRAD,
+  "nadam": nn.OptimizerType.NADAM,
+  "adamw": nn.OptimizerType.ADAMW,
+};
+
+/** A map between names and weight initialization schemes. */
+export let weightInits: {[key: string]: nn.WeightInit} = {
+  "random-uniform": nn.WeightInit.RANDOM_UNIFORM,
+  "xavier": nn.WeightInit.XAVIER,
+  "he": nn.WeightInit.HE,
+  "lecun": nn.WeightInit.LECUN,
+  "zeros": nn.WeightInit.ZEROS,
+  "orthogonal": nn.WeightInit.ORTHOGONAL,
+};
+
+/** Learning-rate schedule names (applied in playground oneStep). */
+export let lrSchedules: {[key: string]: string} = {
+  "constant": "constant",
+  "step": "step",
+  "exponential": "exponential",
+  "cosine": "cosine",
+  "warmup-decay": "warmup-decay",
+  "onecycle": "onecycle",
 };
 
 /** A map between names and activation functions. */
@@ -41,6 +67,21 @@ export let activations: {[key: string]: nn.ActivationFunction} = {
   "gelu": nn.Activations.GELU,
   "leaky-relu": nn.Activations.LEAKY_RELU,
   "prelu": nn.Activations.PReLU(0.2), // Default alpha value for PReLU
+  "elu": nn.Activations.ELU,
+  "selu": nn.Activations.SELU,
+  "swish": nn.Activations.SWISH,
+  "softplus": nn.Activations.SOFTPLUS,
+  "softsign": nn.Activations.SOFTSIGN,
+  "hard-sigmoid": nn.Activations.HARD_SIGMOID,
+  "hard-tanh": nn.Activations.HARD_TANH,
+  "hard-swish": nn.Activations.HARD_SWISH,
+  "relu6": nn.Activations.RELU6,
+  "bent-identity": nn.Activations.BENT_IDENTITY,
+  "gaussian": nn.Activations.GAUSSIAN,
+  "snake": nn.Activations.SNAKE,
+  "arctan": nn.Activations.ARCTAN,
+  "isru": nn.Activations.ISRU,
+  "exp-linear": nn.Activations.EXPONENTIAL_LINEAR,
 };
 /** A map between names and regularization functions. */
 export let regularizations: {[key: string]: nn.RegularizationFunction} = {
@@ -141,6 +182,12 @@ export class State {
   private static PROPS: Property[] = [
     {name: "activation", type: Type.OBJECT, keyMap: activations},
     {name: "optimizer", type: Type.STRING},
+    {name: "weightInit", type: Type.STRING},
+    {name: "lrSchedule", type: Type.STRING},
+    {name: "dropout", type: Type.NUMBER},
+    {name: "gradClip", type: Type.NUMBER},
+    {name: "weightDecay", type: Type.NUMBER},
+    {name: "batchNorm", type: Type.BOOLEAN},
     {name: "layerNorm", type: Type.BOOLEAN},
     {name: "regularization", type: Type.OBJECT, keyMap: regularizations},
     {name: "weightQuantization", type: Type.OBJECT, keyMap: weightQuantizations},
@@ -190,6 +237,12 @@ export class State {
   percTrainData = 50;
   activation = nn.Activations.TANH;
   optimizer: string = "sgd";
+  weightInit: string = "random-uniform";
+  lrSchedule: string = "constant";
+  dropout = 0;
+  gradClip = 0;
+  weightDecay = 0;
+  batchNorm: boolean = false;
   layerNorm: boolean = false;
   regularization: nn.RegularizationFunction = null;
   weightQuantization: nn.WeightQuantizationFunction = null;

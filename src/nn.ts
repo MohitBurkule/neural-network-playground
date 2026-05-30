@@ -238,6 +238,96 @@ export class Activations {
     der: x => x >= 0 ? 1 : alpha,
     compileToJs: arg => `prelu(${arg})`
   });
+  public static ELU: ActivationFunction = {
+    output: x => x >= 0 ? x : Math.exp(x) - 1,
+    der: x => x >= 0 ? 1 : Math.exp(x),
+    compileToJs: arg => `((${arg}) >= 0 ? (${arg}) : Math.exp(${arg}) - 1)`
+  };
+  public static SELU: ActivationFunction = {
+    output: x => {
+      let a = 1.6732632423543772, s = 1.0507009873554805;
+      return s * (x >= 0 ? x : a * (Math.exp(x) - 1));
+    },
+    der: x => {
+      let a = 1.6732632423543772, s = 1.0507009873554805;
+      return s * (x >= 0 ? 1 : a * Math.exp(x));
+    },
+    compileToJs: arg => `(1.0507009873554805 * ((${arg}) >= 0 ? (${arg}) : 1.6732632423543772 * (Math.exp(${arg}) - 1)))`
+  };
+  public static SWISH: ActivationFunction = {
+    output: x => x / (1 + Math.exp(-x)),
+    der: x => {
+      let sig = 1 / (1 + Math.exp(-x));
+      return sig + x * sig * (1 - sig);
+    },
+    compileToJs: arg => `((${arg}) / (1 + Math.exp(-(${arg}))))`
+  };
+  public static SOFTPLUS: ActivationFunction = {
+    output: x => (Math as any).softplus(x),
+    der: x => 1 / (1 + Math.exp(-x)),
+    compileToJs: arg => `Math.log(1 + Math.exp(${arg}))`
+  };
+  public static SOFTSIGN: ActivationFunction = {
+    output: x => x / (1 + Math.abs(x)),
+    der: x => 1 / Math.pow(1 + Math.abs(x), 2),
+    compileToJs: arg => `((${arg}) / (1 + Math.abs(${arg})))`
+  };
+  public static HARD_SIGMOID: ActivationFunction = {
+    output: x => Math.max(0, Math.min(1, 0.2 * x + 0.5)),
+    der: x => (x > -2.5 && x < 2.5) ? 0.2 : 0,
+    compileToJs: arg => `Math.max(0, Math.min(1, 0.2 * (${arg}) + 0.5))`
+  };
+  public static HARD_TANH: ActivationFunction = {
+    output: x => Math.max(-1, Math.min(1, x)),
+    der: x => (x > -1 && x < 1) ? 1 : 0,
+    compileToJs: arg => `Math.max(-1, Math.min(1, ${arg}))`
+  };
+  public static HARD_SWISH: ActivationFunction = {
+    output: x => x * Math.max(0, Math.min(1, (x + 3) / 6)),
+    der: x => {
+      if (x <= -3) return 0;
+      if (x >= 3) return 1;
+      return (2 * x + 3) / 6;
+    },
+    compileToJs: arg => `((${arg}) * Math.max(0, Math.min(1, ((${arg}) + 3) / 6)))`
+  };
+  public static RELU6: ActivationFunction = {
+    output: x => Math.min(6, Math.max(0, x)),
+    der: x => (x > 0 && x < 6) ? 1 : 0,
+    compileToJs: arg => `Math.min(6, Math.max(0, ${arg}))`
+  };
+  public static BENT_IDENTITY: ActivationFunction = {
+    output: x => (Math.sqrt(x * x + 1) - 1) / 2 + x,
+    der: x => x / (2 * Math.sqrt(x * x + 1)) + 1,
+    compileToJs: arg => `((Math.sqrt((${arg}) * (${arg}) + 1) - 1) / 2 + (${arg}))`
+  };
+  public static GAUSSIAN: ActivationFunction = {
+    output: x => Math.exp(-x * x),
+    der: x => -2 * x * Math.exp(-x * x),
+    compileToJs: arg => `Math.exp(-(${arg}) * (${arg}))`
+  };
+  public static SNAKE: ActivationFunction = {
+    output: x => x + Math.pow(Math.sin(x), 2),
+    der: x => 1 + 2 * Math.sin(x) * Math.cos(x),
+    compileToJs: arg => `((${arg}) + Math.pow(Math.sin(${arg}), 2))`
+  };
+  public static ARCTAN: ActivationFunction = {
+    output: x => Math.atan(x),
+    der: x => 1 / (1 + x * x),
+    compileToJs: arg => `Math.atan(${arg})`
+  };
+  public static ISRU: ActivationFunction = {
+    // Inverse square root unit (alpha = 1).
+    output: x => x / Math.sqrt(1 + x * x),
+    der: x => Math.pow(1 / Math.sqrt(1 + x * x), 3),
+    compileToJs: arg => `((${arg}) / Math.sqrt(1 + (${arg}) * (${arg})))`
+  };
+  public static EXPONENTIAL_LINEAR: ActivationFunction = {
+    // Smooth exponential-linear blend: x for x>=0, scaled exp ramp below.
+    output: x => x >= 0 ? x : 0.5 * (Math.exp(x) - 1),
+    der: x => x >= 0 ? 1 : 0.5 * Math.exp(x),
+    compileToJs: arg => `((${arg}) >= 0 ? (${arg}) : 0.5 * (Math.exp(${arg}) - 1))`
+  };
 }
 
 /** Build-in regularization functions */
@@ -359,6 +449,65 @@ export function buildNetwork(
   return network;
 }
 
+/** Weight initialization schemes. */
+export enum WeightInit {
+  RANDOM_UNIFORM = "random-uniform",
+  XAVIER = "xavier",
+  HE = "he",
+  LECUN = "lecun",
+  ZEROS = "zeros",
+  ORTHOGONAL = "orthogonal"
+}
+
+/** Standard normal sample via Box-Muller. */
+function randn(): number {
+  let u = 0, v = 0;
+  while (u === 0) u = Math.random();
+  while (v === 0) v = Math.random();
+  return Math.sqrt(-2 * Math.log(u)) * Math.cos(2 * Math.PI * v);
+}
+
+/**
+ * Re-initializes all link weights (and biases) using the chosen scheme.
+ * fanIn is the number of incoming links to a node. RANDOM_UNIFORM reproduces
+ * the original default (uniform in [-0.5, 0.5]).
+ */
+export function applyWeightInit(network: Node[][], scheme: WeightInit): void {
+  if (scheme == null || scheme === WeightInit.RANDOM_UNIFORM) {
+    return;  // Keep the default random weights assigned at construction.
+  }
+  for (let layerIdx = 1; layerIdx < network.length; layerIdx++) {
+    let layer = network[layerIdx];
+    for (let i = 0; i < layer.length; i++) {
+      let node = layer[i];
+      let fanIn = node.inputLinks.length || 1;
+      let fanOut = node.outputs.length || 1;
+      for (let j = 0; j < node.inputLinks.length; j++) {
+        let link = node.inputLinks[j];
+        switch (scheme) {
+          case WeightInit.XAVIER:
+            link.weight = randn() * Math.sqrt(2 / (fanIn + fanOut));
+            break;
+          case WeightInit.HE:
+            link.weight = randn() * Math.sqrt(2 / fanIn);
+            break;
+          case WeightInit.LECUN:
+            link.weight = randn() * Math.sqrt(1 / fanIn);
+            break;
+          case WeightInit.ZEROS:
+            link.weight = 0;
+            break;
+          case WeightInit.ORTHOGONAL:
+            // Orthogonal-lite: scaled normal that approximately preserves
+            // variance across the layer (cheap stand-in for true QR ortho).
+            link.weight = randn() / Math.sqrt(fanIn);
+            break;
+        }
+      }
+    }
+  }
+}
+
 /**
  * Runs a forward propagation of the provided input through the provided
  * network. This method modifies the internal state of the network - the
@@ -371,7 +520,8 @@ export function buildNetwork(
  */
 export function forwardProp(network: Node[][], inputs: number[],
     weightQuantizationFunction: WeightQuantizationFunction,
-    layerNorm: boolean = false): number {
+    layerNorm: boolean = false, dropout: number = 0,
+    training: boolean = false, batchNorm: boolean = false): number {
   let inputLayer = network[0];
   if (inputs.length !== inputLayer.length) {
     throw new Error("The number of inputs must match the number of nodes in" +
@@ -397,6 +547,26 @@ export function forwardProp(network: Node[][], inputs: number[],
         node.totalInput += weight * link.source.output;
       }
     }
+    // Apply batch normalization (over this batch's single-example stats, i.e.
+    // normalize across the units of the layer) to hidden layers if enabled.
+    // Kept intentionally simple: uses the current activations' mean/variance.
+    if (batchNorm && !isOutputLayer && currentLayer.length > 1) {
+      let mean = 0;
+      for (let i = 0; i < currentLayer.length; i++) {
+        mean += currentLayer[i].totalInput;
+      }
+      mean /= currentLayer.length;
+      let variance = 0;
+      for (let i = 0; i < currentLayer.length; i++) {
+        let diff = currentLayer[i].totalInput - mean;
+        variance += diff * diff;
+      }
+      variance /= currentLayer.length;
+      let std = Math.sqrt(variance + 1e-8);
+      for (let i = 0; i < currentLayer.length; i++) {
+        currentLayer[i].totalInput = (currentLayer[i].totalInput - mean) / std;
+      }
+    }
     // Apply layer normalization to hidden layers if enabled.
     if (layerNorm && !isOutputLayer && currentLayer.length > 1) {
       let mean = 0;
@@ -419,6 +589,17 @@ export function forwardProp(network: Node[][], inputs: number[],
     for (let i = 0; i < currentLayer.length; i++) {
       let node = currentLayer[i];
       node.output = node.activation.output(node.totalInput);
+    }
+    // Inverted dropout on hidden layers during training only.
+    if (training && dropout > 0 && dropout < 1 && !isOutputLayer) {
+      let scale = 1 / (1 - dropout);
+      for (let i = 0; i < currentLayer.length; i++) {
+        if (Math.random() < dropout) {
+          currentLayer[i].output = 0;
+        } else {
+          currentLayer[i].output *= scale;
+        }
+      }
     }
   }
   return network[network.length - 1][0].output;
@@ -485,6 +666,9 @@ export interface OptimizerState {
   m?: number;  // first moment (momentum / Adam m)
   v?: number;  // second moment (RMSProp / Adam v)
   t?: number;  // step count (Adam)
+  vMax?: number;  // max second moment (AMSGrad)
+  acc?: number;  // accumulated sq grad (Adagrad)
+  accDelta?: number;  // accumulated sq update (Adadelta)
 }
 
 /** Optimizer types. */
@@ -492,7 +676,13 @@ export enum OptimizerType {
   SGD = "sgd",
   MOMENTUM = "momentum",
   RMSPROP = "rmsprop",
-  ADAM = "adam"
+  ADAM = "adam",
+  NESTEROV = "nesterov",
+  ADAGRAD = "adagrad",
+  ADADELTA = "adadelta",
+  AMSGRAD = "amsgrad",
+  NADAM = "nadam",
+  ADAMW = "adamw"
 }
 
 /** Hyperparameters for optimizers. */
@@ -531,6 +721,62 @@ function optimizerDelta(
       let vHat = state.v / (1 - Math.pow(OPTIMIZER_BETA2, state.t));
       return learningRate * mHat / (Math.sqrt(vHat) + OPTIMIZER_EPSILON);
     }
+    case OptimizerType.NESTEROV: {
+      // Nesterov accelerated momentum (look-ahead form).
+      state.m = state.m == null ? 0 : state.m;
+      let prev = state.m;
+      state.m = OPTIMIZER_BETA1 * state.m + grad;
+      return learningRate * (OPTIMIZER_BETA1 * prev + (1 + OPTIMIZER_BETA1) * grad);
+    }
+    case OptimizerType.ADAGRAD: {
+      state.acc = (state.acc == null ? 0 : state.acc) + grad * grad;
+      return learningRate * grad / (Math.sqrt(state.acc) + OPTIMIZER_EPSILON);
+    }
+    case OptimizerType.ADADELTA: {
+      let rho = 0.95;
+      state.acc = state.acc == null ? 0 : state.acc;
+      state.accDelta = state.accDelta == null ? 0 : state.accDelta;
+      state.acc = rho * state.acc + (1 - rho) * grad * grad;
+      let update = Math.sqrt(state.accDelta + OPTIMIZER_EPSILON) /
+          Math.sqrt(state.acc + OPTIMIZER_EPSILON) * grad;
+      state.accDelta = rho * state.accDelta + (1 - rho) * update * update;
+      // Adadelta is self-scaling; learningRate acts as a global multiplier.
+      return learningRate * update;
+    }
+    case OptimizerType.AMSGRAD: {
+      state.m = state.m == null ? 0 : state.m;
+      state.v = state.v == null ? 0 : state.v;
+      state.vMax = state.vMax == null ? 0 : state.vMax;
+      state.t = (state.t == null ? 0 : state.t) + 1;
+      state.m = OPTIMIZER_BETA1 * state.m + (1 - OPTIMIZER_BETA1) * grad;
+      state.v = OPTIMIZER_BETA2 * state.v + (1 - OPTIMIZER_BETA2) * grad * grad;
+      state.vMax = Math.max(state.vMax, state.v);
+      let mHat = state.m / (1 - Math.pow(OPTIMIZER_BETA1, state.t));
+      return learningRate * mHat / (Math.sqrt(state.vMax) + OPTIMIZER_EPSILON);
+    }
+    case OptimizerType.NADAM: {
+      state.m = state.m == null ? 0 : state.m;
+      state.v = state.v == null ? 0 : state.v;
+      state.t = (state.t == null ? 0 : state.t) + 1;
+      state.m = OPTIMIZER_BETA1 * state.m + (1 - OPTIMIZER_BETA1) * grad;
+      state.v = OPTIMIZER_BETA2 * state.v + (1 - OPTIMIZER_BETA2) * grad * grad;
+      let mHat = state.m / (1 - Math.pow(OPTIMIZER_BETA1, state.t));
+      let vHat = state.v / (1 - Math.pow(OPTIMIZER_BETA2, state.t));
+      let mNes = OPTIMIZER_BETA1 * mHat +
+          (1 - OPTIMIZER_BETA1) * grad / (1 - Math.pow(OPTIMIZER_BETA1, state.t));
+      return learningRate * mNes / (Math.sqrt(vHat) + OPTIMIZER_EPSILON);
+    }
+    case OptimizerType.ADAMW: {
+      // Same step as Adam; decoupled weight decay applied separately in updateWeights.
+      state.m = state.m == null ? 0 : state.m;
+      state.v = state.v == null ? 0 : state.v;
+      state.t = (state.t == null ? 0 : state.t) + 1;
+      state.m = OPTIMIZER_BETA1 * state.m + (1 - OPTIMIZER_BETA1) * grad;
+      state.v = OPTIMIZER_BETA2 * state.v + (1 - OPTIMIZER_BETA2) * grad * grad;
+      let mHat = state.m / (1 - Math.pow(OPTIMIZER_BETA1, state.t));
+      let vHat = state.v / (1 - Math.pow(OPTIMIZER_BETA2, state.t));
+      return learningRate * mHat / (Math.sqrt(vHat) + OPTIMIZER_EPSILON);
+    }
     default:
       return learningRate * grad;
   }
@@ -542,7 +788,16 @@ function optimizerDelta(
  */
 export function updateWeights(network: Node[][], learningRate: number,
     regularization: RegularizationFunction, regularizationRate: number,
-    optimizerType: OptimizerType = OptimizerType.SGD) {
+    optimizerType: OptimizerType = OptimizerType.SGD,
+    gradClip: number = 0, weightDecay: number = 0) {
+  // Clip a gradient to [-gradClip, gradClip] when clipping is enabled.
+  let clip = (g: number) => {
+    if (gradClip > 0) {
+      if (g > gradClip) return gradClip;
+      if (g < -gradClip) return -gradClip;
+    }
+    return g;
+  };
   for (let layerIdx = 1; layerIdx < network.length; layerIdx++) {
     let currentLayer = network[layerIdx];
     for (let i = 0; i < currentLayer.length; i++) {
@@ -561,7 +816,7 @@ export function updateWeights(network: Node[][], learningRate: number,
       }
       // Update the node's bias.
       if (node.numAccumulatedDers > 0) {
-        let biasGrad = node.accInputDer / node.numAccumulatedDers;
+        let biasGrad = clip(node.accInputDer / node.numAccumulatedDers);
         node.bias -= optimizerDelta(biasGrad, learningRate, optimizerType, node.biasOptimizerState);
         node.accInputDer = 0;
         node.numAccumulatedDers = 0;
@@ -575,9 +830,14 @@ export function updateWeights(network: Node[][], learningRate: number,
         let regulDer = regularization ?
             regularization.der(link.weight) : 0;
         if (link.numAccumulatedDers > 0) {
-          let grad = link.accErrorDer / link.numAccumulatedDers;
+          let grad = clip(link.accErrorDer / link.numAccumulatedDers);
           // Update the weight based on dE/dw.
           link.weight -= optimizerDelta(grad, learningRate, optimizerType, link.optimizerState);
+          // Decoupled weight decay (AdamW-style): pull weight toward zero
+          // proportionally to the learning rate, independent of the gradient.
+          if (weightDecay > 0) {
+            link.weight -= learningRate * weightDecay * link.weight;
+          }
           // Further update the weight based on regularization.
           let newLinkWeight = link.weight -
               (learningRate * regularizationRate) * regulDer;

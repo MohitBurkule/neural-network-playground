@@ -120,8 +120,23 @@ Modified by David Cato
                         <option value="leaky-relu">Leaky ReLU</option>
                         <option value="prelu">PReLU</option>
                         <option value="sine">Sine</option>
-                        <option value="sine">Sinc</option>
+                        <option value="sinc">Sinc</option>
                         <option value="mish">Mish</option>
+                        <option value="elu">ELU</option>
+                        <option value="selu">SELU</option>
+                        <option value="swish">Swish / SiLU</option>
+                        <option value="softplus">Softplus</option>
+                        <option value="softsign">Softsign</option>
+                        <option value="hard-sigmoid">Hard Sigmoid</option>
+                        <option value="hard-tanh">Hard Tanh</option>
+                        <option value="hard-swish">Hard Swish</option>
+                        <option value="relu6">ReLU6</option>
+                        <option value="bent-identity">Bent Identity</option>
+                        <option value="gaussian">Gaussian</option>
+                        <option value="snake">Snake</option>
+                        <option value="arctan">ArcTan</option>
+                        <option value="isru">ISRU</option>
+                        <option value="exp-linear">Exponential Linear</option>
                     </select>
                 </div>
             </div>
@@ -133,8 +148,66 @@ Modified by David Cato
                         <option value="momentum">Momentum</option>
                         <option value="rmsprop">RMSProp</option>
                         <option value="adam">Adam</option>
+                        <option value="nesterov">Nesterov Momentum</option>
+                        <option value="adagrad">Adagrad</option>
+                        <option value="adadelta">Adadelta</option>
+                        <option value="amsgrad">AMSGrad</option>
+                        <option value="nadam">Nadam</option>
+                        <option value="adamw">AdamW</option>
                     </select>
                 </div>
+            </div>
+            <div class="control ui-weight-init">
+                <label for="weight-init">Weight init</label>
+                <div class="select">
+                    <select id="weight-init">
+                        <option value="random-uniform">Random uniform</option>
+                        <option value="xavier">Xavier / Glorot</option>
+                        <option value="he">He / Kaiming</option>
+                        <option value="lecun">LeCun</option>
+                        <option value="zeros">Zeros</option>
+                        <option value="orthogonal">Orthogonal-lite</option>
+                    </select>
+                </div>
+            </div>
+            <div class="control ui-lr-schedule">
+                <label for="lr-schedule">LR schedule</label>
+                <div class="select">
+                    <select id="lr-schedule">
+                        <option value="constant">Constant</option>
+                        <option value="step">Step decay</option>
+                        <option value="exponential">Exponential decay</option>
+                        <option value="cosine">Cosine annealing</option>
+                        <option value="warmup-decay">Warmup + decay</option>
+                        <option value="onecycle">1cycle-lite</option>
+                    </select>
+                </div>
+            </div>
+            <div class="control ui-effective-lr">
+                <span class="label">Effective LR</span>
+                <span class="value" id="effective-lr"></span>
+            </div>
+            <div class="control ui-dropout">
+                <label for="dropout">Dropout:&nbsp;&nbsp;<span class="value">0</span></label>
+                <p class="slider">
+                    <input class="mdl-slider mdl-js-slider" type="range" id="dropout" min="0" max="0.9" step="0.05" value="0">
+                </p>
+            </div>
+            <div class="control ui-grad-clip">
+                <label for="grad-clip">Grad clip:&nbsp;&nbsp;<span class="value">0</span></label>
+                <p class="slider">
+                    <input class="mdl-slider mdl-js-slider" type="range" id="grad-clip" min="0" max="5" step="0.1" value="0">
+                </p>
+            </div>
+            <div class="control ui-weight-decay">
+                <label for="weight-decay">Weight decay:&nbsp;&nbsp;<span class="value">0</span></label>
+                <p class="slider">
+                    <input class="mdl-slider mdl-js-slider" type="range" id="weight-decay" min="0" max="0.1" step="0.001" value="0">
+                </p>
+            </div>
+            <div class="control ui-batchNorm">
+                <label for="batch-norm">Batch Norm</label>
+                <input type="checkbox" id="batch-norm">
             </div>
             <div class="control ui-layerNorm">
                 <label for="layer-norm">Layer Norm</label>
