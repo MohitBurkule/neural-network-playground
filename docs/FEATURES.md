@@ -1,115 +1,225 @@
 # Feature Catalog
 
-This document enumerates every feature available in the Neural Network Playground Extended Edition, with a short explanation and the location in the UI where it can be found.
+This document enumerates every feature available in the Neural Network Playground Extended Edition, grouped by category. Sources of truth used: `index.html`, `src/state.ts`, `src/nn.ts`, `src/dataset.ts`, `src/dataset3d.ts`, `src/adversarial.ts`, `src/unlearning.ts`, and `src/playground.ts`.
+
+**Approximate feature total: ~130 distinct controls and capabilities on the main page, plus 12 standalone labs.**
 
 ---
 
-## Training Controls
+## 1. Training Controls
 
 ### Play / Pause
-Start or stop the training loop. The button is in the top toolbar. Each "tick" of the loop runs one mini-batch forward pass, backward pass, and weight update.
+Start or stop the continuous training loop. Each tick runs one mini-batch forward pass, backward pass, and weight update. Keyboard shortcut: **Space**.
 
 ### Step
-Advance training by exactly one mini-batch without entering continuous play mode. Useful for watching the decision boundary evolve one step at a time.
+Advance training by exactly one mini-batch without entering continuous play mode. Keyboard shortcut: **S**.
 
 ### Reset
-Re-initialises all network weights (randomly or to zero, depending on the **Init Zero** toggle) and clears the loss chart. Found in the top toolbar alongside Play/Pause.
+Re-initializes all network weights using the active weight-init scheme and clears the loss chart. Keyboard shortcut: **R**.
+
+### Regenerate Data
+Re-samples the active dataset with the current noise and split settings. Keyboard shortcut: **D**.
+
+### Speed slider
+Controls how many training steps are run per animation frame (1–50). Found in the UX toolbar.
+
+### Run N epochs
+Enter a step count and click the button to run exactly that many steps then pause automatically.
+
+### Auto-stop
+Enable with the "Auto-stop" checkbox. Training pauses when the change in training loss over the last 20 steps drops below a configurable threshold.
 
 ### Learning Rate
-Dropdown in the left panel. Controls the global step size multiplier applied to every weight update regardless of optimizer choice.
+Dropdown (0.00001–10) plus a free-text numeric input for arbitrary values. Controls the global step-size multiplier.
 
 ### Batch Size
-Dropdown in the left panel. Number of training examples used to compute each gradient update. Smaller batches are noisier but update more frequently.
+Slider (1–30 examples). Number of training examples accumulated before each weight update.
 
 ### Noise
-Slider in the data panel. Adds Gaussian noise to generated dataset samples, making the classification boundary harder to learn.
+Slider (0–50). Adds Gaussian noise to generated dataset samples, making the boundary harder to learn.
 
-### Ratio of Training to Test Data
-Slider (percTrainData) in the data panel. Splits the generated dataset into training and held-out test sets.
+### Train/Test Split
+Slider (percTrainData, 10%–90%). Splits the generated dataset into training and held-out test sets.
 
 ### Seed
-Text input in the data panel. Seeds both the random data generator and weight initialiser so runs are reproducible.
+Text input. Seeds the data generator and weight initializer for reproducible runs.
+
+### Randomize Weights
+Re-initializes weights without changing architecture, data, or any other setting. Preserves optimizer state reset.
+
+### Snapshot / Restore
+Save the current set of weights and biases in memory (Snapshot), then restore them at any point (Restore). No file I/O required.
 
 ---
 
-## Network Architecture
+## 2. Network Architecture
 
 ### Number of Hidden Layers
-+/- buttons in the network diagram area. Add or remove hidden layers up to the supported maximum.
++/− buttons in the network diagram header. Add or remove layers.
 
 ### Nodes per Layer
-+/- buttons on each hidden layer column. Adjust width of each hidden layer independently.
++/− buttons on each hidden layer column. Adjust width independently.
 
-### Init Zero
-Toggle in the settings panel. When enabled, all weights and biases start at zero rather than random uniform values.
+### Custom Feature button
+Opens an inline formula input to add an arbitrary input feature computed from (x, y).
 
----
-
-## Activation Functions
-
-Selected from the **Activation** dropdown in the left panel. Applies to all hidden-layer nodes; the output node always uses a linear activation for regression or a fixed activation for classification.
-
-| Name | Behaviour |
-|---|---|
-| **ReLU** | `max(0, x)` — piecewise linear, sparse activations |
-| **Tanh** | Smooth S-curve in (−1, 1) — the default |
-| **Sigmoid** | Smooth S-curve in (0, 1) |
-| **Linear** | Identity — passes the pre-activation through unchanged |
-| **Sine** | `sin(x)` — periodic activation, useful for wave-like targets |
-| **Sinc** | `sin(x)/x` (1 at x=0) — a peaked periodic function |
-| **Mish** | `x · tanh(softplus(x))` — smooth, non-monotonic |
-| **GELU** | Gaussian Error Linear Unit — approximated via tanh |
-| **Leaky ReLU** | `max(0.01x, x)` — avoids dead neurons |
-| **PReLU** | Parametric ReLU with α=0.2 — learned negative slope |
+### Add custom activation button
+Allows defining a custom activation function inline for the network.
 
 ---
 
-## Optimizers
+## 3. Activation Functions (24)
 
-Selected from the **Optimizer** dropdown. Each optimizer maintains per-parameter state on every `Link` and `Node` bias.
+Selected from the **Activation** dropdown. Applies to all hidden-layer nodes.
 
-| Name | Notes |
-|---|---|
-| **SGD** | Vanilla stochastic gradient descent: `w -= lr * grad` |
-| **Momentum** | Exponential moving average of gradients (β1 = 0.9) |
-| **RMSProp** | Divides by root-mean-squared gradient history (β2 = 0.999) |
-| **Adam** | Combines Momentum and RMSProp with bias correction (β1=0.9, β2=0.999, ε=1e-8) |
-
----
-
-## Regularization
-
-Dropdown in the left panel, paired with a **Regularization Rate** slider.
-
-- **None** — no penalty applied
-- **L1** — adds `|w|` penalty; drives small weights exactly to zero (weights can become "dead")
-- **L2** — adds `0.5w²` penalty; shrinks weights smoothly toward zero
-
----
-
-## Weight Quantization
-
-Dropdown in the left panel. Simulates reduced-precision inference by snapping each weight to a fixed grid during the forward pass (gradients remain full precision).
-
-| Setting | Effective bits | Grid step |
+| Key | Name | Formula / Notes |
 |---|---|---|
-| None | 32-bit float | — |
-| 16-bit | 16 | 1/65536 |
-| 8-bit | 8 | 1/256 |
-| 4-bit | 4 | 1/16 |
-| 2-bit | 2 | 1/4 |
+| `relu` | ReLU | `max(0, x)` |
+| `tanh` | Tanh | `tanh(x)` — default |
+| `sigmoid` | Sigmoid | `1 / (1 + exp(-x))` |
+| `linear` | Linear | `x` |
+| `gelu` | GELU | `0.5x(1 + tanh(√(2/π)(x + 0.044715x³)))` |
+| `leaky-relu` | Leaky ReLU | `x ≥ 0 ? x : 0.01x` |
+| `prelu` | PReLU | `x ≥ 0 ? x : 0.2x` (α=0.2) |
+| `sine` | Sine | `sin(x)` |
+| `sinc` | Sinc | `sin(x)/x` (1 at x=0) |
+| `mish` | Mish | `x · tanh(softplus(x))` |
+| `elu` | ELU | `x ≥ 0 ? x : exp(x) − 1` |
+| `selu` | SELU | `s · (x ≥ 0 ? x : a(exp(x)−1))`, self-normalizing constants |
+| `swish` | Swish / SiLU | `x / (1 + exp(-x))` |
+| `softplus` | Softplus | `log(1 + exp(x))` |
+| `softsign` | Softsign | `x / (1 + |x|)` |
+| `hard-sigmoid` | Hard Sigmoid | `clip(0.2x + 0.5, 0, 1)` |
+| `hard-tanh` | Hard Tanh | `clip(x, -1, 1)` |
+| `hard-swish` | Hard Swish | `x · clip((x+3)/6, 0, 1)` |
+| `relu6` | ReLU6 | `min(6, max(0, x))` |
+| `bent-identity` | Bent Identity | `(√(x²+1)−1)/2 + x` |
+| `gaussian` | Gaussian | `exp(-x²)` |
+| `snake` | Snake | `x + sin²(x)` |
+| `arctan` | ArcTan | `atan(x)` |
+| `isru` | ISRU | `x / √(1+x²)` |
+| `exp-linear` | Exponential Linear | `x ≥ 0 ? x : 0.5(exp(x)−1)` |
 
 ---
 
-## Layer Normalization
+## 4. Optimizers (10)
 
-Toggle in the left panel (**Layer Norm**). When enabled, each hidden layer's pre-activation values are normalised to zero mean and unit variance before the activation function is applied, using a small epsilon (1e-8) for numerical stability.
+Selected from the **Optimizer** dropdown. Each maintains per-parameter state on every `Link` and `Node` bias.
+
+| Key | Name | Notes |
+|---|---|---|
+| `sgd` | SGD | `w -= lr · grad` |
+| `momentum` | Momentum | EMA of gradients, β1=0.9 |
+| `rmsprop` | RMSProp | Root-mean-square gradient scaling, β2=0.999 |
+| `adam` | Adam | Momentum + RMSProp with bias correction, β1=0.9, β2=0.999, ε=1e-8 |
+| `nesterov` | Nesterov Momentum | Look-ahead momentum |
+| `adagrad` | Adagrad | Accumulates squared gradients |
+| `adadelta` | Adadelta | Self-scaling; no global LR required (LR acts as multiplier) |
+| `amsgrad` | AMSGrad | Adam variant using max of past v_t |
+| `nadam` | Nadam | Nesterov + Adam |
+| `adamw` | AdamW | Adam + decoupled weight decay |
 
 ---
 
-## Input Features
+## 5. Loss Functions (5)
 
-Checkboxes in the **Features** panel on the left side of the network diagram. Each selected feature becomes an additional input node.
+Selected from the **Loss** dropdown in the Training Methodology panel.
+
+| Key | Name | Formula |
+|---|---|---|
+| `square` | Square (MSE) | `0.5(output − target)²` — default |
+| `hinge` | Hinge | `max(0, 1 − output·target)` |
+| `logloss` | Log loss / Cross-entropy | Cross-entropy via sigmoid mapping of output to (0,1) |
+| `huber` | Huber | Smooth L1; quadratic inside δ=1, linear outside |
+| `absolute` | Absolute (L1) | `|output − target|` |
+
+---
+
+## 6. Weight Initialization (6)
+
+Selected from the **Weight init** dropdown.
+
+| Key | Name | Notes |
+|---|---|---|
+| `random-uniform` | Random uniform | Default; weights in [−0.5, 0.5] |
+| `xavier` | Xavier / Glorot | `N(0, 2/(fanIn+fanOut))` |
+| `he` | He / Kaiming | `N(0, 2/fanIn)` |
+| `lecun` | LeCun | `N(0, 1/fanIn)` |
+| `zeros` | Zeros | All weights start at 0 |
+| `orthogonal` | Orthogonal-lite | Scaled normal `N(0, 1/√fanIn)` |
+
+---
+
+## 7. Learning Rate Schedules (6)
+
+Selected from the **LR schedule** dropdown. The **Effective LR** display shows the current value.
+
+| Key | Name |
+|---|---|
+| `constant` | Constant (no decay) |
+| `step` | Step decay |
+| `exponential` | Exponential decay |
+| `cosine` | Cosine annealing |
+| `warmup-decay` | Warmup + decay |
+| `onecycle` | 1cycle-lite |
+
+---
+
+## 8. Regularization and Normalization
+
+### Regularization (L1 / L2)
+Dropdown (`none`, `L1`, `L2`) paired with a **Regularization Rate** slider. L1 can drive weights to exactly zero (marking them `isDead`); L2 applies smooth weight shrinkage.
+
+### Dropout
+Slider (0–0.9). Inverted dropout applied to hidden layers during the forward pass in training mode only.
+
+### Gradient Clipping
+Slider (0–5). Clips each gradient component to [−gradClip, +gradClip] before the optimizer step.
+
+### Weight Decay
+Slider (0–0.1). Decoupled weight decay (AdamW-style): pulls weights toward zero by `lr · weightDecay · w` each step, independent of the gradient.
+
+### Batch Normalization
+Checkbox. Normalizes each hidden layer's pre-activation values to zero mean and unit variance (over the layer's units, single-example approximation).
+
+### Layer Normalization
+Checkbox. Same normalization formula as Batch Norm but labeled and implemented as Layer Norm; applied per-layer during the forward pass.
+
+### Weight Quantization (5 levels)
+Dropdown. Simulates reduced-precision inference by snapping weights to a fixed grid during the forward pass; gradients remain full precision.
+
+| Setting | Grid step |
+|---|---|
+| None | full float |
+| 16-bit | 1/65536 |
+| 8-bit | 1/256 |
+| 4-bit | 1/16 |
+| 2-bit | 1/4 |
+
+---
+
+## 9. Training Methodology Panel
+
+Collapsible panel ("Training methodology & experiments").
+
+- **Class weighting** — weight loss/gradient by inverse class frequency
+- **Epoch shuffle** — re-shuffle training data at the start of each epoch
+- **Label noise** — randomly flip this fraction of training labels (0–50%)
+- **Input jitter** — Gaussian noise added to inputs during training
+- **Gradient noise** — annealed Gaussian noise added to gradients
+- **Mixup** — convex-combination data augmentation (random λ between pairs)
+- **Early stopping** — pause when test loss stops improving; configurable patience
+- **Re-shuffle split** — new train/test split without regenerating data
+- **k-fold CV** — run k-fold cross-validation; configurable k; shows per-fold and mean accuracy
+- **LR finder** — sweep learning rates; plots loss vs LR curve; highlights suggested range
+- **Ensemble training** — train N models with optional bagging; shows mean/std accuracy
+- **Weight perturbation probe** — add Gaussian noise (configurable σ) to weights; reports accuracy degradation
+
+---
+
+## 10. Input Features
+
+Checkboxes in the **Features** panel. Each selected feature adds an input node.
 
 | Feature | Formula |
 |---|---|
@@ -120,151 +230,280 @@ Checkboxes in the **Features** panel on the left side of the network diagram. Ea
 | x·y | `x * y` |
 | sin(x) | `Math.sin(x)` |
 | sin(y) | `Math.sin(y)` |
-| sptheta | `Math.atan2(y, x)` — polar angle |
-| spradius | `Math.sqrt(x²+y²)` — polar radius |
-| \|x−y\|−3 | `Math.abs(x-y) - 3` |
-| \|x+y\|−3 | `Math.abs(x+y) - 3` |
+| \|x−y\| | `Math.abs(x - y)` |
+| \|x+y\| | `Math.abs(x + y)` |
+
+Additional custom features can be added inline via the **Custom feature** button.
 
 ---
 
-## Datasets (Classification)
+## 11. Datasets — Classification (48+)
 
-Thumbnail picker in the **Data** panel. Each dataset generates `Example2D` points with label ∈ {−1, +1}.
+Thumbnail picker in the **Data** panel. Labels ∈ {−1, +1}.
+
+**Original classics:** Circle, XOR, Two Gaussians (gauss), Spiral, Hash, MNIST-Three, Concentric Circles, Biclusters, Moons
+
+**Extended set (39 additional):** Checkerboard, Quadrant XOR Blobs, Concentric Rings, Three-Arm Spiral, Four-Arm Spiral, Tight Spirals, Clean Moons, Nested U Shapes, Gaussian Mixture, Diagonal Stripes, Sine Boundary, Circle in Square, Cross/Plus, S-Curve Boundary, Pinwheel, Island Clusters, Ring vs Center, Gaussian Quantiles, Anisotropic Blobs, Random-Label Blobs, Target Rings, Spiral Galaxy, Yin-Yang, Smiley, Grid of Blobs, Interleaving Waves, Blob in Ring, Triangle vs Circle, Gaussian Cross, Noisy XOR (4-quadrant), Crescent Pair, Dartboard, Comb (vertical stripes), Diagonal Checker, Cluster Chain
+
+---
+
+## 12. Datasets — Regression (17)
+
+Selected when **Problem type** is Regression.
 
 | Key | Description |
 |---|---|
-| circle | Points inside a circle labelled +1, outside −1 |
-| xor | Four quadrants alternating sign — the classic XOR problem |
-| gauss | Two Gaussian blobs at (2,2) and (−2,−2) |
-| spiral | Two interleaved spirals |
-| concentric-circles | Multiple concentric rings alternating in label |
-| biclusters | Two axis-aligned rectangular clusters |
-| moons | Two crescent-shaped clusters |
-| hash | Checkerboard / hash-grid pattern |
-| three | Digit "3" pattern derived from MNIST |
+| `reg-plane` | Tilted plane: label = x + y |
+| `reg-gauss` | Multi-Gaussian bump |
+| `reg-sine-wave` | Sinusoidal surface |
+| `reg-maximum` | max(x, y) |
+| `reg-argmax` | 0 or 1 depending on which of x/y is larger |
+| `reg-friedman1` | Friedman #1 benchmark |
+| `reg-friedman2` | Friedman #2 benchmark |
+| `reg-friedman3` | Friedman #3 benchmark |
+| `reg-ripple` | Ripple surface |
+| `reg-saddle` | Saddle (x² − y²) |
+| `reg-gauss-bump` | Single Gaussian bump centred at origin |
+| `reg-staircase` | Piecewise-constant staircase |
+| `reg-sincos` | sin(x)cos(y) |
+| `reg-radial` | Radial: function of distance from origin |
+| `reg-abs` | |x| + |y| |
+| `reg-step-circle` | Step function based on distance from origin |
+| `reg-waves` | Superimposed wave surface |
 
 ---
 
-## Datasets (Regression)
+## 13. 3D Dataset Mode (16 scenes)
 
-Selected when **Problem Type** is set to Regression.
+Toggle **3D dataset mode** in the data panel. Replaces the 2D heatmap with a three.js WebGL scene. The network still receives 2D (x, y) inputs; z is visual only. Drag to rotate, scroll to zoom.
 
 | Key | Description |
 |---|---|
-| reg-plane | A tilted plane: label = x + y |
-| reg-gauss | Gaussian bump centred at origin |
-| reg-sine-wave | Sinusoidal surface |
-| reg-maximum | `max(x, y)` |
-| reg-argmax | Returns 0 or 1 depending on which of x/y is larger |
-| reg-friedman1 | Friedman #1 benchmark (5 inputs, uses x and y among others) |
-| reg-friedman2 | Friedman #2 benchmark |
-| reg-friedman3 | Friedman #3 benchmark |
+| `blobs` | Two Gaussian blobs |
+| `spheres` | Concentric spheres |
+| `helix` | Interleaved helix |
+| `swiss-roll` | Swiss roll manifold |
+| `linked-rings` | Two interlocked rings |
+| `checkerboard-cube` | 3D checkerboard within a cube |
+| `double-helix` | Double DNA-style helix |
+| `xor3d` | 3D XOR — octant labeling |
+| `shell-vs-core` | Shell vs interior sphere |
+| `s-curve-3d` | 3D S-curve |
+| `trefoil-knot` | Trefoil knot |
+| `mobius-band` | Möbius band |
+| `stacked-planes` | Stacked horizontal planes |
+| `spiral-tower` | Spiral tower |
+| `octant-checker` | Alternating octant labels |
+| `sphere-grid` | Grid of small spheres |
 
 ---
 
-## Custom CSV Dataset
+## 14. Custom CSV Dataset
 
-Button in the **Data** panel labeled **Load CSV**. Accepts text in `x,y,label` format (one row per example). Lines starting with `#` are treated as comments; a header row is auto-skipped. Labels 1 and −1 are accepted; 0 is mapped to −1. Parse errors are reported row-by-row without aborting.
+**Custom data** panel (bottom of main page). Paste `x,y,label` rows directly into a textarea. Label 1 or −1; 0 is mapped to −1. Parse errors are reported row-by-row. Click **Load custom dataset** to use the data.
 
 ---
 
-## 3D Dataset Mode
+## 15. Metrics and Visualization
 
-Toggle **3D Mode** in the data panel (state property `threeD`). Replaces the 2D heatmap canvas with a three.js WebGL scene. The network still receives 2D inputs; the 3D coordinates are projected to (x, y) for the forward pass, and the z-axis is visual only. Drag to rotate, scroll to zoom.
+### Main output panel
+- Training loss / test loss numeric readout
+- Train accuracy / test accuracy numeric readout
+- **Compact status bar** — epoch, train/test loss, train/test accuracy, steps/sec
+- **Loss line chart** — dual-series SVG chart (train and test loss over epochs)
+- **Confusion matrix** — 2×2 live matrix for classification
 
-### 3D Datasets
+### Decision boundary display
+- **Heatmap** — 100×100 canvas grid colored by network output (orange = negative, blue = positive)
+- **Show test data** checkbox — overlay test-set points on the heatmap
+- **Discretize output** checkbox — snap heatmap to hard −1/+1 colors
 
-| Key | Description |
+### Per-node thumbnails
+Hover over any hidden-layer node to see a zoomed activation surface thumbnail.
+
+### Analysis section (collapsible)
+- **Parameters** count
+- **Steps/sec** throughput
+- **Precision / Recall**, **F1 / Specificity**, **AUC (ROC)**, **Average Precision (PR)**, **Decision margin**, **Class balance**
+- **ROC curve** (SVG)
+- **Precision-Recall curve** (SVG)
+- **Calibration / reliability diagram** (SVG)
+- **Weight histogram** (SVG)
+- **Bias histogram** (SVG)
+- **Activation histogram** on test set (SVG)
+- **Confidence histogram** |out| on test set (SVG)
+- **Gradient flow** bar chart — mean |grad| per layer (SVG)
+- **Per-layer mean |weight| over time** chart (SVG)
+- **Loss landscape 1D slice** — on-demand compute (SVG)
+- **Export** buttons: decision boundary PNG, training history CSV, metrics snapshot JSON
+
+---
+
+## 16. Interpretability Tools
+
+**Interpretability section** (collapsible, below Analysis). All tools require 2D classification mode.
+
+| Tool | Description |
 |---|---|
-| blobs | Two Gaussian blobs centred at (−2,−2,−2) and (2,2,2) |
-| spheres | Concentric spheres — inner label +1, outer shell −1 |
-| helix | Two interleaved 3D helices |
-| swissroll | Swiss roll manifold, label by which half of the roll |
+| Input saliency field | Gradient magnitude ∥∇_x Loss∥ at every grid cell, overlaid as a color field |
+| Occlusion sensitivity | Per-feature accuracy drop when that input is clamped to zero |
+| Drop-feature importance | Retrain-free feature removal test; ranks features by accuracy impact |
+| Partial dependence (x, y) | Marginal effect of each input on the network output, averaged over data |
+| Neuron ablation | Select a hidden neuron; zero its output and observe boundary change; accuracy delta shown |
+| Activation maximization | Gradient-ascent search for the 2D input that maximally activates a selected neuron |
+| Counterfactual | Find the nearest opposite-class input to the last-clicked point |
+| Hidden-activation PCA | 2D PCA projection of the last hidden layer's activations, colored by class |
+| Decision-tree surrogate | Fit a shallow CART tree to the network's predictions; display rules |
+| Confidence contours / entropy | Iso-confidence contour lines + per-cell entropy heatmap toggle |
+| What-if inspector | Click a point to see all layer activations, output, and confidence |
+| k-NN baseline | Compute k-NN accuracy on the same train/test split as a reference |
+| Per-feature contribution | Decompose network output for the last-clicked point by zeroing each feature |
 
 ---
 
-## Metrics and Visualization
+## 17. Adversarial Panel
 
-### Loss Line Chart
-A real-time SVG chart below the main diagram showing training loss (grey) and test loss (black) over epochs. Rendered by `AppendingLineChart`.
+**Adversarial** panel (bottom-left of main page).
 
-### Accuracy Readout
-Percentage accuracy for both train and test sets, updated every epoch. Located in the output panel on the right.
+### Attack methods (5)
+| Method | Description |
+|---|---|
+| FGSM | Fast Gradient Sign Method: single step, ε·sign(∇_x Loss) |
+| PGD | Projected Gradient Descent: multi-step (10 steps, step size ε/4), projected to L∞ ball |
+| Random-noise baseline | Uniform L∞ perturbation; no gradient; control baseline |
+| Targeted (least-likely) | Iterative FGSM toward the opposite label |
+| DeepFool-lite | Step along gradient until prediction flips sign |
 
-### Confusion Matrix
-A 2×2 confusion matrix (TP, FP, FN, TN) for classification problems, refreshed every epoch alongside the accuracy readout. Located below the accuracy display.
-
-### Decision Boundary Heatmap
-A 100×100 canvas grid that colours each pixel by the network's output — orange for negative, blue for positive, white at the decision boundary. Rendered by `HeatMap`.
-
-### Per-node Activation Thumbnails
-Small heatmap thumbnails on each hidden-layer node show the node's activation surface across the input domain, giving insight into what each neuron has learned.
-
----
-
-## Adversarial Sampling
-
-Controls in the **Adversarial** panel (bottom-right area).
-
-### FGSM (Fast Gradient Sign Method)
-Single-step attack. Perturbs each training point by `epsilon * sign(∇_x Loss)`. The gradient with respect to the raw (x, y) inputs is computed analytically by walking from the first hidden layer back to the input layer after a standard `backProp` call.
-
-### PGD (Projected Gradient Descent)
-Multi-step attack. Iteratively applies FGSM-like steps (default 10 steps, step size epsilon/4) and projects back to the L∞ ball of radius epsilon around the original point after each step.
-
-### Adversarial Training (Defensive)
-Toggle **Adversarial Training** in the adversarial panel. When enabled, each training mini-batch is augmented with adversarially perturbed copies of the same points using the selected method and epsilon. The network learns to be robust to those perturbations.
-
-### Epsilon
-Slider that controls the perturbation magnitude for both FGSM and PGD.
+### Controls
+- **Epsilon slider** (0–3) — perturbation magnitude
+- **Generate adversarial examples** button — perturb test set, display result in readout
+- **Robustness curve** — sweep ε and plot test accuracy vs ε
+- **Saliency at last point** — gradient saliency readout for the last clicked point
+- **Adversarial training** checkbox — augment each training batch with adversarial twins (defensive training)
 
 ---
 
-## Machine Unlearning
+## 18. Machine Unlearning Panel
 
-Panel labeled **Unlearn** (bottom area of the page).
+**Machine Unlearning** panel (bottom-center of main page).
 
-### Forget Set Selection
-Click data points in the training set to mark them as the "forget set". The rest become the "retain set".
+### Unlearning methods
+- **Gradient ascent** — take gradient-ascent steps on the forget set, corrected by descent steps on the retain set
+- **Fine-tune on retain** — continue training on the retain set only; pushes the model away from the forgotten distribution
 
-### Gradient-Ascent Forgetting
-Button **Forget (gradient ascent)**. Runs `forgetPoints` from `unlearning.ts`: takes gradient-ascent steps on the forget set (maximising loss on those points) while simultaneously running gradient-descent steps on the retain set to preserve accuracy. Configurable via the **Steps** input.
+### Forget set selection
+- **Forget Orange** — mark all orange (+1) points as the forget set
+- **Forget Blue** — mark all blue (−1) points as the forget set
+- **Forget misclassified** — mark currently misclassified training points as the forget set
+- **Brush-select** — drag a rectangle on the heatmap to select points by area
+- **Forget nearest N** — N nearest points (Euclidean) to the last clicked point
+- **Forget selected** — apply unlearning to the brush/nearest selection
 
-### Retrain from Scratch
-Button **Retrain without forget set**. Builds a fresh network with the same architecture and trains it only on the retain set. This is the gold-standard unlearning baseline.
-
-### Unlearning Metrics
-After either unlearning operation the UI displays before/after accuracy on both the forget set and the retain set.
-
----
-
-## Fine-Tuning and Model I/O
-
-Controls in the **Fine-Tune** panel.
-
-### Freeze / Unfreeze Layers
-A list of checkboxes — one per hidden layer. Frozen layers have their weights and biases held constant during `updateWeights`; only unfrozen layers are trained.
-
-### Freeze All But Last
-Button that freezes every hidden layer except the final one — a common transfer-learning pattern.
-
-### Unfreeze All
-Button that clears all frozen layers, resuming full training.
-
-### Export Model
-Button **Export JSON**. Downloads a JSON file containing the network weights, biases, architecture (shape), active input features, and frozen-layer configuration.
-
-### Import Model
-Button **Import JSON**. Loads a previously exported JSON file, rebuilds the network with the saved weights, and restores frozen-layer state.
+### Additional controls
+- **Steps slider** (10–500) — gradient-ascent steps
+- **Retrain without forgotten** — gold-standard baseline: rebuild and retrain on the retain set only
+- **Relearn-time probe** — measure how many steps it takes to re-learn the forgotten data
+- **Before/after readout** — accuracy on forget set and retain set before and after unlearning
 
 ---
 
-## Advanced Labs
+## 19. Fine-Tuning and Model I/O
 
-Accessed via links on the main page or directly in the browser.
+**Fine-tuning: freeze layers** panel and **Save / Load model** panel.
 
-### CNN Visualizer (`dist/cnn.html`)
-A standalone lab (entry point `src/cnn.ts`) that visualises a from-scratch convolutional neural network: filters, feature maps, pooling layers, and the classification head.
+### Layer freezing
+- Per-layer checkboxes — freeze individual hidden layers; their weights and biases are not updated
+- **Freeze all but last** — freeze all layers except the final hidden layer (classic transfer-learning head-only fine-tuning)
+- **Unfreeze all** — clear all frozen layers
 
-### Transformer Visualizer (`dist/transformer.html`)
-A standalone lab (entry point `src/transformer.ts`) that visualises the attention mechanism: token embeddings, multi-head self-attention weight matrices, and the resulting attended representations.
+### Model export / import
+- **Export model** — serializes network shape, weights, biases, activation, active inputs, and problem type to JSON; triggers download
+- **Import model** — paste JSON or use the textarea; rebuilds the network and restores weights and frozen-layer state
+- **Download JSON** link — appears after export
+
+---
+
+## 20. Experiment Tracking
+
+**Experiments** section (collapsible).
+
+- **Save run** — store the current epoch's metrics (loss, accuracy, architecture summary) as a named run
+- **Leaderboard** — sortable table of all saved runs by test accuracy, test loss, train accuracy, or epoch
+- **Overlay comparison** — plot multiple runs' loss or accuracy curves on one SVG chart with a color legend
+- **A/B compare** — side-by-side metric table for any two selected runs
+- **Mini grid search** — sweep a small hyperparameter grid; results displayed in a table
+- **Clear all runs** / **Export runs (JSON)** / **Import runs (JSON)** — persist and share the leaderboard
+- **Export this run history (CSV)** — export the current training history
+
+---
+
+## 21. UX, Sharing, and Accessibility
+
+### UX toolbar
+- **Copy share link** — one-click URL with the full state encoded in the URL hash
+- **Preset selector** ("Model zoo") — apply curated configurations and reset
+- **Speed slider** — steps per animation frame
+- **Run N epochs** — run a fixed step count then pause
+- **Auto-stop** checkbox + threshold — halt when loss delta is below threshold
+- **Randomize weights** — re-initialize without touching architecture or data
+- **Snapshot / Restore** — in-memory weight checkpoint
+- **Reset view** — clear saved localStorage preferences and reload
+- **? button / keyboard shortcut overlay** — lists all shortcuts
+
+### Dark mode
+Toggle switch (top-right). Loads `styles_dark.css` and disables `styles.css`.
+
+### Keyboard shortcuts
+| Key | Action |
+|---|---|
+| Space | Play / pause |
+| S | Single step |
+| R | Reset network |
+| D | Regenerate data |
+| ? | Toggle shortcuts help |
+| Esc | Close help overlay |
+
+### Fullscreen output
+Button (⛶) in the Output panel header expands the heatmap area.
+
+### Accessibility / i18n toolbar
+- **Language selector** — English, Español, Français, हिन्दी, 中文
+- **High contrast** mode toggle
+- **Reduced motion** mode toggle
+- **Compact mode** toggle — hides advanced panels
+- **UI scale** slider (80%–150%)
+- **Fast training** mode — run training steps off the main render path
+- **Redraw every K steps** — control repaint frequency
+- **Steps/sec · FPS · budget** meter (live, aria-live)
+
+### Onboarding banner
+Dismissable tip bar showing the most useful keyboard shortcuts on first visit.
+
+---
+
+## 22. Network as JavaScript
+
+A `<code>/<pre>` panel at the bottom of the page shows the current network compiled to a standalone JavaScript function via `compileNetworkToJs`. Updates after every epoch.
+
+---
+
+## 23. Advanced Labs (12)
+
+Accessible via the "Advanced labs" links at the bottom of the output panel, or directly by URL.
+
+| Lab | URL | Algorithm(s) |
+|---|---|---|
+| CNN | `cnn.html` | Convolutional neural network (Conv→ReLU→Pool×2 → FC → Softmax) |
+| Transformer | `transformer.html` | Single/multi-head self-attention transformer block |
+| Autoencoder | `autoencoder.html` | Fully-connected autoencoder with 2D bottleneck |
+| RNN | `rnn.html` | Elman RNN trained on sequence echo/delay task |
+| GAN | `gan.html` | Minimax GAN with MLP generator and discriminator |
+| Clustering | `clustering.html` | k-means, DBSCAN, GMM with EM |
+| RL Gridworld | `rl.html` | Q-learning and SARSA on a tabular 7×10 grid |
+| Decision Tree / Forest | `dtree.html` | CART decision tree and random forest |
+| PCA / t-SNE | `dimred.html` | PCA (power iteration) and t-SNE (Barnes-Hut-lite) |
+| SVM | `svm.html` | SMO-lite SVM with linear, poly, and RBF kernels |
+| Linear/Logistic/Naive Bayes | `glm.html` | OLS linear regression, logistic regression, Gaussian Naive Bayes |
+| Gaussian Process | `gp.html` | GP regression with RBF, Matérn-3/2, and periodic kernels |
+
+See [docs/LABS.md](LABS.md) for a detailed description of each lab.
