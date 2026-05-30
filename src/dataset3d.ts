@@ -260,3 +260,119 @@ export function classifySCurve3D(numSamples: number, noise: number): Example3D[]
   }
   return points;
 }
+
+/**
+ * Trefoil knot: points along a trefoil curve, labelled by which third of
+ * the parameter they fall in (alternating).
+ */
+export function classifyTrefoilKnot(numSamples: number, noise: number): Example3D[] {
+  const points: Example3D[] = [];
+  for (let i = 0; i < numSamples; i++) {
+    const t = randUniform(0, 2 * Math.PI);
+    const x = (Math.sin(t) + 2 * Math.sin(2 * t)) + randNormal(0, noise);
+    const y = (Math.cos(t) - 2 * Math.cos(2 * t)) + randNormal(0, noise);
+    const z = (-Math.sin(3 * t)) * 2 + randNormal(0, noise);
+    const label = Math.floor(t / (2 * Math.PI) * 6) % 2 === 0 ? 1 : -1;
+    points.push({ x, y, z, label });
+  }
+  return points;
+}
+
+/**
+ * Mobius-like band: a twisted strip, labelled by side along the strip width.
+ */
+export function classifyMobiusBand(numSamples: number, noise: number): Example3D[] {
+  const points: Example3D[] = [];
+  for (let i = 0; i < numSamples; i++) {
+    const u = randUniform(0, 2 * Math.PI);
+    const v = randUniform(-1, 1);
+    const r = 3 + v * Math.cos(u / 2);
+    const x = r * Math.cos(u) + randNormal(0, noise);
+    const y = r * Math.sin(u) + randNormal(0, noise);
+    const z = v * Math.sin(u / 2) * 2 + randNormal(0, noise);
+    const label = v >= 0 ? 1 : -1;
+    points.push({ x, y, z, label });
+  }
+  return points;
+}
+
+/**
+ * Stacked planes: several horizontal planes at different heights with
+ * alternating labels.
+ */
+export function classifyStackedPlanes(numSamples: number, noise: number): Example3D[] {
+  const points: Example3D[] = [];
+  const levels = [-3, -1, 1, 3];
+  const per = Math.floor(numSamples / levels.length);
+  levels.forEach((h, idx) => {
+    const label = idx % 2 === 0 ? 1 : -1;
+    for (let i = 0; i < per; i++) {
+      points.push({
+        x: randUniform(-4, 4) + randNormal(0, noise),
+        y: h + randNormal(0, noise),
+        z: randUniform(-4, 4) + randNormal(0, noise),
+        label
+      });
+    }
+  });
+  return points;
+}
+
+/**
+ * 3D spiral tower: a helix that climbs in y, labelled by height band.
+ */
+export function classifySpiralTower(numSamples: number, noise: number): Example3D[] {
+  const points: Example3D[] = [];
+  const r = 3;
+  for (let i = 0; i < numSamples; i++) {
+    const t = (i / numSamples) * 6 * Math.PI;
+    const y = (i / numSamples) * 8 - 4;
+    points.push({
+      x: r * Math.cos(t) + randNormal(0, noise),
+      y: y + randNormal(0, noise),
+      z: r * Math.sin(t) + randNormal(0, noise),
+      label: Math.floor((y + 4) / 2) % 2 === 0 ? 1 : -1
+    });
+  }
+  return points;
+}
+
+/**
+ * Octant checker: 8 octants of the cube, labelled by parity of octant.
+ */
+export function classifyOctantChecker(numSamples: number, noise: number): Example3D[] {
+  const points: Example3D[] = [];
+  for (let i = 0; i < numSamples; i++) {
+    const x = randUniform(-4, 4);
+    const y = randUniform(-4, 4);
+    const z = randUniform(-4, 4);
+    const sx = (x + randNormal(0, noise)) >= 0 ? 1 : 0;
+    const sy = (y + randNormal(0, noise)) >= 0 ? 1 : 0;
+    const sz = (z + randNormal(0, noise)) >= 0 ? 1 : 0;
+    const label = (sx ^ sy ^ sz) === 0 ? 1 : -1;
+    points.push({ x, y, z, label });
+  }
+  return points;
+}
+
+/**
+ * Sphere grid: points on a sphere surface, labelled in a checkerboard
+ * pattern over latitude/longitude.
+ */
+export function classifySphereGrid(numSamples: number, noise: number): Example3D[] {
+  const points: Example3D[] = [];
+  const r = 4;
+  const bands = 6;
+  for (let i = 0; i < numSamples; i++) {
+    const theta = randUniform(0, 2 * Math.PI);
+    const phi = Math.acos(randUniform(-1, 1));
+    const x = r * Math.sin(phi) * Math.cos(theta) + randNormal(0, noise);
+    const y = r * Math.sin(phi) * Math.sin(theta) + randNormal(0, noise);
+    const z = r * Math.cos(phi) + randNormal(0, noise);
+    const latBand = Math.floor(phi / Math.PI * bands);
+    const lonBand = Math.floor(theta / (2 * Math.PI) * bands);
+    const label = (latBand + lonBand) % 2 === 0 ? 1 : -1;
+    points.push({ x, y, z, label });
+  }
+  return points;
+}

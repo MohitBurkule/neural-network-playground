@@ -139,6 +139,21 @@ export let datasets: {[key: string]: dataset.DataGenerator} = {
   "gaussian-quantiles": dataset.classifyGaussianQuantiles,
   "anisotropic": dataset.classifyAnisotropicBlobs,
   "random-blobs": dataset.classifyRandomLabelBlobs,
+  "target-rings": dataset.classifyTargetRings,
+  "spiral-galaxy": dataset.classifySpiralGalaxy,
+  "yin-yang": dataset.classifyYinYang,
+  "smiley": dataset.classifySmiley,
+  "grid-blobs": dataset.classifyGridBlobs,
+  "interleaving-waves": dataset.classifyInterleavingWaves,
+  "blob-in-ring": dataset.classifyBlobInRing,
+  "triangle-vs-circle": dataset.classifyTriangleVsCircle,
+  "gaussian-cross": dataset.classifyGaussianCross,
+  "noisy-xor4": dataset.classifyNoisyXor4,
+  "crescent-pair": dataset.classifyCrescentPair,
+  "dartboard": dataset.classifyDartboard,
+  "comb": dataset.classifyComb,
+  "diagonal-checker": dataset.classifyDiagonalChecker,
+  "cluster-chain": dataset.classifyClusterChain,
 };
 
 /** A map between dataset names and functions that generate regression data. */
@@ -154,7 +169,12 @@ export let regDatasets: {[key: string]: dataset.DataGenerator} = {
   "reg-ripple": dataset.regressRipple,
   "reg-saddle": dataset.regressSaddle,
   "reg-gauss-bump": dataset.regressGaussianBump,
-  "reg-staircase": dataset.regressStaircase
+  "reg-staircase": dataset.regressStaircase,
+  "reg-sincos": dataset.regressSinCos,
+  "reg-radial": dataset.regressRadial,
+  "reg-abs": dataset.regressAbs,
+  "reg-step-circle": dataset.regressStepCircle,
+  "reg-waves": dataset.regressWaves
 };
 
 export function getKeyFromValue(obj: any, value: any): string {

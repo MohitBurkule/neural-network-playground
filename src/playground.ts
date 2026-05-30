@@ -44,7 +44,13 @@ import {
   classifyDoubleHelix,
   classifyXOR3D,
   classifyShellVsCore,
-  classifySCurve3D
+  classifySCurve3D,
+  classifyTrefoilKnot,
+  classifyMobiusBand,
+  classifyStackedPlanes,
+  classifySpiralTower,
+  classifyOctantChecker,
+  classifySphereGrid
 } from "./dataset3d";
 import {parseCSV} from "./customdataset";
 import {
@@ -1384,7 +1390,13 @@ const THREE_GENERATORS: {[k: string]: (n: number, noise: number) => Example3D[]}
   "double-helix": classifyDoubleHelix,
   "xor3d": classifyXOR3D,
   "shell-vs-core": classifyShellVsCore,
-  "s-curve-3d": classifySCurve3D
+  "s-curve-3d": classifySCurve3D,
+  "trefoil-knot": classifyTrefoilKnot,
+  "mobius-band": classifyMobiusBand,
+  "stacked-planes": classifyStackedPlanes,
+  "spiral-tower": classifySpiralTower,
+  "octant-checker": classifyOctantChecker,
+  "sphere-grid": classifySphereGrid
 };
 
 function construct3DInput(x: number, y: number, z: number): number[] {
