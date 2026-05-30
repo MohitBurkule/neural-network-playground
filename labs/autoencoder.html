@@ -1,0 +1,351 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Autoencoder Lab</title>
+  <style>
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+
+    body {
+      font-family: 'Segoe UI', Arial, sans-serif;
+      background: #1a1a2e;
+      color: #e0e0f0;
+      min-height: 100vh;
+      padding: 16px;
+    }
+
+    h1 {
+      font-size: 1.6rem;
+      font-weight: 700;
+      color: #a78bfa;
+      margin-bottom: 4px;
+      letter-spacing: 0.5px;
+    }
+
+    .subtitle {
+      font-size: 0.85rem;
+      color: #8888aa;
+      margin-bottom: 16px;
+    }
+
+    .layout {
+      display: grid;
+      grid-template-columns: 220px 1fr;
+      gap: 12px;
+      align-items: start;
+    }
+
+    .controls {
+      background: #16213e;
+      border: 1px solid #2a2a5a;
+      border-radius: 10px;
+      padding: 14px;
+      display: flex;
+      flex-direction: column;
+      gap: 14px;
+    }
+
+    .controls h2 {
+      font-size: 0.78rem;
+      text-transform: uppercase;
+      letter-spacing: 1px;
+      color: #7777aa;
+    }
+
+    .btn-row {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 6px;
+    }
+
+    button {
+      padding: 7px 14px;
+      border: none;
+      border-radius: 6px;
+      font-size: 0.82rem;
+      font-weight: 600;
+      cursor: pointer;
+      transition: opacity 0.15s;
+    }
+    button:hover { opacity: 0.85; }
+
+    #btn-play  { background: #27ae60; color: #fff; }
+    #btn-pause { background: #e67e22; color: #fff; }
+    #btn-step  { background: #3498db; color: #fff; }
+    #btn-reset { background: #e74c3c; color: #fff; }
+
+    .ex-btn {
+      background: #2a2a5a;
+      color: #ccc;
+      padding: 5px 10px;
+      font-size: 0.78rem;
+    }
+
+    label {
+      font-size: 0.8rem;
+      color: #aaa;
+      display: block;
+      margin-bottom: 4px;
+    }
+
+    input[type=range] {
+      width: 100%;
+      accent-color: #a78bfa;
+    }
+
+    .toggle-row {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+    }
+
+    .toggle-row label {
+      margin: 0;
+      font-size: 0.8rem;
+      color: #aaa;
+      cursor: pointer;
+    }
+
+    input[type=checkbox] {
+      accent-color: #a78bfa;
+      width: 14px;
+      height: 14px;
+      cursor: pointer;
+    }
+
+    .stat-box {
+      background: #0f3460;
+      border-radius: 8px;
+      padding: 10px 12px;
+    }
+
+    .stat-box p {
+      font-size: 0.78rem;
+      color: #aac;
+      margin-bottom: 4px;
+    }
+
+    #step-count, #loss-display {
+      font-size: 1rem;
+      font-weight: 700;
+      color: #a78bfa;
+    }
+
+    svg text { fill: #aaa; }
+    svg .domain, svg .tick line { stroke: #444; }
+
+    .viz {
+      display: flex;
+      flex-direction: column;
+      gap: 12px;
+    }
+
+    .section {
+      background: #16213e;
+      border: 1px solid #2a2a5a;
+      border-radius: 10px;
+      padding: 14px;
+    }
+
+    .section h3 {
+      font-size: 0.8rem;
+      text-transform: uppercase;
+      letter-spacing: 1px;
+      color: #7777bb;
+      margin-bottom: 10px;
+    }
+
+    .row {
+      display: flex;
+      align-items: flex-start;
+      gap: 20px;
+      flex-wrap: wrap;
+    }
+
+    .col {
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      gap: 6px;
+    }
+
+    .col .caption {
+      font-size: 0.72rem;
+      color: #888;
+      text-align: center;
+    }
+
+    canvas {
+      display: block;
+      image-rendering: pixelated;
+      border-radius: 3px;
+      border: 1px solid #2a2a4a;
+    }
+
+    #example-label {
+      font-size: 0.82rem;
+      color: #ccc;
+      text-align: center;
+    }
+
+    .arrow-sep {
+      font-size: 1.6rem;
+      color: #444;
+      align-self: center;
+      margin-top: 30px;
+    }
+
+    #latent-svg {
+      display: block;
+      cursor: crosshair;
+    }
+
+    #grid-container {
+      display: grid;
+      grid-template-columns: repeat(7, auto);
+      gap: 2px;
+    }
+
+    .arch-note {
+      font-size: 0.68rem;
+      color: #666;
+      font-style: italic;
+      margin-top: 2px;
+    }
+
+    .charts-row {
+      display: flex;
+      gap: 16px;
+      flex-wrap: wrap;
+      align-items: flex-start;
+    }
+
+    @media (max-width: 700px) {
+      .layout { grid-template-columns: 1fr; }
+    }
+  </style>
+</head>
+<body>
+<div style="padding:8px 14px;font-family:sans-serif;font-size:13px;">
+  <a href="index.html" style="color:#0877bd;">&#8592; Back to Playground</a>
+</div>
+
+<h1>Autoencoder Lab</h1>
+<p class="subtitle">
+  A fully-connected autoencoder trained from scratch on 8&#215;8 grayscale shapes.
+  Watch the 2D latent space organize by class and explore the learned manifold!
+</p>
+
+<div class="layout">
+
+  <!-- Controls -->
+  <div class="controls">
+    <div>
+      <h2>Training</h2>
+      <div class="btn-row">
+        <button id="btn-play">&#9654; Play</button>
+        <button id="btn-pause">&#9646;&#9646; Pause</button>
+      </div>
+      <div class="btn-row" style="margin-top:6px;">
+        <button id="btn-step">&#9197; Step</button>
+        <button id="btn-reset">&#8635; Reset</button>
+      </div>
+    </div>
+
+    <div>
+      <label>Learning rate: <strong id="lr-display">0.0100</strong></label>
+      <input type="range" id="lr-slider" min="0.001" max="0.05" step="0.001" value="0.01">
+    </div>
+
+    <div>
+      <label>Hidden layer size: <strong id="hidden-display">32</strong></label>
+      <input type="range" id="hidden-slider" min="8" max="64" step="8" value="32">
+      <p class="arch-note">Rebuild with Reset after changing</p>
+    </div>
+
+    <div>
+      <div class="toggle-row">
+        <input type="checkbox" id="denoise-toggle">
+        <label for="denoise-toggle">Denoising mode</label>
+      </div>
+      <div class="toggle-row" style="margin-top:6px;">
+        <input type="checkbox" id="tied-toggle">
+        <label for="tied-toggle">Tied weights</label>
+      </div>
+    </div>
+
+    <div class="stat-box">
+      <p>Progress</p>
+      <div id="step-count">Step: 0</div>
+      <div id="loss-display" style="margin-top:4px;">Loss: &#8212;</div>
+    </div>
+
+    <div>
+      <h2>Reconstruction Loss</h2>
+      <svg id="loss-chart"></svg>
+    </div>
+
+    <p class="arch-note">
+      Architecture:<br>
+      Input(64) &#8594; FC(H) &#8594; ReLU &#8594; FC(2) [latent]<br>
+      FC(2) &#8594; FC(H) &#8594; ReLU &#8594; FC(64) &#8594; Sigmoid<br>
+      Loss: MSE &#8901; SGD with mini-batches
+    </p>
+  </div>
+
+  <!-- Visualization -->
+  <div class="viz">
+
+    <!-- Original vs Reconstructed -->
+    <div class="section">
+      <h3>Original vs Reconstructed (8&#215;8)</h3>
+      <div class="row">
+        <div class="col">
+          <canvas id="orig-canvas"></canvas>
+          <div id="example-label">Class: —</div>
+          <div class="btn-row" style="margin-top:4px;">
+            <button class="ex-btn" id="ex-prev">&#8592; Prev</button>
+            <button class="ex-btn" id="ex-next">Next &#8594;</button>
+          </div>
+          <div class="caption">Original</div>
+        </div>
+        <div class="arrow-sep">&#8594;</div>
+        <div class="col">
+          <canvas id="recon-canvas"></canvas>
+          <div class="caption">Reconstructed</div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Latent space + probe -->
+    <div class="section">
+      <h3>2D Latent Space &#8212; click/drag to probe a point</h3>
+      <div class="row">
+        <div class="col">
+          <svg id="latent-svg"></svg>
+          <div class="caption">Scatter of all examples in latent space (colored by class)</div>
+        </div>
+        <div class="col">
+          <canvas id="probe-canvas"></canvas>
+          <div class="caption">Decoded probe point</div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Latent grid -->
+    <div class="section">
+      <h3>Latent Grid &#8212; 7&#215;7 sweep over the latent space</h3>
+      <p style="font-size:0.75rem;color:#777;margin-bottom:8px;">
+        Each cell decodes a point sampled uniformly across the latent bounding box.
+        Shows the shape manifold the autoencoder has learned.
+      </p>
+      <div id="grid-container"></div>
+    </div>
+
+  </div><!-- /.viz -->
+</div><!-- /.layout -->
+
+<script src="bundleautoencoder.js"></script>
+</body>
+</html>
