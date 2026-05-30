@@ -26,26 +26,39 @@ This document describes the module structure of the Neural Network Playground Ex
 │   ├── autoencoder.ts        Autoencoder lab entry point
 │   ├── rnn.ts                RNN lab entry point
 │   ├── gan.ts                GAN lab entry point
+│   ├── diffusion.ts          Diffusion (DDPM) lab entry point
+│   ├── word2vec.ts           Word2Vec lab entry point
+│   ├── bayesnn.ts            Bayesian NN lab entry point
 │   ├── clustering.ts         Clustering lab entry point
 │   ├── rl.ts                 RL Gridworld lab entry point
 │   ├── dtree.ts              Decision Tree / Random Forest lab entry point
 │   ├── dimred.ts             PCA / t-SNE lab entry point
 │   ├── svm.ts                SVM lab entry point
 │   ├── glm.ts                Linear / Logistic / Naive Bayes lab entry point
-│   └── gp.ts                 Gaussian Process lab entry point
+│   ├── gp.ts                 Gaussian Process lab entry point
+│   ├── som.ts                Self-Organizing Map lab entry point
+│   ├── hopfield.ts           Hopfield Network lab entry point
+│   └── genetic.ts            Genetic Algorithm lab entry point
 ├── labs/                     HTML templates for the standalone lab pages
 │   ├── cnn.html
 │   ├── transformer.html
 │   ├── autoencoder.html
 │   ├── rnn.html
 │   ├── gan.html
+│   ├── diffusion.html
+│   ├── word2vec.html
+│   ├── bayesnn.html
 │   ├── clustering.html
 │   ├── rl.html
 │   ├── dtree.html
 │   ├── dimred.html
 │   ├── svm.html
 │   ├── glm.html
-│   └── gp.html
+│   ├── gp.html
+│   ├── som.html
+│   ├── hopfield.html
+│   ├── genetic.html
+│   └── labs.html             Lab gallery (static, no bundle)
 ├── dist/                     Compiled output (not checked in to source)
 │   ├── bundle.js             Main playground JS bundle
 │   ├── bundle.css            Material Design Lite + styles
@@ -57,6 +70,9 @@ This document describes the module structure of the Neural Network Playground Ex
 │   ├── bundleautoencoder.js  Autoencoder lab bundle
 │   ├── bundlernn.js          RNN lab bundle
 │   ├── bundlegan.js          GAN lab bundle
+│   ├── bundlediffusion.js    Diffusion (DDPM) lab bundle
+│   ├── bundleword2vec.js     Word2Vec lab bundle
+│   ├── bundlebayesnn.js      Bayesian NN lab bundle
 │   ├── bundleclustering.js   Clustering lab bundle
 │   ├── bundlerl.js           RL Gridworld lab bundle
 │   ├── bundledtree.js        Decision Tree lab bundle
@@ -64,7 +80,11 @@ This document describes the module structure of the Neural Network Playground Ex
 │   ├── bundlesvm.js          SVM lab bundle
 │   ├── bundleglm.js          GLM lab bundle
 │   ├── bundlegp.js           Gaussian Process lab bundle
+│   ├── bundlesom.js          Self-Organizing Map lab bundle
+│   ├── bundlehopfield.js     Hopfield Network lab bundle
+│   ├── bundlegenetic.js      Genetic Algorithm lab bundle
 │   ├── index.html            Main page
+│   ├── labs.html             Lab gallery (copied from labs/labs.html; no bundle)
 │   └── *.html                One HTML file per lab (copied from labs/)
 ├── tests/                    Jest unit tests
 ├── e2e/                      Playwright end-to-end tests
@@ -136,7 +156,7 @@ concat styles.css > dist/styles.css
 | Script | What it does |
 |---|---|
 | `npm run build` | `prep` + `build-js` + `build-css` + `build-darkcss` + `build-lightcss` + `build-html` |
-| `npm run build-labs` | Builds all 12 lab bundles and copies `labs/*.html` into `dist/` |
+| `npm run build-labs` | Builds all 18 lab bundles and copies `labs/*.html` (including `labs.html` gallery) into `dist/` |
 | `npm run build-all` | `build` + `build-labs` (builds everything; use this for deployment) |
 | `npm run watch` | `prep` + concurrent `watch-js` + `watch-css` + `watch-html` (no lab watch) |
 | `npm run serve` | `npx serve dist/` on port 3000 |
@@ -306,9 +326,11 @@ Pure utility functions with no DOM or network dependencies:
 
 ---
 
-### Lab entry points (`cnn.ts`, `transformer.ts`, `autoencoder.ts`, `rnn.ts`, `gan.ts`, `clustering.ts`, `rl.ts`, `dtree.ts`, `dimred.ts`, `svm.ts`, `glm.ts`, `gp.ts`)
+### Lab entry points (`cnn.ts`, `transformer.ts`, `autoencoder.ts`, `rnn.ts`, `gan.ts`, `diffusion.ts`, `word2vec.ts`, `bayesnn.ts`, `clustering.ts`, `rl.ts`, `dtree.ts`, `dimred.ts`, `svm.ts`, `glm.ts`, `gp.ts`, `som.ts`, `hopfield.ts`, `genetic.ts`)
 
 Each lab is a self-contained TypeScript module with no shared state with `playground.ts`. They import D3 (via the same `d3` UMD alias from `package.json`) and implement their own algorithm, renderer, and event handling. They are compiled to separate bundles (`dist/bundle<name>.js`) and served from their own HTML pages (`dist/<name>.html`, copied from `labs/<name>.html`).
+
+The gallery page (`labs/labs.html` → `dist/labs.html`) is a plain static HTML file with no associated TypeScript bundle. It is copied into `dist/` as part of `npm run build-labs` (via the `copyfiles -f "labs/*.html" dist` step) and requires no compilation.
 
 See [docs/LABS.md](LABS.md) for per-lab descriptions.
 
@@ -324,12 +346,16 @@ Test files live in `tests/`. Run with:
 npm test
 ```
 
-Uses `ts-jest` to compile TypeScript on the fly. No DOM emulation is needed because all tested modules (`nn.ts`, `dataset.ts`, `dataset3d.ts`, `adversarial.ts`, `unlearning.ts`, `customdataset.ts`) are pure TypeScript with no browser APIs.
+Uses `ts-jest` to compile TypeScript on the fly. No DOM emulation is needed because all tested modules (`nn.ts`, `dataset.ts`, `dataset3d.ts`, `adversarial.ts`, `unlearning.ts`, `customdataset.ts`) are pure TypeScript with no browser APIs. The suite runs **445 tests** across 11 files.
 
 | Test file | Coverage |
 |---|---|
 | `tests/nn.test.ts` | Core network: build, forward, backward, weight update, optimizer steps |
 | `tests/nn_extra.test.ts` | Additional activation and optimizer edge cases |
+| `tests/activation_grad.test.ts` | Finite-difference derivative checks for all 24 activation functions |
+| `tests/loss_grad.test.ts` | Finite-difference derivative checks for all 5 loss functions |
+| `tests/network_grad.test.ts` | End-to-end backpropagation gradient check (link weights + biases; multiple losses and shapes) |
+| `tests/optimizer.test.ts` | Weight update correctness for all 10 optimizers |
 | `tests/dataset.test.ts` | 2D dataset generators: point counts, label range, noise behavior |
 | `tests/dataset3d.test.ts` | 3D dataset generators |
 | `tests/adversarial.test.ts` | FGSM, PGD, targeted, DeepFool, perturbationBudget |

@@ -1,8 +1,22 @@
 # Advanced Labs
 
-This page describes each of the twelve standalone algorithm labs bundled with the Neural Network Playground Extended Edition. Each lab is a self-contained TypeScript module compiled to its own browser bundle; no server-side code is required.
+This page describes each of the eighteen standalone algorithm labs bundled with the Neural Network Playground Extended Edition. Each lab is a self-contained TypeScript module compiled to its own browser bundle; no server-side code is required.
 
-Labs are accessible from the "Advanced labs" link row at the bottom of the main page output panel, or by navigating directly to the HTML file.
+Labs are accessible from the **lab gallery** (`labs.html` / `dist/labs.html`), which is linked from the main playground as the central entry point. They can also be reached directly by navigating to the individual HTML file.
+
+---
+
+## Gallery — `labs.html`
+
+**File:** `dist/labs.html` | **Source:** `labs/labs.html` (no bundle; static HTML only)
+
+The lab gallery is the recommended entry point for all standalone labs. It is a fully static HTML page (no JavaScript bundle required) that presents all eighteen labs in a card grid grouped by category: Deep Learning, Classic ML, and Other. Each card links directly to the corresponding lab page. A "Main Playground" card at the top links back to `index.html`.
+
+The gallery is linked from the bottom of the main playground output panel under "Advanced labs".
+
+---
+
+## Deep Learning Labs
 
 ---
 
@@ -56,6 +70,40 @@ The visualization renders the real data distribution and the current generated p
 
 ---
 
+## Diffusion — Denoising Diffusion Probabilistic Model (DDPM)
+
+**File:** `dist/diffusion.html` | **Source:** `src/diffusion.ts`
+
+Implements a DDPM (denoising diffusion probabilistic model) operating on 2D point clouds. A configurable forward process progressively adds Gaussian noise to the training samples over T timesteps, destroying all structure. A small MLP (the reverse model) is then trained to predict and remove the noise at each step, learning to reverse the diffusion process.
+
+The visualization shows the forward noising trajectory as an animated scatter plot, the denoised output produced by the reverse diffusion chain starting from pure Gaussian noise, and the training loss curve (MSE on the predicted noise). Controls expose the number of diffusion timesteps, the noise schedule (linear or cosine), network hidden size, and learning rate.
+
+---
+
+## Word2Vec — Skip-Gram Embeddings
+
+**File:** `dist/word2vec.html` | **Source:** `src/word2vec.ts`
+
+Implements the skip-gram variant of Word2Vec trained on a small configurable corpus using negative-sampling loss. A two-layer embedding network maps token indices to dense vector representations; the training objective pushes context words close together while repelling noise samples.
+
+The visualization renders the learned 2D embedding space (after a PCA projection from the full embedding dimension) as an interactive scatter plot with word labels. A nearest-neighbor readout shows the closest words in embedding space to any selected token, and an analogy panel lets users probe vector arithmetic (king − man + woman ≈ queen) on the trained embeddings. Controls expose vocabulary size, embedding dimension, window size, negative samples, and learning rate.
+
+---
+
+## Bayesian Neural Network (MC-Dropout / Deep Ensembles)
+
+**File:** `dist/bayesnn.html` | **Source:** `src/bayesnn.ts`
+
+Implements two complementary approaches to predictive uncertainty in neural networks: **MC-dropout** (apply dropout at test time and average multiple stochastic forward passes) and **deep ensembles** (train several independent networks with different random seeds and aggregate their predictions).
+
+The visualization renders the mean predicted boundary as a heatmap alongside a separate uncertainty map (predictive standard deviation across passes or ensemble members). The uncertainty envelope widens visibly in regions far from training data, near the decision boundary, or in areas of label ambiguity. Controls expose the number of MC-dropout samples (or ensemble members), dropout rate, network depth and width, and the choice of method.
+
+---
+
+## Classic ML Labs
+
+---
+
 ## Clustering
 
 **File:** `dist/clustering.html` | **Source:** `src/clustering.ts`
@@ -63,6 +111,10 @@ The visualization renders the real data distribution and the current generated p
 Implements three unsupervised clustering algorithms in the browser: **k-means** (Lloyd's algorithm with centroid trails), **DBSCAN** (density-based; labels each point as core, border, or noise), and **GMM with EM** (Gaussian Mixture Model with E and M steps, full covariance per component).
 
 The visualization renders data points colored by cluster assignment, k-means centroid positions connected by trails showing their movement across iterations, DBSCAN core/border/noise role indicators, and GMM confidence ellipses for each component. Five synthetic datasets are available: blobs, moons, circles, anisotropic blobs, and uniform random. Controls expose the number of clusters (k-means/GMM), DBSCAN ε and minPts, number of EM iterations, and the dataset.
+
+---
+
+## Other Labs
 
 ---
 
@@ -96,6 +148,16 @@ The visualization renders the 2D embedding as a scatter plot with points colored
 
 ---
 
+## Self-Organizing Map (SOM)
+
+**File:** `dist/som.html` | **Source:** `src/som.ts`
+
+Implements a Kohonen Self-Organizing Map: a 2D lattice of weight vectors trained via competitive learning so that topologically nearby neurons respond to similar inputs. The best-matching unit (BMU) and its neighborhood are updated each step, causing the lattice to progressively fold over the input distribution.
+
+The visualization renders the SOM grid as a mesh overlaid on the input data scatter plot. As training progresses, the grid unfolds and conforms to the data topology, providing a topology-preserving 2D map of the input space. An additional heatmap shows the U-matrix (distance between adjacent neurons) which highlights cluster boundaries. Controls expose grid dimensions, initial learning rate, initial neighborhood radius, number of training epochs, and the input dataset.
+
+---
+
 ## SVM — Support Vector Machine
 
 **File:** `dist/svm.html` | **Source:** `src/svm.ts`
@@ -123,3 +185,23 @@ The visualization renders the fitted line (linear regression) or decision bounda
 Implements exact Gaussian Process regression using Cholesky decomposition for posterior inference. Three kernel functions are supported: **RBF** (squared exponential), **Matérn-3/2**, and **periodic**. Hyperparameters (length-scale, signal variance, noise variance, and period for the periodic kernel) are configurable via sliders.
 
 The visualization renders a 1D function view: observed training points as scatter, the posterior mean as a solid line, the 95% credible band (±2 posterior std dev) as a shaded region, and several randomly-drawn posterior samples as thin curves. The Cholesky solve is rerun on every hyperparameter change, giving immediate visual feedback on how each hyperparameter controls smoothness, amplitude, and periodicity. Controls also expose the number of training points and the ability to place points interactively by clicking the plot.
+
+---
+
+## Hopfield Network
+
+**File:** `dist/hopfield.html` | **Source:** `src/hopfield.ts`
+
+Implements a classical Hopfield network (synchronous and asynchronous update modes) as an associative memory model. Binary patterns are stored by computing Hebbian weight matrices; retrieval is demonstrated by presenting a corrupted or partial version of a stored pattern and running the network's energy-minimization dynamics until it converges.
+
+The visualization renders the stored patterns as binary pixel grids alongside the current network state as it evolves during recall. An energy plot tracks the Lyapunov energy as it descends toward a fixed point. The number of storable patterns vs the network capacity limit is displayed. Controls expose the pattern size, the number of stored patterns (editable by clicking), the amount of corruption applied to the probe, and the update mode (synchronous vs asynchronous).
+
+---
+
+## Genetic Algorithm
+
+**File:** `dist/genetic.html` | **Source:** `src/genetic.ts`
+
+Implements a genetic algorithm for single-objective optimization over a configurable 1D or 2D fitness landscape. A population of candidate solutions is evolved over generations via fitness-proportionate or tournament selection, uniform or single-point crossover, and Gaussian or bit-flip mutation.
+
+The visualization renders the population distribution on the fitness landscape, highlights the current best individual, and plots the best and mean fitness over generations. A population diversity metric tracks premature convergence. Controls expose population size, selection pressure, mutation rate, crossover rate, the choice of fitness function (sphere, Rastrigin, Ackley, Rosenbrock, custom), and the termination criterion (max generations or fitness threshold).

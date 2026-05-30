@@ -1,6 +1,6 @@
 # Neural Network Playground — Extended Edition
 
-An interactive, browser-based visualization of feedforward neural networks, built on top of the original [Google / TensorFlow Neural Network Playground](https://playground.tensorflow.org). This fork extends it with a large set of additional features covering modern training techniques, adversarial robustness, machine unlearning, fine-tuning, 3D datasets, experiment tracking, interpretability tools, and twelve standalone advanced labs.
+An interactive, browser-based visualization of feedforward neural networks, built on top of the original [Google / TensorFlow Neural Network Playground](https://playground.tensorflow.org). This fork extends it with a large set of additional features covering modern training techniques, adversarial robustness, machine unlearning, fine-tuning, 3D datasets, experiment tracking, interpretability tools, and eighteen standalone advanced labs.
 
 ![preview](dist/preview.png)
 
@@ -110,22 +110,40 @@ Toggle derived features: x, y, x², y², x·y, sin(x), sin(y), and two additiona
 
 ## Labs
 
-Twelve standalone algorithm labs are bundled alongside the main playground. Each is a self-contained HTML page with its own TypeScript bundle.
+Eighteen standalone algorithm labs are bundled alongside the main playground. Each is a self-contained HTML page with its own TypeScript bundle. Browse all labs from the **[lab gallery](dist/labs.html)** (`dist/labs.html`), which is linked from the main playground as the entry point for all standalone labs.
+
+### Deep Learning
 
 | Lab | File | Description |
 |---|---|---|
 | **CNN** | `dist/cnn.html` | From-scratch convolutional neural network: Conv→ReLU→Pool→Conv→ReLU→Pool→FC→Softmax. Visualizes filters, feature maps, and pooling layers; trains on synthetic 8×8 shape images. |
 | **Transformer** | `dist/transformer.html` | Single/multi-head transformer block with full backprop. Visualizes token embeddings, Q/K/V projections, attention weight matrices, and the attended representations; trains on toy sequence tasks. |
-| **Autoencoder** | `dist/autoencoder.html` | Fully-connected autoencoder (encoder → 2D bottleneck → decoder). Visualizes original vs reconstructed 8×8 shape images, the 2D latent space scatter, a latent-space grid decode, and the reconstruction loss curve. |
 | **RNN** | `dist/rnn.html` | Elman RNN trained on a sequence echo/delay task (predict input delayed by k steps). Visualizes hidden-state heatmap over time, weight matrices, and per-step prediction vs target. |
+| **Autoencoder** | `dist/autoencoder.html` | Fully-connected autoencoder (encoder → 2D bottleneck → decoder). Visualizes original vs reconstructed 8×8 shape images, the 2D latent space scatter, a latent-space grid decode, and the reconstruction loss curve. |
 | **GAN** | `dist/gan.html` | Minimax GAN with MLP generator and discriminator. Visualizes generated 2D point distributions, discriminator decision boundary, and separate generator/discriminator loss curves. |
-| **Clustering** | `dist/clustering.html` | Interactive unsupervised clustering lab: k-means (with centroid trails), DBSCAN (core/border/noise roles), and GMM with EM. Supports blobs, moons, circles, anisotropic, and uniform datasets. |
-| **RL Gridworld** | `dist/rl.html` | Tabular Q-learning and SARSA on a 7×10 editable grid with walls, pits, a goal, and a start cell. Visualizes the Q-table as colored arrows, the agent trajectory, and cumulative reward over episodes. |
+| **Diffusion (DDPM)** | `dist/diffusion.html` | Denoising diffusion probabilistic model. The forward process progressively adds noise to 2D samples; the trained network learns to reverse it, denoising back to clean samples. |
+| **Word2Vec** | `dist/word2vec.html` | Skip-gram Word2Vec trained on a small corpus. Visualizes the learned embedding space, nearest-neighbor relationships, and word analogy arithmetic. |
+| **Bayesian NN** | `dist/bayesnn.html` | Uncertainty quantification via MC-dropout and deep ensembles. Shows how predictive confidence degrades away from training data. |
+
+### Classic ML
+
+| Lab | File | Description |
+|---|---|---|
 | **Decision Tree / Random Forest** | `dist/dtree.html` | Axis-aligned decision tree (Gini or entropy criterion) and random forest. Visualizes the split tree structure, the 2D decision boundary, and per-class accuracy; configurable depth, min-samples, and number of trees. |
-| **PCA / t-SNE** | `dist/dimred.html` | Dimensionality reduction lab. Runs PCA (exact, via power iteration) or t-SNE (Barnes-Hut-lite) on synthetic high-dimensional datasets and renders the 2D embedding with class-colored points. |
 | **SVM** | `dist/svm.html` | Support Vector Machine with SMO-lite solver. Supports linear, polynomial, and RBF kernels with configurable C and gamma. Visualizes the margin, support vectors, and decision boundary. |
 | **Linear / Logistic / Naive Bayes** | `dist/glm.html` | Generalized linear models lab: ordinary least-squares linear regression, logistic regression (gradient descent), and Gaussian Naive Bayes. Shows the fit line/boundary and class probabilities. |
 | **Gaussian Process** | `dist/gp.html` | GP regression with exact inference (Cholesky). Supports RBF, Matérn-3/2, and periodic kernels with configurable length-scale, signal variance, and noise variance. Visualizes the posterior mean, 95% credible band, and sampled functions. |
+| **Clustering** | `dist/clustering.html` | Interactive unsupervised clustering lab: k-means (with centroid trails), DBSCAN (core/border/noise roles), and GMM with EM. Supports blobs, moons, circles, anisotropic, and uniform datasets. |
+| **PCA / t-SNE** | `dist/dimred.html` | Dimensionality reduction lab. Runs PCA (exact, via power iteration) or t-SNE (Barnes-Hut-lite) on synthetic high-dimensional datasets and renders the 2D embedding with class-colored points. |
+| **Self-Organizing Map** | `dist/som.html` | Kohonen SOM lattice trained on 2D data. Topology-preserving grid folds over the input distribution; visualizes the map grid, BMU activations, and quantization error over time. |
+
+### Other
+
+| Lab | File | Description |
+|---|---|---|
+| **RL Gridworld** | `dist/rl.html` | Tabular Q-learning and SARSA on a 7×10 editable grid with walls, pits, a goal, and a start cell. Visualizes the Q-table as colored arrows, the agent trajectory, and cumulative reward over episodes. |
+| **Hopfield Network** | `dist/hopfield.html` | Associative memory network. Store binary patterns as energy minima and demonstrate recall — corrupted inputs converge back to the nearest stored memory. |
+| **Genetic Algorithm** | `dist/genetic.html` | Evolutionary optimization on configurable fitness landscapes. Visualizes population fitness over generations; configurable selection pressure, mutation rate, and crossover. |
 
 ---
 
@@ -150,7 +168,7 @@ npm run serve-watch
 
 This starts a live server and recompiles TypeScript, HTML, and CSS whenever a source file changes.
 
-To build the main playground **and** all twelve labs:
+To build the main playground **and** all eighteen labs:
 
 ```bash
 npm run build-all
@@ -166,7 +184,7 @@ npm run build-all
 npm test
 ```
 
-Tests live in `tests/` and cover the core ML engine (`nn.ts`), dataset generators, adversarial attacks, custom-dataset CSV parsing, and machine unlearning.
+The suite has **445 tests** across 11 test files and covers the core ML engine (`nn.ts`), dataset generators, adversarial attacks, custom-dataset CSV parsing, machine unlearning, all activation-function derivatives (finite-difference gradient checks), all loss-function derivatives, and an end-to-end backpropagation gradient check.
 
 ### End-to-end tests (Playwright)
 
@@ -218,6 +236,9 @@ All source files live in `src/`. Compiled output goes to `dist/`. See [docs/ARCH
 | `autoencoder.ts` | Autoencoder lab entry point — bundled to `dist/bundleautoencoder.js`. |
 | `rnn.ts` | RNN lab entry point — bundled to `dist/bundlernn.js`. |
 | `gan.ts` | GAN lab entry point — bundled to `dist/bundlegan.js`. |
+| `diffusion.ts` | Diffusion (DDPM) lab entry point — bundled to `dist/bundlediffusion.js`. |
+| `word2vec.ts` | Word2Vec lab entry point — bundled to `dist/bundleword2vec.js`. |
+| `bayesnn.ts` | Bayesian NN lab entry point — bundled to `dist/bundlebayesnn.js`. |
 | `clustering.ts` | Clustering lab entry point — bundled to `dist/bundleclustering.js`. |
 | `rl.ts` | RL Gridworld lab entry point — bundled to `dist/bundlerl.js`. |
 | `dtree.ts` | Decision Tree / Random Forest lab entry point — bundled to `dist/bundledtree.js`. |
@@ -225,6 +246,9 @@ All source files live in `src/`. Compiled output goes to `dist/`. See [docs/ARCH
 | `svm.ts` | SVM lab entry point — bundled to `dist/bundlesvm.js`. |
 | `glm.ts` | Linear/Logistic/Naive Bayes lab entry point — bundled to `dist/bundleglm.js`. |
 | `gp.ts` | Gaussian Process lab entry point — bundled to `dist/bundlegp.js`. |
+| `som.ts` | Self-Organizing Map lab entry point — bundled to `dist/bundlesom.js`. |
+| `hopfield.ts` | Hopfield Network lab entry point — bundled to `dist/bundlehopfield.js`. |
+| `genetic.ts` | Genetic Algorithm lab entry point — bundled to `dist/bundlegenetic.js`. |
 
 ---
 

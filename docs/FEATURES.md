@@ -2,7 +2,7 @@
 
 This document enumerates every feature available in the Neural Network Playground Extended Edition, grouped by category. Sources of truth used: `index.html`, `src/state.ts`, `src/nn.ts`, `src/dataset.ts`, `src/dataset3d.ts`, `src/adversarial.ts`, `src/unlearning.ts`, and `src/playground.ts`.
 
-**Approximate feature total: ~130 distinct controls and capabilities on the main page, plus 12 standalone labs.**
+**Approximate feature total: ~130 distinct controls and capabilities on the main page, plus 18 standalone labs.**
 
 ---
 
@@ -485,25 +485,50 @@ Dismissable tip bar showing the most useful keyboard shortcuts on first visit.
 
 A `<code>/<pre>` panel at the bottom of the page shows the current network compiled to a standalone JavaScript function via `compileNetworkToJs`. Updates after every epoch.
 
+The export is fully self-contained: PReLU's learned alpha value is inlined directly into the emitted expression (so a shared helper cannot accidentally capture the wrong alpha), and a helper prelude is prepended that defines `sinc`, `mish`, `gelu`, `leakyrelu`, and `softplus` as plain JS functions. The result can be copy-pasted and executed in any JavaScript environment without any additional imports or dependencies.
+
 ---
 
-## 23. Advanced Labs (12)
+## 23. Advanced Labs (18) + Gallery
 
-Accessible via the "Advanced labs" links at the bottom of the output panel, or directly by URL.
+Accessible via the **lab gallery** (`labs.html`, linked from the bottom of the output panel), or directly by URL.
 
 | Lab | URL | Algorithm(s) |
 |---|---|---|
 | CNN | `cnn.html` | Convolutional neural network (Conv→ReLU→Pool×2 → FC → Softmax) |
 | Transformer | `transformer.html` | Single/multi-head self-attention transformer block |
-| Autoencoder | `autoencoder.html` | Fully-connected autoencoder with 2D bottleneck |
 | RNN | `rnn.html` | Elman RNN trained on sequence echo/delay task |
+| Autoencoder | `autoencoder.html` | Fully-connected autoencoder with 2D bottleneck |
 | GAN | `gan.html` | Minimax GAN with MLP generator and discriminator |
-| Clustering | `clustering.html` | k-means, DBSCAN, GMM with EM |
-| RL Gridworld | `rl.html` | Q-learning and SARSA on a tabular 7×10 grid |
+| Diffusion (DDPM) | `diffusion.html` | DDPM forward noising + learned reverse denoising on 2D data |
+| Word2Vec | `word2vec.html` | Skip-gram embeddings with negative sampling; analogy arithmetic |
+| Bayesian NN | `bayesnn.html` | MC-dropout and deep ensembles for predictive uncertainty |
 | Decision Tree / Forest | `dtree.html` | CART decision tree and random forest |
-| PCA / t-SNE | `dimred.html` | PCA (power iteration) and t-SNE (Barnes-Hut-lite) |
 | SVM | `svm.html` | SMO-lite SVM with linear, poly, and RBF kernels |
 | Linear/Logistic/Naive Bayes | `glm.html` | OLS linear regression, logistic regression, Gaussian Naive Bayes |
 | Gaussian Process | `gp.html` | GP regression with RBF, Matérn-3/2, and periodic kernels |
+| Clustering | `clustering.html` | k-means, DBSCAN, GMM with EM |
+| PCA / t-SNE | `dimred.html` | PCA (power iteration) and t-SNE (Barnes-Hut-lite) |
+| Self-Organizing Map | `som.html` | Kohonen SOM lattice; topology-preserving 2D map |
+| RL Gridworld | `rl.html` | Q-learning and SARSA on a tabular 7×10 grid |
+| Hopfield Network | `hopfield.html` | Associative memory with Hebbian weights; energy-descent recall |
+| Genetic Algorithm | `genetic.html` | Evolutionary optimization: selection, crossover, mutation |
+| **Gallery** | `labs.html` | Static entry-point card grid linking all 18 labs (no bundle) |
 
 See [docs/LABS.md](LABS.md) for a detailed description of each lab.
+
+---
+
+## 24. Test Suite (445 tests)
+
+The Jest unit test suite (`npm test`) has 445 tests across 11 test files. In addition to the existing coverage of the core ML engine, dataset generators, adversarial attacks, unlearning, and CSV parsing, the suite now includes:
+
+- **Finite-difference gradient checks for all 24 activation functions** (`tests/activation_grad.test.ts`) — verifies that each `Activations.*` analytic derivative agrees with a central finite-difference approximation at multiple test points, skipping known kinks.
+- **Finite-difference gradient checks for all 5 loss functions** (`tests/loss_grad.test.ts`) — same approach applied to every `Errors.*` derivative.
+- **End-to-end backpropagation gradient check** (`tests/network_grad.test.ts`) — builds small networks with fixed weights, runs `backProp`, and verifies every link weight gradient and node bias gradient against finite differences, across multiple loss functions and activation shapes.
+- **Optimizer step tests** (`tests/optimizer.test.ts`) — verifies weight updates for all 10 optimizers.
+
+These tests were also responsible for catching two engine bugs that have since been fixed in `nn.ts`:
+
+- **MISH derivative bug** — `MISH.der(x)` previously used an incorrect formula; the correct derivative `tanh(softplus(x)) + x * sigmoid(x) * (1 − tanh(softplus(x))²)` is now implemented and verified by the finite-difference check.
+- **SINC small-value guard** — `SINC.output(x)` previously returned `sin(x)/x` for all x, producing a division-by-zero at x=0; a guard `(x*x < 1e-6) ? 1 : sin(x)/x` is now in place, matching the mathematical limit sinc(0) = 1.
