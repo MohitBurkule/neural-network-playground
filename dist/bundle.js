@@ -89795,6 +89795,9 @@ var Player = (function () {
                 return;
             }
             var steps = Math.max(1, uxStepsPerTick | 0);
+            if (uxFastTraining) {
+                steps = Math.max(steps, steps * 8);
+            }
             for (var s = 0; s < steps; s++) {
                 oneStep();
                 if (!_this.isPlaying) {
@@ -89806,6 +89809,8 @@ var Player = (function () {
     return Player;
 }());
 var uxStepsPerTick = 1;
+var uxRedrawEvery = 1;
+var uxFastTraining = false;
 var uxAfterStep = null;
 var tmEarlyStopBest = Infinity;
 var tmEarlyStopWait = 0;
@@ -90995,10 +91000,24 @@ function oneStep() {
     });
     lossTrain = getLoss(network, state.trainData);
     lossTest = getLoss(network, state.testData);
-    updateUI();
+    var k = Math.max(1, uxRedrawEvery | 0);
+    if (k <= 1 || iter % k === 0 || !player.isActive()) {
+        updateUI();
+    }
+    else {
+        updateLightUI();
+    }
+    uxFrameAccountStep();
     if (uxAfterStep) {
         uxAfterStep();
     }
+}
+function updateLightUI() {
+    d3.select("#loss-train").text(lossTrain.toFixed(3));
+    d3.select("#loss-test").text(lossTest.toFixed(3));
+    var pad = "000000";
+    d3.select("#iter-number").text((pad + iter).slice(-pad.length)
+        .replace(/\B(?=(\d{3})+(?!\d))/g, ","));
 }
 function getOutputWeights(network) {
     var weights = [];
@@ -94095,8 +94114,256 @@ function uxTickStatus() {
     set("ux-status-acctest", ate ? (ate.textContent || "—") : "—");
     set("ux-status-sps", uxStepsPerSec ? uxStepsPerSec.toFixed(1) : "0");
 }
+var perfStepCount = 0;
+function uxFrameAccountStep() {
+    perfStepCount++;
+}
+var A11Y_PREFS_KEY = "nnpg-a11y-prefs";
+function a11yLoadPrefs() {
+    try {
+        var raw = window.localStorage.getItem(A11Y_PREFS_KEY);
+        return raw ? JSON.parse(raw) : {};
+    }
+    catch (e) {
+        return {};
+    }
+}
+function a11ySavePrefs(patch) {
+    try {
+        var prefs = a11yLoadPrefs();
+        for (var k in patch) {
+            prefs[k] = patch[k];
+        }
+        window.localStorage.setItem(A11Y_PREFS_KEY, JSON.stringify(prefs));
+    }
+    catch (e) { }
+}
+var I18N = {
+    en: {
+        lang: "Language", highContrast: "High contrast", reducedMotion: "Reduce motion",
+        compactMode: "Compact mode", uiScale: "UI scale", fastTraining: "Fast training",
+        redrawEvery: "Redraw every", steps: "steps", stepsPerSec: "steps/s",
+        data: "Data", features: "Features", output: "Output", epoch: "Epoch",
+        learningRate: "Learning rate", activation: "Activation", optimizer: "Optimizer",
+        regularization: "Regularization", problemType: "Problem type",
+        testLoss: "Test loss", trainingLoss: "Training loss", trainAcc: "Train acc", testAcc: "Test acc"
+    },
+    es: {
+        lang: "Idioma", highContrast: "Alto contraste", reducedMotion: "Reducir movimiento",
+        compactMode: "Modo compacto", uiScale: "Escala de interfaz", fastTraining: "Entrenamiento rápido",
+        redrawEvery: "Redibujar cada", steps: "pasos", stepsPerSec: "pasos/s",
+        data: "Datos", features: "Características", output: "Salida", epoch: "Época",
+        learningRate: "Tasa de aprendizaje", activation: "Activación", optimizer: "Optimizador",
+        regularization: "Regularización", problemType: "Tipo de problema",
+        testLoss: "Pérdida de prueba", trainingLoss: "Pérdida de entrenamiento", trainAcc: "Precisión entren.", testAcc: "Precisión prueba"
+    },
+    fr: {
+        lang: "Langue", highContrast: "Contraste élevé", reducedMotion: "Réduire le mouvement",
+        compactMode: "Mode compact", uiScale: "Échelle de l'interface", fastTraining: "Entraînement rapide",
+        redrawEvery: "Redessiner tous les", steps: "pas", stepsPerSec: "pas/s",
+        data: "Données", features: "Caractéristiques", output: "Sortie", epoch: "Époque",
+        learningRate: "Taux d'apprentissage", activation: "Activation", optimizer: "Optimiseur",
+        regularization: "Régularisation", problemType: "Type de problème",
+        testLoss: "Perte de test", trainingLoss: "Perte d'entraînement", trainAcc: "Précision entr.", testAcc: "Précision test"
+    },
+    hi: {
+        lang: "भाषा", highContrast: "उच्च कंट्रास्ट", reducedMotion: "गति घटाएँ",
+        compactMode: "संक्षिप्त मोड", uiScale: "यूआई स्केल", fastTraining: "तेज़ प्रशिक्षण",
+        redrawEvery: "हर बार फिर बनाएँ", steps: "चरण", stepsPerSec: "चरण/से",
+        data: "डेटा", features: "विशेषताएँ", output: "आउटपुट", epoch: "युग",
+        learningRate: "सीखने की दर", activation: "सक्रियण", optimizer: "ऑप्टिमाइज़र",
+        regularization: "नियमितीकरण", problemType: "समस्या का प्रकार",
+        testLoss: "परीक्षण हानि", trainingLoss: "प्रशिक्षण हानि", trainAcc: "प्रशिक्षण सटीकता", testAcc: "परीक्षण सटीकता"
+    },
+    zh: {
+        lang: "语言", highContrast: "高对比度", reducedMotion: "减少动态效果",
+        compactMode: "紧凑模式", uiScale: "界面缩放", fastTraining: "快速训练",
+        redrawEvery: "每隔多少步重绘", steps: "步", stepsPerSec: "步/秒",
+        data: "数据", features: "特征", output: "输出", epoch: "轮次",
+        learningRate: "学习率", activation: "激活函数", optimizer: "优化器",
+        regularization: "正则化", problemType: "问题类型",
+        testLoss: "测试损失", trainingLoss: "训练损失", trainAcc: "训练准确率", testAcc: "测试准确率"
+    }
+};
+function setLanguage(lang) {
+    var dict = I18N[lang] || I18N["en"];
+    var nodes = document.querySelectorAll("[data-i18n]");
+    Array.prototype.forEach.call(nodes, function (el) {
+        var key = el.getAttribute("data-i18n");
+        if (key && dict[key] != null) {
+            el.textContent = dict[key];
+        }
+    });
+    try {
+        document.documentElement.setAttribute("lang", lang);
+    }
+    catch (e) { }
+    a11ySavePrefs({ language: lang });
+}
+function initA11yFeatures() {
+    var prefs = a11yLoadPrefs();
+    var langSel = document.getElementById("a11y-language");
+    var initialLang = (prefs.language && I18N[prefs.language]) ? prefs.language : "en";
+    if (langSel) {
+        langSel.value = initialLang;
+        langSel.addEventListener("change", function () { return setLanguage(langSel.value); });
+    }
+    if (initialLang !== "en") {
+        setLanguage(initialLang);
+    }
+    var hcChk = document.getElementById("a11y-high-contrast");
+    var applyHC = function (on) { return document.body.classList.toggle("ux-high-contrast", on); };
+    if (hcChk) {
+        hcChk.checked = !!prefs.highContrast;
+        applyHC(hcChk.checked);
+        hcChk.addEventListener("change", function () {
+            applyHC(hcChk.checked);
+            a11ySavePrefs({ highContrast: hcChk.checked });
+        });
+    }
+    var rmChk = document.getElementById("a11y-reduced-motion");
+    var osReduce = false;
+    try {
+        osReduce = !!(window.matchMedia &&
+            window.matchMedia("(prefers-reduced-motion: reduce)").matches);
+    }
+    catch (e) { }
+    var applyRM = function (on) { return document.body.classList.toggle("ux-reduced-motion", on); };
+    if (rmChk) {
+        rmChk.checked = prefs.reducedMotion != null ? !!prefs.reducedMotion : osReduce;
+        applyRM(rmChk.checked);
+        rmChk.addEventListener("change", function () {
+            applyRM(rmChk.checked);
+            a11ySavePrefs({ reducedMotion: rmChk.checked });
+        });
+    }
+    var cmChk = document.getElementById("a11y-compact");
+    var applyCM = function (on) { return document.body.classList.toggle("ux-compact", on); };
+    if (cmChk) {
+        cmChk.checked = !!prefs.compact;
+        applyCM(cmChk.checked);
+        cmChk.addEventListener("change", function () {
+            applyCM(cmChk.checked);
+            a11ySavePrefs({ compact: cmChk.checked });
+        });
+    }
+    var scaleSlider = document.getElementById("a11y-ui-scale");
+    var scaleVal = document.getElementById("a11y-ui-scale-val");
+    var applyScale = function (pct) {
+        document.documentElement.style.fontSize = (16 * pct / 100) + "px";
+        if (scaleVal) {
+            scaleVal.textContent = String(pct);
+        }
+    };
+    if (scaleSlider) {
+        var p = typeof prefs.uiScale === "number" ? prefs.uiScale : 100;
+        scaleSlider.value = String(p);
+        if (p !== 100) {
+            applyScale(p);
+        }
+        else if (scaleVal) {
+            scaleVal.textContent = "100";
+        }
+        scaleSlider.addEventListener("input", function () {
+            var v = Math.max(80, Math.min(150, +scaleSlider.value || 100));
+            applyScale(v);
+            a11ySavePrefs({ uiScale: v });
+        });
+    }
+    var workerChk = document.getElementById("perf-worker");
+    if (workerChk) {
+        workerChk.checked = !!prefs.fastTraining;
+        uxFastTraining = workerChk.checked;
+        workerChk.addEventListener("change", function () {
+            uxFastTraining = workerChk.checked;
+            a11ySavePrefs({ fastTraining: workerChk.checked });
+        });
+    }
+    var kInput = document.getElementById("perf-redraw-k");
+    if (kInput) {
+        var k = typeof prefs.redrawEvery === "number" ? prefs.redrawEvery : 1;
+        kInput.value = String(k);
+        uxRedrawEvery = Math.max(1, k | 0);
+        kInput.addEventListener("change", function () {
+            uxRedrawEvery = Math.max(1, parseInt(kInput.value, 10) || 1);
+            a11ySavePrefs({ redrawEvery: uxRedrawEvery });
+        });
+    }
+    Array.prototype.forEach.call(document.querySelectorAll(".dataset"), function (el) {
+        if (!el.hasAttribute("tabindex")) {
+            el.setAttribute("tabindex", "0");
+        }
+        el.setAttribute("role", "button");
+        var title = el.getAttribute("title");
+        if (title && !el.hasAttribute("aria-label")) {
+            el.setAttribute("aria-label", "Dataset: " + title);
+        }
+        el.addEventListener("keydown", function (ev) {
+            if (ev.key === "Enter" || ev.key === " " || ev.key === "Spacebar") {
+                ev.preventDefault();
+                var canvas = el.querySelector("canvas");
+                if (canvas) {
+                    canvas.dispatchEvent(new MouseEvent("click", { bubbles: true }));
+                }
+            }
+        });
+    });
+    player.onPlayPause(function (isPlaying) {
+        d3.select("#play-pause-button").classed("playing", isPlaying);
+        var btn = document.getElementById("play-pause-button");
+        if (btn) {
+            btn.setAttribute("aria-pressed", String(isPlaying));
+        }
+        if (!isPlaying && network && uxRedrawEvery > 1) {
+            try {
+                updateUI();
+            }
+            catch (e) { }
+        }
+    });
+    var spsEl = document.getElementById("perf-sps");
+    var fpsEl = document.getElementById("perf-fps");
+    var budgetEl = document.getElementById("perf-budget");
+    var lastT = (typeof performance !== "undefined" && performance.now)
+        ? performance.now() : Date.now();
+    var lastSteps = 0;
+    var frames = 0;
+    var smoothSps = 0;
+    var tickMeter = function () {
+        frames++;
+        var now = (typeof performance !== "undefined" && performance.now)
+            ? performance.now() : Date.now();
+        var dt = now - lastT;
+        if (dt >= 500) {
+            var sps = (perfStepCount - lastSteps) * 1000 / dt;
+            smoothSps = smoothSps === 0 ? sps : smoothSps * 0.7 + sps * 0.3;
+            var fps = frames * 1000 / dt;
+            if (spsEl) {
+                spsEl.textContent = smoothSps.toFixed(0);
+            }
+            if (fpsEl) {
+                fpsEl.textContent = fps.toFixed(0);
+            }
+            if (budgetEl) {
+                var cls = fps >= 45 ? "good" : (fps >= 25 ? "warn" : "bad");
+                budgetEl.className = cls;
+                budgetEl.textContent = "●";
+            }
+            lastT = now;
+            lastSteps = perfStepCount;
+            frames = 0;
+        }
+        if (typeof requestAnimationFrame === "function") {
+            requestAnimationFrame(tickMeter);
+        }
+    };
+    if (typeof requestAnimationFrame === "function") {
+        requestAnimationFrame(tickMeter);
+    }
+}
 initTrainingMethodologyGUI();
 initUXFeatures();
+initA11yFeatures();
 
 },{"./adversarial":1030,"./customdataset":1031,"./dataset":1032,"./dataset3d":1033,"./heatmap":1034,"./linechart":1035,"./nn":1036,"./state":1038,"./threeview":1039,"./unlearning":1040,"d3":9,"mathjs":937}],1038:[function(require,module,exports){
 "use strict";

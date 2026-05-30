@@ -1381,3 +1381,145 @@ body.ux-dark #tm-panel .tm-readout { color: #bbb; }
   word-break: break-word;
 }
 .interp-panel .basic-button { margin-bottom: 4px; }
+
+/* ===================================================================
+   Accessibility / i18n / performance / responsive features
+   =================================================================== */
+
+#a11y-toolbar {
+  margin: 8px auto;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px 14px;
+  align-items: center;
+  font-size: 13px;
+}
+#a11y-toolbar .ux-inline {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+}
+#a11y-toolbar select,
+#a11y-toolbar input[type="number"] {
+  font-size: 13px;
+  padding: 2px 4px;
+}
+#perf-meter { color: #555; }
+#perf-budget.good { color: #2e7d32; }
+#perf-budget.warn { color: #f9a825; }
+#perf-budget.bad { color: #c62828; }
+
+/* --- Visible focus styles (accessibility) --- */
+a:focus-visible,
+button:focus-visible,
+select:focus-visible,
+input:focus-visible,
+textarea:focus-visible,
+.dataset:focus-visible,
+[tabindex]:focus-visible {
+  outline: 3px solid #1565c0;
+  outline-offset: 2px;
+}
+
+/* --- Reduced motion: disable nonessential animation/transition --- */
+.ux-reduced-motion *,
+.ux-reduced-motion *::before,
+.ux-reduced-motion *::after {
+  animation-duration: 0.001ms !important;
+  animation-iteration-count: 1 !important;
+  transition-duration: 0.001ms !important;
+  scroll-behavior: auto !important;
+}
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after {
+    animation-duration: 0.001ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.001ms !important;
+  }
+}
+
+/* --- High-contrast theme --- */
+body.ux-high-contrast {
+  background: #000 !important;
+  color: #fff !important;
+}
+body.ux-high-contrast a { color: #4db8ff !important; }
+body.ux-high-contrast button,
+body.ux-high-contrast select,
+body.ux-high-contrast input,
+body.ux-high-contrast textarea {
+  background: #000 !important;
+  color: #fff !important;
+  border: 1px solid #fff !important;
+}
+body.ux-high-contrast .basic-button,
+body.ux-high-contrast #ux-toolbar button,
+body.ux-high-contrast #a11y-toolbar select {
+  background: #000 !important;
+  color: #fff !important;
+  border: 1px solid #fff !important;
+}
+body.ux-high-contrast .dataset.selected {
+  outline: 3px solid #ffff00 !important;
+}
+body.ux-high-contrast h1,
+body.ux-high-contrast h2,
+body.ux-high-contrast h4,
+body.ux-high-contrast .label,
+body.ux-high-contrast .value { color: #fff !important; }
+
+/* --- Compact mode: hide advanced panels for a clean first-run view --- */
+body.ux-compact #tm-panel,
+body.ux-compact #analysis-section,
+body.ux-compact #interp-section,
+body.ux-compact .advanced-labs,
+body.ux-compact #ux-onboard {
+  display: none !important;
+}
+
+/* --- Keyboard-reachable dataset thumbnails --- */
+.dataset[tabindex] { cursor: pointer; }
+
+/* --- Responsive layout: stack columns on narrow screens --- */
+@media (max-width: 1000px) {
+  #main-part {
+    display: flex;
+    flex-direction: column;
+  }
+  #main-part .column {
+    width: auto;
+    max-width: 100%;
+    margin: 0 0 16px 0;
+  }
+  #top-controls .container {
+    flex-wrap: wrap;
+  }
+  #network svg#svg {
+    max-width: 100%;
+    height: auto;
+  }
+}
+@media (max-width: 600px) {
+  #ux-toolbar, #a11y-toolbar {
+    font-size: 12px;
+  }
+  header h1 { font-size: 22px; }
+}
+
+/* --- Print stylesheet: keep only the network + decision boundary --- */
+@media print {
+  body { background: #fff !important; color: #000 !important; }
+  header, #ux-onboard, #ux-toolbar, #a11y-toolbar, #top-controls,
+  #tm-panel, #analysis-section, #interp-section, .advanced-labs,
+  .more, article, footer, .github-link, .switch,
+  #ux-status-bar, #select-platform, .threed-controls,
+  #addinput, #add-activation, #data-regen-button,
+  .callout, #hovercard, .adv-labs-link {
+    display: none !important;
+  }
+  #main-part { display: block !important; }
+  .column.features, .column.hidden-layers, .column.output {
+    width: auto !important;
+    page-break-inside: avoid;
+  }
+}

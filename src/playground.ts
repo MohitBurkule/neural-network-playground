@@ -185,6 +185,13 @@ class Player {
       // Run a configurable number of steps per animation tick so training can
       // proceed faster. Defaults to 1 to preserve the original behavior.
       let steps = Math.max(1, uxStepsPerTick | 0);
+      // "Fast training" scheduler (feature 8): run a larger batch of steps per
+      // frame off the main render path. Combined with throttled redraw this
+      // keeps the UI responsive at high speed without a real Web Worker
+      // (the nn library is not worker-portable here).
+      if (uxFastTraining) {
+        steps = Math.max(steps, steps * 8);
+      }
       for (let s = 0; s < steps; s++) {
         oneStep();
         if (!this.isPlaying) {
@@ -198,6 +205,12 @@ class Player {
 // ===== UX features: shared module-level state (see initUXFeatures) =====
 /** Number of training steps executed per animation tick (speed control). */
 let uxStepsPerTick = 1;
+/** Redraw the heavy SVG/heatmap only every K training steps (feature 10).
+ *  Default 1 preserves the original behavior (redraw every step). */
+let uxRedrawEvery = 1;
+/** Performance: when true, the player batches many steps per frame and only
+ *  repaints periodically (the "fast training" worker-style scheduler). */
+let uxFastTraining = false;
 /** Hook invoked after each oneStep() to power convergence / run-N / NaN logic. */
 let uxAfterStep: (() => void) | null = null;
 /** Early-stopping monitor state (training-methodology feature 2). */
@@ -1637,10 +1650,29 @@ function oneStep(): void {
   // Compute the loss.
   lossTrain = getLoss(network, state.trainData);
   lossTest = getLoss(network, state.testData);
-  updateUI();
+  // Lazy/throttled redraw (feature 10): at high speeds only repaint the heavy
+  // SVG/heatmap every K steps. Default K=1 preserves original behavior.
+  let k = Math.max(1, uxRedrawEvery | 0);
+  if (k <= 1 || iter % k === 0 || !player.isActive()) {
+    updateUI();
+  } else {
+    updateLightUI();
+  }
+  uxFrameAccountStep();
   if (uxAfterStep) {
     uxAfterStep();
   }
+}
+
+/** Lightweight per-step UI refresh used when heavy redraw is throttled.
+ *  Updates only cheap text readouts; the network/heatmap are left untouched
+ *  until the next full updateUI(). */
+function updateLightUI(): void {
+  d3.select("#loss-train").text(lossTrain.toFixed(3));
+  d3.select("#loss-test").text(lossTest.toFixed(3));
+  let pad = "000000";
+  d3.select("#iter-number").text((pad + iter).slice(-pad.length)
+      .replace(/\B(?=(\d{3})+(?!\d))/g, ","));
 }
 
 export function getOutputWeights(network: nn.Node[][]): number[] {
@@ -4882,5 +4914,254 @@ function uxTickStatus(): void {
   set("ux-status-sps", uxStepsPerSec ? uxStepsPerSec.toFixed(1) : "0");
 }
 
+// ===========================================================================
+// Accessibility / i18n / performance / responsiveness features.
+// ===========================================================================
+
+/** Step counter consumed by the FPS / step-rate meter. */
+let perfStepCount = 0;
+function uxFrameAccountStep(): void {
+  perfStepCount++;
+}
+
+const A11Y_PREFS_KEY = "nnpg-a11y-prefs";
+function a11yLoadPrefs(): any {
+  try {
+    let raw = window.localStorage.getItem(A11Y_PREFS_KEY);
+    return raw ? JSON.parse(raw) : {};
+  } catch (e) { return {}; }
+}
+function a11ySavePrefs(patch: any): void {
+  try {
+    let prefs = a11yLoadPrefs();
+    for (let k in patch) { prefs[k] = patch[k]; }
+    window.localStorage.setItem(A11Y_PREFS_KEY, JSON.stringify(prefs));
+  } catch (e) { /* ignore */ }
+}
+
+// ---- Feature 1: i18n dictionary. Keys map to data-i18n attributes. ----
+const I18N: {[lang: string]: {[key: string]: string}} = {
+  en: {
+    lang: "Language", highContrast: "High contrast", reducedMotion: "Reduce motion",
+    compactMode: "Compact mode", uiScale: "UI scale", fastTraining: "Fast training",
+    redrawEvery: "Redraw every", steps: "steps", stepsPerSec: "steps/s",
+    data: "Data", features: "Features", output: "Output", epoch: "Epoch",
+    learningRate: "Learning rate", activation: "Activation", optimizer: "Optimizer",
+    regularization: "Regularization", problemType: "Problem type",
+    testLoss: "Test loss", trainingLoss: "Training loss", trainAcc: "Train acc", testAcc: "Test acc"
+  },
+  es: {
+    lang: "Idioma", highContrast: "Alto contraste", reducedMotion: "Reducir movimiento",
+    compactMode: "Modo compacto", uiScale: "Escala de interfaz", fastTraining: "Entrenamiento rápido",
+    redrawEvery: "Redibujar cada", steps: "pasos", stepsPerSec: "pasos/s",
+    data: "Datos", features: "Características", output: "Salida", epoch: "Época",
+    learningRate: "Tasa de aprendizaje", activation: "Activación", optimizer: "Optimizador",
+    regularization: "Regularización", problemType: "Tipo de problema",
+    testLoss: "Pérdida de prueba", trainingLoss: "Pérdida de entrenamiento", trainAcc: "Precisión entren.", testAcc: "Precisión prueba"
+  },
+  fr: {
+    lang: "Langue", highContrast: "Contraste élevé", reducedMotion: "Réduire le mouvement",
+    compactMode: "Mode compact", uiScale: "Échelle de l'interface", fastTraining: "Entraînement rapide",
+    redrawEvery: "Redessiner tous les", steps: "pas", stepsPerSec: "pas/s",
+    data: "Données", features: "Caractéristiques", output: "Sortie", epoch: "Époque",
+    learningRate: "Taux d'apprentissage", activation: "Activation", optimizer: "Optimiseur",
+    regularization: "Régularisation", problemType: "Type de problème",
+    testLoss: "Perte de test", trainingLoss: "Perte d'entraînement", trainAcc: "Précision entr.", testAcc: "Précision test"
+  },
+  hi: {
+    lang: "भाषा", highContrast: "उच्च कंट्रास्ट", reducedMotion: "गति घटाएँ",
+    compactMode: "संक्षिप्त मोड", uiScale: "यूआई स्केल", fastTraining: "तेज़ प्रशिक्षण",
+    redrawEvery: "हर बार फिर बनाएँ", steps: "चरण", stepsPerSec: "चरण/से",
+    data: "डेटा", features: "विशेषताएँ", output: "आउटपुट", epoch: "युग",
+    learningRate: "सीखने की दर", activation: "सक्रियण", optimizer: "ऑप्टिमाइज़र",
+    regularization: "नियमितीकरण", problemType: "समस्या का प्रकार",
+    testLoss: "परीक्षण हानि", trainingLoss: "प्रशिक्षण हानि", trainAcc: "प्रशिक्षण सटीकता", testAcc: "परीक्षण सटीकता"
+  },
+  zh: {
+    lang: "语言", highContrast: "高对比度", reducedMotion: "减少动态效果",
+    compactMode: "紧凑模式", uiScale: "界面缩放", fastTraining: "快速训练",
+    redrawEvery: "每隔多少步重绘", steps: "步", stepsPerSec: "步/秒",
+    data: "数据", features: "特征", output: "输出", epoch: "轮次",
+    learningRate: "学习率", activation: "激活函数", optimizer: "优化器",
+    regularization: "正则化", problemType: "问题类型",
+    testLoss: "测试损失", trainingLoss: "训练损失", trainAcc: "训练准确率", testAcc: "测试准确率"
+  }
+};
+
+function setLanguage(lang: string): void {
+  let dict = I18N[lang] || I18N["en"];
+  let nodes = document.querySelectorAll("[data-i18n]");
+  Array.prototype.forEach.call(nodes, (el: HTMLElement) => {
+    let key = el.getAttribute("data-i18n");
+    if (key && dict[key] != null) { el.textContent = dict[key]; }
+  });
+  try { document.documentElement.setAttribute("lang", lang); } catch (e) {}
+  a11ySavePrefs({language: lang});
+}
+
+function initA11yFeatures(): void {
+  let prefs = a11yLoadPrefs();
+
+  // ---- Feature 1: language selector ----
+  let langSel = document.getElementById("a11y-language") as HTMLSelectElement;
+  let initialLang = (prefs.language && I18N[prefs.language]) ? prefs.language : "en";
+  if (langSel) {
+    langSel.value = initialLang;
+    langSel.addEventListener("change", () => setLanguage(langSel.value));
+  }
+  if (initialLang !== "en") { setLanguage(initialLang); }
+
+  // ---- Feature 5: high-contrast theme ----
+  let hcChk = document.getElementById("a11y-high-contrast") as HTMLInputElement;
+  let applyHC = (on: boolean) => document.body.classList.toggle("ux-high-contrast", on);
+  if (hcChk) {
+    hcChk.checked = !!prefs.highContrast;
+    applyHC(hcChk.checked);
+    hcChk.addEventListener("change", () => {
+      applyHC(hcChk.checked);
+      a11ySavePrefs({highContrast: hcChk.checked});
+    });
+  }
+
+  // ---- Feature 4: reduced motion (manual toggle + OS preference) ----
+  let rmChk = document.getElementById("a11y-reduced-motion") as HTMLInputElement;
+  let osReduce = false;
+  try {
+    osReduce = !!(window.matchMedia &&
+        window.matchMedia("(prefers-reduced-motion: reduce)").matches);
+  } catch (e) {}
+  let applyRM = (on: boolean) => document.body.classList.toggle("ux-reduced-motion", on);
+  if (rmChk) {
+    rmChk.checked = prefs.reducedMotion != null ? !!prefs.reducedMotion : osReduce;
+    applyRM(rmChk.checked);
+    rmChk.addEventListener("change", () => {
+      applyRM(rmChk.checked);
+      a11ySavePrefs({reducedMotion: rmChk.checked});
+    });
+  }
+
+  // ---- Feature 11: compact mode ----
+  let cmChk = document.getElementById("a11y-compact") as HTMLInputElement;
+  let applyCM = (on: boolean) => document.body.classList.toggle("ux-compact", on);
+  if (cmChk) {
+    cmChk.checked = !!prefs.compact;
+    applyCM(cmChk.checked);
+    cmChk.addEventListener("change", () => {
+      applyCM(cmChk.checked);
+      a11ySavePrefs({compact: cmChk.checked});
+    });
+  }
+
+  // ---- Feature 6: UI scale / font size ----
+  let scaleSlider = document.getElementById("a11y-ui-scale") as HTMLInputElement;
+  let scaleVal = document.getElementById("a11y-ui-scale-val");
+  let applyScale = (pct: number) => {
+    document.documentElement.style.fontSize = (16 * pct / 100) + "px";
+    if (scaleVal) { scaleVal.textContent = String(pct); }
+  };
+  if (scaleSlider) {
+    let p = typeof prefs.uiScale === "number" ? prefs.uiScale : 100;
+    scaleSlider.value = String(p);
+    if (p !== 100) { applyScale(p); } else if (scaleVal) { scaleVal.textContent = "100"; }
+    scaleSlider.addEventListener("input", () => {
+      let v = Math.max(80, Math.min(150, +scaleSlider.value || 100));
+      applyScale(v);
+      a11ySavePrefs({uiScale: v});
+    });
+  }
+
+  // ---- Feature 8: fast training toggle ----
+  let workerChk = document.getElementById("perf-worker") as HTMLInputElement;
+  if (workerChk) {
+    workerChk.checked = !!prefs.fastTraining;
+    uxFastTraining = workerChk.checked;
+    workerChk.addEventListener("change", () => {
+      uxFastTraining = workerChk.checked;
+      a11ySavePrefs({fastTraining: workerChk.checked});
+    });
+  }
+
+  // ---- Feature 10: throttled redraw (redraw every K steps) ----
+  let kInput = document.getElementById("perf-redraw-k") as HTMLInputElement;
+  if (kInput) {
+    let k = typeof prefs.redrawEvery === "number" ? prefs.redrawEvery : 1;
+    kInput.value = String(k);
+    uxRedrawEvery = Math.max(1, k | 0);
+    kInput.addEventListener("change", () => {
+      uxRedrawEvery = Math.max(1, parseInt(kInput.value, 10) || 1);
+      a11ySavePrefs({redrawEvery: uxRedrawEvery});
+    });
+  }
+
+  // ---- Feature 3: keyboard navigation for dataset thumbnails ----
+  Array.prototype.forEach.call(
+      document.querySelectorAll(".dataset"), (el: HTMLElement) => {
+    if (!el.hasAttribute("tabindex")) { el.setAttribute("tabindex", "0"); }
+    el.setAttribute("role", "button");
+    let title = el.getAttribute("title");
+    if (title && !el.hasAttribute("aria-label")) {
+      el.setAttribute("aria-label", "Dataset: " + title);
+    }
+    el.addEventListener("keydown", (ev: KeyboardEvent) => {
+      if (ev.key === "Enter" || ev.key === " " || ev.key === "Spacebar") {
+        ev.preventDefault();
+        let canvas = el.querySelector("canvas") as HTMLElement;
+        if (canvas) { canvas.dispatchEvent(new MouseEvent("click", {bubbles: true})); }
+      }
+    });
+  });
+
+  // ---- Feature 2/3: focus + redraw the boundary when training stops ----
+  player.onPlayPause(isPlaying => {
+    d3.select("#play-pause-button").classed("playing", isPlaying);
+    let btn = document.getElementById("play-pause-button");
+    if (btn) { btn.setAttribute("aria-pressed", String(isPlaying)); }
+    // When training stops while redraw was throttled, force a final full redraw
+    // so the decision boundary is up to date.
+    if (!isPlaying && network && uxRedrawEvery > 1) {
+      try { updateUI(); } catch (e) { /* ignore */ }
+    }
+  });
+
+  // ---- Feature 9: FPS / step-rate meter + frame-budget indicator ----
+  let spsEl = document.getElementById("perf-sps");
+  let fpsEl = document.getElementById("perf-fps");
+  let budgetEl = document.getElementById("perf-budget");
+  let lastT = (typeof performance !== "undefined" && performance.now)
+      ? performance.now() : Date.now();
+  let lastSteps = 0;
+  let frames = 0;
+  let smoothSps = 0;
+  let tickMeter = () => {
+    frames++;
+    let now = (typeof performance !== "undefined" && performance.now)
+        ? performance.now() : Date.now();
+    let dt = now - lastT;
+    if (dt >= 500) {
+      let sps = (perfStepCount - lastSteps) * 1000 / dt;
+      smoothSps = smoothSps === 0 ? sps : smoothSps * 0.7 + sps * 0.3;
+      let fps = frames * 1000 / dt;
+      if (spsEl) { spsEl.textContent = smoothSps.toFixed(0); }
+      if (fpsEl) { fpsEl.textContent = fps.toFixed(0); }
+      if (budgetEl) {
+        // Frame budget: green if we comfortably hit ~60fps, else warn/bad.
+        let cls = fps >= 45 ? "good" : (fps >= 25 ? "warn" : "bad");
+        budgetEl.className = cls;
+        budgetEl.textContent = "●";
+      }
+      lastT = now;
+      lastSteps = perfStepCount;
+      frames = 0;
+    }
+    if (typeof requestAnimationFrame === "function") {
+      requestAnimationFrame(tickMeter);
+    }
+  };
+  if (typeof requestAnimationFrame === "function") {
+    requestAnimationFrame(tickMeter);
+  }
+}
+
 initTrainingMethodologyGUI();
 initUXFeatures();
+initA11yFeatures();

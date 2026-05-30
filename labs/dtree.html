@@ -1,0 +1,252 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Decision Tree &amp; Random Forest Lab</title>
+  <style>
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+
+    body {
+      font-family: 'Segoe UI', Arial, sans-serif;
+      background: #1a1a2e;
+      color: #e0e0f0;
+      min-height: 100vh;
+      padding: 16px;
+    }
+
+    h1 {
+      font-size: 1.6rem;
+      font-weight: 700;
+      color: #a78bfa;
+      margin-bottom: 4px;
+      letter-spacing: 0.5px;
+    }
+
+    .subtitle {
+      font-size: 0.85rem;
+      color: #8888aa;
+      margin-bottom: 16px;
+    }
+
+    .layout {
+      display: grid;
+      grid-template-columns: 230px 1fr;
+      gap: 12px;
+      align-items: start;
+    }
+
+    /* Controls */
+    .controls {
+      background: #16213e;
+      border: 1px solid #2a2a5a;
+      border-radius: 10px;
+      padding: 14px;
+      display: flex;
+      flex-direction: column;
+      gap: 14px;
+    }
+
+    .controls h2 {
+      font-size: 0.78rem;
+      text-transform: uppercase;
+      letter-spacing: 1px;
+      color: #7777aa;
+    }
+
+    label {
+      display: flex;
+      flex-direction: column;
+      gap: 4px;
+      font-size: 0.8rem;
+      color: #b0b0d0;
+    }
+
+    label span.val {
+      float: right;
+      color: #a78bfa;
+      font-weight: 600;
+    }
+
+    select, input[type=range] {
+      width: 100%;
+      background: #0f172a;
+      border: 1px solid #3a3a6a;
+      border-radius: 5px;
+      color: #e0e0f0;
+      padding: 4px 6px;
+      font-size: 0.8rem;
+    }
+
+    input[type=range] {
+      padding: 0;
+      cursor: pointer;
+      accent-color: #a78bfa;
+    }
+
+    .btn-rebuild {
+      background: #7c3aed;
+      color: #fff;
+      border: none;
+      border-radius: 7px;
+      padding: 9px 0;
+      cursor: pointer;
+      font-size: 0.9rem;
+      font-weight: 600;
+      letter-spacing: 0.5px;
+      transition: background 0.15s;
+      width: 100%;
+    }
+
+    .btn-rebuild:hover { background: #6d28d9; }
+
+    #accuracy {
+      font-size: 0.85rem;
+      color: #4ef1a0;
+      font-weight: 600;
+      text-align: center;
+    }
+
+    /* Right panel */
+    .right-panel {
+      display: flex;
+      flex-direction: column;
+      gap: 12px;
+    }
+
+    .canvas-wrap {
+      position: relative;
+      width: 100%;
+      aspect-ratio: 1 / 1;
+      max-width: 480px;
+      background: #0f172a;
+      border: 1px solid #2a2a5a;
+      border-radius: 10px;
+      overflow: hidden;
+    }
+
+    #boundary-canvas, #overlay-svg {
+      position: absolute;
+      top: 0; left: 0;
+      width: 100%;
+      height: 100%;
+    }
+
+    .tree-panel {
+      background: #16213e;
+      border: 1px solid #2a2a5a;
+      border-radius: 10px;
+      padding: 10px;
+    }
+
+    .tree-panel h2 {
+      font-size: 0.78rem;
+      text-transform: uppercase;
+      letter-spacing: 1px;
+      color: #7777aa;
+      margin-bottom: 8px;
+    }
+
+    #tree-svg {
+      width: 100%;
+      height: 340px;
+      display: block;
+    }
+
+    .divider {
+      border: none;
+      border-top: 1px solid #2a2a5a;
+      margin: 4px 0;
+    }
+  </style>
+</head>
+<body>
+  <h1>Decision Tree &amp; Random Forest Lab</h1>
+  <p class="subtitle">CART classification on 2-D datasets — axis-aligned splits, boundary visualisation, tree diagram</p>
+
+  <div class="layout">
+    <!-- Controls -->
+    <div class="controls">
+      <div>
+        <h2>Data</h2>
+        <label style="margin-top:6px;">
+          Dataset
+          <select id="sel-dataset">
+            <option value="circle">Circle</option>
+            <option value="xor">XOR</option>
+            <option value="spiral">Spiral</option>
+            <option value="moons">Moons</option>
+            <option value="blobs">Blobs (4-class)</option>
+            <option value="fourquadrants">Four Quadrants</option>
+          </select>
+        </label>
+        <label style="margin-top:8px;">
+          Points <span class="val" id="lbl-npoints">200</span>
+          <input type="range" id="sl-npoints" min="50" max="600" step="50" value="200">
+        </label>
+        <label style="margin-top:8px;">
+          Noise <span class="val" id="lbl-noise">0.10</span>
+          <input type="range" id="sl-noise" min="0" max="0.5" step="0.01" value="0.1">
+        </label>
+      </div>
+
+      <hr class="divider">
+
+      <div>
+        <h2>Model</h2>
+        <label style="margin-top:6px;">
+          Type
+          <select id="sel-model">
+            <option value="tree">Single Tree</option>
+            <option value="forest">Random Forest</option>
+          </select>
+        </label>
+        <label style="margin-top:8px;">
+          Criterion
+          <select id="sel-criterion">
+            <option value="gini">Gini</option>
+            <option value="entropy">Entropy</option>
+          </select>
+        </label>
+        <label style="margin-top:8px;">
+          Max Depth <span class="val" id="lbl-maxdepth">4</span>
+          <input type="range" id="sl-maxdepth" min="1" max="12" step="1" value="4">
+        </label>
+        <label style="margin-top:8px;">
+          Min Samples Split <span class="val" id="lbl-minsamples">5</span>
+          <input type="range" id="sl-minsamples" min="2" max="50" step="1" value="5">
+        </label>
+      </div>
+
+      <div id="forest-section" style="display:none;">
+        <hr class="divider">
+        <h2>Forest</h2>
+        <label style="margin-top:6px;">
+          # Trees <span class="val" id="lbl-ntrees">10</span>
+          <input type="range" id="sl-ntrees" min="2" max="50" step="1" value="10">
+        </label>
+      </div>
+
+      <hr class="divider">
+
+      <button class="btn-rebuild" id="btn-rebuild">&#9654; Rebuild</button>
+      <div id="accuracy">Accuracy: —</div>
+    </div>
+
+    <!-- Right panel: boundary + tree diagram -->
+    <div class="right-panel">
+      <div class="canvas-wrap">
+        <canvas id="boundary-canvas"></canvas>
+        <svg id="overlay-svg"></svg>
+      </div>
+
+      <div class="tree-panel">
+        <h2>Tree Structure <span style="color:#8888aa;font-weight:400">(single tree, or first tree of forest)</span></h2>
+        <svg id="tree-svg"></svg>
+      </div>
+    </div>
+  </div>
+
+  <script src="../dist/bundledtree.js"></script>
+</body>
+</html>

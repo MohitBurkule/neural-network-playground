@@ -20,7 +20,7 @@ Modified by David Cato
 <head lang="en">
     <link rel="icon" type="image/png" href="favicon.png">
     <meta charset="utf-8">
-    <meta name="viewport" content="width=1024">
+    <meta name="viewport" content="width=device-width, initial-scale=1, minimum-scale=0.25, maximum-scale=5">
     <meta name="keywords" content="neural networks,machine learning,javascript,deep learning,explorable explanation">
 
     <meta property="og:type" content="article" />
@@ -96,6 +96,45 @@ Modified by David Cato
         <button id="ux-restore" type="button" title="Restore the last in-memory snapshot">Restore</button>
         <button id="ux-clear-storage" type="button" title="Clear saved preferences and reload cleanly">Reset view</button>
         <button id="ux-help-btn" type="button" title="Keyboard shortcuts (?)">?</button>
+    </div>
+
+    <!-- Accessibility / i18n / performance toolbar -->
+    <div id="a11y-toolbar" class="l--page" role="region" aria-label="Accessibility, language and performance settings">
+        <label class="ux-inline" title="Interface language">
+            <span data-i18n="lang">Language</span>:
+            <select id="a11y-language" aria-label="Interface language">
+                <option value="en">English</option>
+                <option value="es">Español</option>
+                <option value="fr">Français</option>
+                <option value="hi">हिन्दी</option>
+                <option value="zh">中文</option>
+            </select>
+        </label>
+        <label class="ux-inline" title="High-contrast color theme">
+            <input type="checkbox" id="a11y-high-contrast"> <span data-i18n="highContrast">High contrast</span>
+        </label>
+        <label class="ux-inline" title="Disable nonessential animations and transitions">
+            <input type="checkbox" id="a11y-reduced-motion"> <span data-i18n="reducedMotion">Reduce motion</span>
+        </label>
+        <label class="ux-inline" title="Hide advanced panels for a cleaner view">
+            <input type="checkbox" id="a11y-compact"> <span data-i18n="compactMode">Compact mode</span>
+        </label>
+        <label class="ux-inline" title="Interface scale / font size">
+            <span data-i18n="uiScale">UI scale</span>:
+            <input type="range" id="a11y-ui-scale" min="80" max="150" step="5" value="100" aria-label="UI scale percent">
+            <span id="a11y-ui-scale-val">100</span>%
+        </label>
+        <label class="ux-inline" title="Run training off the main render path; only repaint every K steps at high speed">
+            <input type="checkbox" id="perf-worker"> <span data-i18n="fastTraining">Fast training</span>
+        </label>
+        <label class="ux-inline" title="Only redraw the heavy network/heatmap every K training steps">
+            <span data-i18n="redrawEvery">Redraw every</span>
+            <input type="number" id="perf-redraw-k" min="1" value="1" style="width:54px"> <span data-i18n="steps">steps</span>
+        </label>
+        <span class="ux-inline" id="perf-meter" title="Training step rate and frame budget" aria-live="polite">
+            <b id="perf-sps">0</b> <span data-i18n="stepsPerSec">steps/s</span> ·
+            <b id="perf-fps">0</b> fps · <span id="perf-budget">●</span>
+        </span>
     </div>
 
     <!-- Training / methodology features -->
@@ -193,23 +232,23 @@ Modified by David Cato
     <div id="top-controls">
         <div class="container l--page">
             <div class="timeline-controls">
-                <button class="mdl-button mdl-js-button mdl-button--icon ui-resetButton" id="reset-button" title="Reset the network">
-                    <i class="material-icons">replay</i>
+                <button class="mdl-button mdl-js-button mdl-button--icon ui-resetButton" id="reset-button" title="Reset the network" aria-label="Reset the network">
+                    <i class="material-icons" aria-hidden="true">replay</i>
                 </button>
-                <button class="mdl-button mdl-js-button mdl-button--fab mdl-button--colored ui-playButton" id="play-pause-button" title="Run/Pause">
-                    <i class="material-icons">play_arrow</i>
-                    <i class="material-icons">pause</i>
+                <button class="mdl-button mdl-js-button mdl-button--fab mdl-button--colored ui-playButton" id="play-pause-button" title="Run/Pause" aria-label="Run or pause training" aria-pressed="false">
+                    <i class="material-icons" aria-hidden="true">play_arrow</i>
+                    <i class="material-icons" aria-hidden="true">pause</i>
                 </button>
-                <button class="mdl-button mdl-js-button mdl-button--icon ui-stepButton" id="next-step-button" title="Step">
-                    <i class="material-icons">skip_next</i>
+                <button class="mdl-button mdl-js-button mdl-button--icon ui-stepButton" id="next-step-button" title="Step" aria-label="Run a single training step">
+                    <i class="material-icons" aria-hidden="true">skip_next</i>
                 </button>
             </div>
             <div class="control">
-                <span class="label">Epoch</span>
+                <span class="label" data-i18n="epoch">Epoch</span>
                 <span class="value" id="iter-number"></span>
             </div>
             <div class="control ui-learningRate">
-                <label for="learningRate">Learning rate</label>
+                <label for="learningRate" data-i18n="learningRate">Learning rate</label>
                 <div class="select">
                     <select id="learningRate">
                         <option value="0.00001">0.00001</option>
@@ -232,7 +271,7 @@ Modified by David Cato
         <input type="text" id="seed" value="0.12345" />
       </div>
       <div class="control ui-activation">
-                <label for="activations" title="Nonlinearity applied at each neuron. ReLU/tanh are common defaults.">Activation</label>
+                <label for="activations" data-i18n="activation" title="Nonlinearity applied at each neuron. ReLU/tanh are common defaults.">Activation</label>
                 <div class="select">
                     <select id="activations">
                         <option value="relu">ReLU</option>
@@ -264,7 +303,7 @@ Modified by David Cato
                 </div>
             </div>
             <div class="control ui-optimizer">
-                <label for="optimizer" title="Algorithm used to update weights from gradients (SGD, Adam, ...).">Optimizer</label>
+                <label for="optimizer" data-i18n="optimizer" title="Algorithm used to update weights from gradients (SGD, Adam, ...).">Optimizer</label>
                 <div class="select">
                     <select id="optimizer">
                         <option value="sgd">SGD</option>
@@ -337,7 +376,7 @@ Modified by David Cato
                 <input type="checkbox" id="layer-norm">
             </div>
             <div class="control ui-regularization">
-                <label for="regularizations" title="Penalty on weights to reduce overfitting (L1 sparsity, L2 weight decay).">Regularization</label>
+                <label for="regularizations" data-i18n="regularization" title="Penalty on weights to reduce overfitting (L1 sparsity, L2 weight decay).">Regularization</label>
                 <div class="select">
                     <select id="regularizations">
                         <option value="none">None</option>
@@ -376,7 +415,7 @@ Modified by David Cato
                 </div>
             </div>
             <div class="control ui-problem">
-                <label for="problem">Problem type</label>
+                <label for="problem" data-i18n="problemType">Problem type</label>
                 <div class="select">
                     <select id="problem">
                         <option value="classification">Classification</option>
@@ -393,7 +432,7 @@ Modified by David Cato
         <!--  Data Column-->
         <div class="column data">
             <h4>
-                <span>Data</span>
+                <span data-i18n="data">Data</span>
             </h4>
             <div class="ui-dataset">
                 <p>Which dataset do you want to use?</p>
@@ -636,7 +675,7 @@ Modified by David Cato
 
         <!-- Features Column -->
         <div class="column features">
-            <h4>Features</h4>
+            <h4 data-i18n="features">Features</h4>
             <p>Which properties do you want to feed in?</p>
             
             <div id="network">
@@ -704,7 +743,7 @@ Modified by David Cato
 
         <!-- Output Column -->
         <div class="column output">
-            <h4>Output
+            <h4 data-i18n="output">Output
                 <button id="ux-fullscreen" type="button" title="Toggle fullscreen for the output area" style="float:right">⛶</button>
             </h4>
             <!-- Compact status bar (feature 12) -->
@@ -716,20 +755,20 @@ Modified by David Cato
             </div>
             <div class="metrics">
                 <div class="output-stats ui-percTrainData">
-                    <span>Test loss</span>
-                    <div class="value" id="loss-test"></div>
+                    <span data-i18n="testLoss">Test loss</span>
+                    <div class="value" id="loss-test" aria-live="polite" role="status"></div>
                 </div>
                 <div class="output-stats train">
-                    <span>Training loss</span>
-                    <div class="value" id="loss-train"></div>
+                    <span data-i18n="trainingLoss">Training loss</span>
+                    <div class="value" id="loss-train" aria-live="polite" role="status"></div>
                 </div>
                 <div class="output-stats acc-stat">
-                    <span>Train acc</span>
-                    <div class="value" id="acc-train"></div>
+                    <span data-i18n="trainAcc">Train acc</span>
+                    <div class="value" id="acc-train" aria-live="polite"></div>
                 </div>
                 <div class="output-stats acc-stat">
-                    <span>Test acc</span>
-                    <div class="value" id="acc-test"></div>
+                    <span data-i18n="testAcc">Test acc</span>
+                    <div class="value" id="acc-test" aria-live="polite"></div>
                 </div>
                 <div id="linechart"></div>
                 <div id="confusion-matrix"></div>
@@ -780,7 +819,7 @@ Modified by David Cato
                     </label>
                 </div>
                 <div class="adv-labs-link" style="margin-top:10px;font-size:12px;opacity:.7;">
-                    Advanced labs: <a href="cnn.html">CNN</a> &middot; <a href="transformer.html">Transformer</a> &middot; <a href="autoencoder.html">Autoencoder</a> &middot; <a href="rnn.html">RNN</a> &middot; <a href="gan.html">GAN</a> &middot; <a href="clustering.html">Clustering</a> &middot; <a href="rl.html">RL Gridworld</a>
+                    Advanced labs: <a href="cnn.html">CNN</a> &middot; <a href="transformer.html">Transformer</a> &middot; <a href="autoencoder.html">Autoencoder</a> &middot; <a href="rnn.html">RNN</a> &middot; <a href="gan.html">GAN</a> &middot; <a href="clustering.html">Clustering</a> &middot; <a href="rl.html">RL Gridworld</a> &middot; <a href="dtree.html">Decision Tree</a> &middot; <a href="dimred.html">PCA / t-SNE</a>
                 </div>
             </div>
         </div>
