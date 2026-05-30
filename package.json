@@ -19,7 +19,7 @@
         "build-transformer": "browserify src/transformer.ts -p [tsify] > dist/bundletransformer.js",
         "build-rnn": "browserify src/rnn.ts -p [tsify] > dist/bundlernn.js",
         "build-autoencoder": "browserify src/autoencoder.ts -p [tsify] > dist/bundleautoencoder.js",
-        "build-labs": "npm run build-cnn && npm run build-transformer && npm run build-autoencoder && copyfiles -f \"labs/*.html\" dist",
+        "build-labs": "npm run build-cnn && npm run build-transformer && npm run build-rnn && npm run build-autoencoder && copyfiles -f \"labs/*.html\" dist",
         "build": "npm run prep && npm run build-js && npm run build-css && npm run build-darkcss && npm run build-lightcss && npm run build-html",
         "build-all": "npm run build && npm run build-labs",
         "watch": "npm run prep && concurrently \"npm run watch-js\" \"npm run watch-css\" \"npm run watch-html\"",

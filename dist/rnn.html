@@ -1,0 +1,178 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>RNN Sequence Lab</title>
+  <style>
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+    body {
+      background: #0f0f1a;
+      color: #ccc;
+      font-family: 'Segoe UI', Arial, sans-serif;
+      font-size: 13px;
+      padding: 16px;
+    }
+    h1 {
+      font-size: 18px;
+      font-weight: 600;
+      color: #e0e0ff;
+      margin-bottom: 4px;
+    }
+    .subtitle {
+      color: #778;
+      font-size: 11px;
+      margin-bottom: 14px;
+    }
+    .grid {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      grid-template-rows: auto auto;
+      gap: 12px;
+      margin-bottom: 14px;
+    }
+    .panel {
+      background: #13131f;
+      border: 1px solid #2a2a40;
+      border-radius: 6px;
+      padding: 8px;
+    }
+    .panel-title {
+      font-size: 10px;
+      text-transform: uppercase;
+      letter-spacing: 0.08em;
+      color: #556;
+      margin-bottom: 6px;
+    }
+    canvas {
+      display: block;
+      width: 100%;
+      border-radius: 3px;
+    }
+    .controls {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 10px 20px;
+      align-items: center;
+      background: #13131f;
+      border: 1px solid #2a2a40;
+      border-radius: 6px;
+      padding: 10px 14px;
+    }
+    .btn-group {
+      display: flex;
+      gap: 6px;
+    }
+    button {
+      background: #1e1e35;
+      border: 1px solid #3a3a5c;
+      border-radius: 4px;
+      color: #cce;
+      cursor: pointer;
+      font-size: 12px;
+      padding: 5px 14px;
+      transition: background 0.15s;
+    }
+    button:hover { background: #2a2a4a; }
+    button#btn-play  { border-color: #4fc3f7; color: #4fc3f7; }
+    button#btn-pause { border-color: #ff8a65; color: #ff8a65; }
+    button#btn-reset { border-color: #ef9a9a; color: #ef9a9a; }
+    .slider-row {
+      display: flex;
+      align-items: center;
+      gap: 6px;
+    }
+    .slider-row label {
+      font-size: 11px;
+      color: #88a;
+      white-space: nowrap;
+      min-width: 90px;
+    }
+    .slider-row input[type=range] {
+      width: 90px;
+      accent-color: #7986cb;
+    }
+    .slider-row .val {
+      font-size: 11px;
+      color: #aac;
+      min-width: 34px;
+    }
+    .legend {
+      font-size: 10px;
+      color: #556;
+      margin-top: 10px;
+    }
+    .legend span { margin-right: 14px; }
+    .dot { display: inline-block; width: 10px; height: 10px; border-radius: 2px; margin-right: 3px; vertical-align: middle; }
+  </style>
+</head>
+<body>
+  <h1>Elman RNN — Sequence Lab</h1>
+  <p class="subtitle">Task: predict input shifted by <em>delay</em> steps &nbsp;|&nbsp; Truncated BPTT + SGD</p>
+
+  <div class="grid">
+    <div class="panel" style="grid-column: 1 / -1;">
+      <div class="panel-title">Sequence Prediction &nbsp; <span style="color:#4fc3f7">■ input</span> &nbsp; <span style="color:#81c784">■ target</span> &nbsp; <span style="color:#ff8a65">■ predicted</span></div>
+      <canvas id="canvas-seq" width="900" height="130"></canvas>
+    </div>
+    <div class="panel">
+      <div class="panel-title">Hidden States (rows = units, cols = time)</div>
+      <canvas id="canvas-hidden" width="440" height="130"></canvas>
+    </div>
+    <div class="panel">
+      <div class="panel-title">Recurrent Weight Matrix W<sub>hh</sub></div>
+      <canvas id="canvas-whh" width="440" height="130"></canvas>
+    </div>
+    <div class="panel" style="grid-column: 1 / -1;">
+      <div class="panel-title">Training Loss</div>
+      <canvas id="canvas-loss" width="900" height="100"></canvas>
+    </div>
+  </div>
+
+  <div class="controls">
+    <div class="btn-group">
+      <button id="btn-play">▶ Play</button>
+      <button id="btn-pause">⏸ Pause</button>
+      <button id="btn-step">⏭ Step</button>
+      <button id="btn-reset">↺ Reset</button>
+    </div>
+
+    <div class="slider-row">
+      <label>Learning rate</label>
+      <input type="range" id="ctrl-lr" min="0.001" max="0.2" step="0.001" value="0.05" />
+      <span class="val" id="lbl-lr">0.05</span>
+    </div>
+
+    <div class="slider-row">
+      <label>Hidden size</label>
+      <input type="range" id="ctrl-hidden" min="2" max="24" step="1" value="8" />
+      <span class="val" id="lbl-hidden">8</span>
+    </div>
+
+    <div class="slider-row">
+      <label>Seq length</label>
+      <input type="range" id="ctrl-seqlen" min="8" max="60" step="1" value="20" />
+      <span class="val" id="lbl-seqlen">20</span>
+    </div>
+
+    <div class="slider-row">
+      <label>BPTT window</label>
+      <input type="range" id="ctrl-bptt" min="2" max="20" step="1" value="8" />
+      <span class="val" id="lbl-bptt">8</span>
+    </div>
+
+    <div class="slider-row">
+      <label>Echo delay k</label>
+      <input type="range" id="ctrl-delay" min="1" max="8" step="1" value="2" />
+      <span class="val" id="lbl-delay">2</span>
+    </div>
+  </div>
+
+  <p style="font-size:10px; color:#445; margin-top:8px;">
+    Heatmap: <span style="color:#88f">blue</span> = −1 &nbsp; <span style="color:#fff">white</span> = 0 &nbsp; <span style="color:#f88">red</span> = +1 &nbsp;|&nbsp;
+    Reset applies hidden-size, seq-length, BPTT-window, and delay changes.
+  </p>
+
+  <script src="../dist/bundlernn.js"></script>
+</body>
+</html>
