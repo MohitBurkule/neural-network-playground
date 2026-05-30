@@ -256,7 +256,9 @@ export class Activations {
   public static SINC: ActivationFunction = {
     output: x => (x * x) < 0.000001 ? 1 : (Math as any).sin(x) / x,
     der: x => (x*x) < 0.000001 ? 0 : (x * (Math as any).cos(x) - (Math as any).sin(x)) / (x*x),
-    compileToJs: arg => `Math.sinc(${arg})`
+    // Emit a `sinc` helper (defined in compileNetworkToJs' prelude) rather than
+    // `Math.sinc`, which is not a standard Math method.
+    compileToJs: arg => `sinc(${arg})`
   };
   public static MISH: ActivationFunction = {
     output: x => x * Activations.TANH.output((Math as any).softplus(x)),
@@ -284,7 +286,9 @@ export class Activations {
   public static PReLU: (alpha: number) => ActivationFunction = (alpha) => ({
     output: x => x >= 0 ? x : alpha * x,
     der: x => x >= 0 ? 1 : alpha,
-    compileToJs: arg => `prelu(${arg})`
+    // Inline the per-instance alpha so the emitted JS is self-contained
+    // (a shared `prelu` helper could not capture differing alpha values).
+    compileToJs: arg => `((${arg}) >= 0 ? (${arg}) : ${alpha} * (${arg}))`
   });
   public static ELU: ActivationFunction = {
     output: x => x >= 0 ? x : Math.exp(x) - 1,
@@ -924,17 +928,80 @@ export function getOutputNode(network: Node[][]) {
   return network[network.length - 1][0];
 }
 
+/**
+ * Definitions for the non-standard helper functions that some activations'
+ * `compileToJs` emit by name (rather than fully inlining). Each entry maps a
+ * helper "token" that may appear in the compiled body to the JS source line
+ * that defines it. `compileNetworkToJs` prepends the definitions for whichever
+ * helpers a given network actually references, so the emitted snippet is fully
+ * self-contained (copy-paste runnable, no ReferenceError).
+ *
+ * The math of every helper mirrors the corresponding `output` function above:
+ *   - sinc(x)      = (x*x < 1e-6) ? 1 : sin(x)/x      (SINC, with x==0 -> 1)
+ *   - mish(x)      = x * tanh(softplus(x))            (Activations.MISH)
+ *   - gelu(x)      = 0.5*x*(1 + tanh(sqrt(2/pi)*(x + 0.044715*x^3)))  (GELU)
+ *   - leakyrelu(x) = x >= 0 ? x : 0.01 * x            (LEAKY_RELU, slope 0.01)
+ *   - softplus(x)  = x > 20 ? x : log(1 + exp(x))     (matches runtime polyfill;
+ *                    the x>20 branch avoids Math.exp overflow). Pulled in only
+ *                    when mish is used, since mish's definition references it.
+ *
+ * Definitions are ordered so that any helper appears after the helpers it
+ * depends on (softplus before mish).
+ */
+const JS_HELPERS: {token: string, def: string}[] = [
+  {token: "softplus",
+   def: "const softplus = x => x > 20 ? x : Math.log(1 + Math.exp(x));"},
+  {token: "mish",
+   def: "const mish = x => x * Math.tanh(softplus(x));"},
+  {token: "gelu",
+   def: "const gelu = x => 0.5 * x * (1 + Math.tanh(Math.sqrt(2 / Math.PI) * " +
+        "(x + 0.044715 * Math.pow(x, 3))));"},
+  {token: "leakyrelu",
+   def: "const leakyrelu = x => x >= 0 ? x : 0.01 * x;"},
+  {token: "sinc",
+   def: "const sinc = x => (x * x) < 0.000001 ? 1 : Math.sin(x) / x;"},
+];
+
+/**
+ * Builds the prelude of helper definitions needed by the compiled network
+ * body. Only helpers whose token actually appears in `body` are emitted (so
+ * the snippet stays minimal). `mish` additionally pulls in `softplus` because
+ * its definition references it.
+ */
+function compileJsHelperPrelude(body: string): string {
+  let needsSoftplus = body.indexOf("mish(") !== -1;
+  let lines: string[] = [];
+  for (let i = 0; i < JS_HELPERS.length; i++) {
+    let helper = JS_HELPERS[i];
+    let used = body.indexOf(helper.token + "(") !== -1 ||
+        (helper.token === "softplus" && needsSoftplus);
+    if (used) {
+      lines.push(helper.def);
+    }
+  }
+  return lines.join("\n");
+}
+
 export function compileNetworkToJs(network: Node[][]): string {
   const inputLayer = network[0];
-  let js = `function(${inputLayer.map(node => node.compileToJsName()).join(", ")}) {\n`;  
+  let body = `function(${inputLayer.map(node => node.compileToJsName()).join(", ")}) {\n`;
   for (let layerIdx = 1; layerIdx < network.length; layerIdx++) {
     let currentLayer = network[layerIdx];
     for (let i = 0; i < currentLayer.length; i++) {
       let node = currentLayer[i];
-      js += `  const ${node.compileToJsName()} = ${node.compileToJs()};\n`;
+      body += `  const ${node.compileToJsName()} = ${node.compileToJs()};\n`;
     }
   }
-  js += `  return ${network[network.length - 1][0].compileToJsName()};\n`;
-  js += `}`;
-  return js;
+  body += `  return ${network[network.length - 1][0].compileToJsName()};\n`;
+  body += `}`;
+  // Prepend definitions for any non-standard helpers the body references so the
+  // emitted JS is fully self-contained. Wrapped in an IIFE that returns the
+  // network function, so the whole string is a single expression: it can be
+  // eval'd directly and pasted as `const net = <snippet>;`.
+  let prelude = compileJsHelperPrelude(body);
+  if (!prelude) {
+    return body;
+  }
+  let indented = prelude.split("\n").map(line => "  " + line).join("\n");
+  return `(function() {\n${indented}\n  return ${body};\n})()`;
 }

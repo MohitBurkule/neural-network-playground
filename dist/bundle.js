@@ -89116,7 +89116,7 @@ var Activations = (function () {
     Activations.SINC = {
         output: function (x) { return (x * x) < 0.000001 ? 1 : Math.sin(x) / x; },
         der: function (x) { return (x * x) < 0.000001 ? 0 : (x * Math.cos(x) - Math.sin(x)) / (x * x); },
-        compileToJs: function (arg) { return "Math.sinc(".concat(arg, ")"); }
+        compileToJs: function (arg) { return "sinc(".concat(arg, ")"); }
     };
     Activations.MISH = {
         output: function (x) { return x * Activations.TANH.output(Math.softplus(x)); },
@@ -89143,7 +89143,7 @@ var Activations = (function () {
     Activations.PReLU = function (alpha) { return ({
         output: function (x) { return x >= 0 ? x : alpha * x; },
         der: function (x) { return x >= 0 ? 1 : alpha; },
-        compileToJs: function (arg) { return "prelu(".concat(arg, ")"); }
+        compileToJs: function (arg) { return "((".concat(arg, ") >= 0 ? (").concat(arg, ") : ").concat(alpha, " * (").concat(arg, "))"); }
     }); };
     Activations.ELU = {
         output: function (x) { return x >= 0 ? x : Math.exp(x) - 1; },
@@ -89659,19 +89659,50 @@ function forEachNode(network, ignoreInputs, accessor) {
 function getOutputNode(network) {
     return network[network.length - 1][0];
 }
+var JS_HELPERS = [
+    { token: "softplus",
+        def: "const softplus = x => x > 20 ? x : Math.log(1 + Math.exp(x));" },
+    { token: "mish",
+        def: "const mish = x => x * Math.tanh(softplus(x));" },
+    { token: "gelu",
+        def: "const gelu = x => 0.5 * x * (1 + Math.tanh(Math.sqrt(2 / Math.PI) * " +
+            "(x + 0.044715 * Math.pow(x, 3))));" },
+    { token: "leakyrelu",
+        def: "const leakyrelu = x => x >= 0 ? x : 0.01 * x;" },
+    { token: "sinc",
+        def: "const sinc = x => (x * x) < 0.000001 ? 1 : Math.sin(x) / x;" },
+];
+function compileJsHelperPrelude(body) {
+    var needsSoftplus = body.indexOf("mish(") !== -1;
+    var lines = [];
+    for (var i = 0; i < JS_HELPERS.length; i++) {
+        var helper = JS_HELPERS[i];
+        var used = body.indexOf(helper.token + "(") !== -1 ||
+            (helper.token === "softplus" && needsSoftplus);
+        if (used) {
+            lines.push(helper.def);
+        }
+    }
+    return lines.join("\n");
+}
 function compileNetworkToJs(network) {
     var inputLayer = network[0];
-    var js = "function(".concat(inputLayer.map(function (node) { return node.compileToJsName(); }).join(", "), ") {\n");
+    var body = "function(".concat(inputLayer.map(function (node) { return node.compileToJsName(); }).join(", "), ") {\n");
     for (var layerIdx = 1; layerIdx < network.length; layerIdx++) {
         var currentLayer = network[layerIdx];
         for (var i = 0; i < currentLayer.length; i++) {
             var node = currentLayer[i];
-            js += "  const ".concat(node.compileToJsName(), " = ").concat(node.compileToJs(), ";\n");
+            body += "  const ".concat(node.compileToJsName(), " = ").concat(node.compileToJs(), ";\n");
         }
     }
-    js += "  return ".concat(network[network.length - 1][0].compileToJsName(), ";\n");
-    js += "}";
-    return js;
+    body += "  return ".concat(network[network.length - 1][0].compileToJsName(), ";\n");
+    body += "}";
+    var prelude = compileJsHelperPrelude(body);
+    if (!prelude) {
+        return body;
+    }
+    var indented = prelude.split("\n").map(function (line) { return "  " + line; }).join("\n");
+    return "(function() {\n".concat(indented, "\n  return ").concat(body, ";\n})()");
 }
 
 },{}],1037:[function(require,module,exports){
