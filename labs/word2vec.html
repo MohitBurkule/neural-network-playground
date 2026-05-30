@@ -1,0 +1,398 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Word Embeddings (word2vec) Lab</title>
+  <style>
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+
+    body {
+      font-family: 'Segoe UI', Arial, sans-serif;
+      background: #0d0d1e;
+      color: #e0e0f0;
+      min-height: 100vh;
+      padding: 16px;
+    }
+
+    h1 {
+      font-size: 1.55rem;
+      font-weight: 700;
+      color: #a78bfa;
+      margin-bottom: 3px;
+      letter-spacing: 0.5px;
+    }
+
+    .subtitle {
+      font-size: 0.82rem;
+      color: #6677aa;
+      margin-bottom: 14px;
+    }
+
+    /* ── Layout ──────────────────────────────── */
+    .layout {
+      display: grid;
+      grid-template-columns: 220px 1fr 220px;
+      gap: 12px;
+      align-items: start;
+    }
+
+    /* ── Shared panel ────────────────────────── */
+    .panel {
+      background: #16213e;
+      border: 1px solid #2a2a5a;
+      border-radius: 10px;
+      padding: 14px;
+      display: flex;
+      flex-direction: column;
+      gap: 12px;
+    }
+
+    .panel h2 {
+      font-size: 0.73rem;
+      text-transform: uppercase;
+      letter-spacing: 1.2px;
+      color: #6677aa;
+    }
+
+    /* ── Buttons ─────────────────────────────── */
+    .btn-row {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 6px;
+    }
+
+    button {
+      padding: 6px 13px;
+      border: none;
+      border-radius: 6px;
+      font-size: 0.8rem;
+      font-weight: 600;
+      cursor: pointer;
+      transition: opacity 0.15s;
+    }
+    button:hover { opacity: 0.82; }
+
+    #btn-play  { background: #22c55e; color: #fff; }
+    #btn-pause { background: #f59e0b; color: #fff; }
+    #btn-step  { background: #3b82f6; color: #fff; }
+    #btn-reset { background: #ef4444; color: #fff; }
+    .small-btn { background: #2a2a5a; color: #c0c0e0; padding: 5px 10px; }
+
+    /* ── Sliders ─────────────────────────────── */
+    label {
+      font-size: 0.78rem;
+      color: #8888aa;
+      display: block;
+      margin-bottom: 3px;
+    }
+
+    input[type=range] {
+      width: 100%;
+      accent-color: #a78bfa;
+    }
+
+    .param-row { display: flex; flex-direction: column; gap: 3px; }
+
+    .val-badge {
+      display: inline-block;
+      color: #a78bfa;
+      font-size: 0.8rem;
+      font-weight: 600;
+      min-width: 36px;
+      text-align: right;
+      float: right;
+    }
+
+    /* ── Toggle row ──────────────────────────── */
+    .toggle-row {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      font-size: 0.8rem;
+      color: #8888aa;
+    }
+
+    input[type=checkbox] {
+      accent-color: #a78bfa;
+      width: 15px;
+      height: 15px;
+    }
+
+    /* ── Status bar ──────────────────────────── */
+    #status-bar {
+      font-size: 0.8rem;
+      color: #8888aa;
+    }
+
+    #status-bar b { color: #a78bfa; }
+
+    /* ── Legend ──────────────────────────────── */
+    #legend-items {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 5px;
+    }
+
+    .legend-chip {
+      font-size: 0.72rem;
+      font-weight: 600;
+      padding: 2px 8px;
+      border-radius: 20px;
+      letter-spacing: 0.3px;
+    }
+
+    /* ── Centre viz panel ────────────────────── */
+    .viz-panel {
+      background: #12122a;
+      border: 1px solid #2a2a5a;
+      border-radius: 10px;
+      padding: 12px;
+      display: flex;
+      flex-direction: column;
+      gap: 10px;
+    }
+
+    #scatter-svg {
+      display: block;
+      border-radius: 8px;
+      background: #0a0a1c;
+      width: 100%;
+      height: auto;
+    }
+
+    /* ── Loss canvas ─────────────────────────── */
+    #loss-canvas {
+      display: block;
+      border-radius: 6px;
+      background: #0a0a1c;
+      border: 1px solid #1e1e40;
+      width: 100%;
+      height: 120px;
+    }
+
+    /* ── Right panel: NN + Analogy ───────────── */
+    .right-panel {
+      display: flex;
+      flex-direction: column;
+      gap: 12px;
+    }
+
+    .nn-input-row {
+      display: flex;
+      gap: 6px;
+    }
+
+    .nn-input-row input {
+      flex: 1;
+      background: #0f0f2e;
+      border: 1px solid #3a3a6a;
+      border-radius: 6px;
+      padding: 5px 8px;
+      color: #e0e0f0;
+      font-size: 0.82rem;
+    }
+
+    .placeholder {
+      font-size: 0.78rem;
+      color: #444466;
+      font-style: italic;
+      padding: 6px 0;
+    }
+
+    .nn-query {
+      font-size: 0.8rem;
+      color: #8888aa;
+      margin-bottom: 6px;
+    }
+
+    .nn-list {
+      display: flex;
+      flex-direction: column;
+      gap: 4px;
+    }
+
+    .nn-row {
+      display: flex;
+      align-items: center;
+      gap: 6px;
+      font-size: 0.8rem;
+    }
+
+    .nn-word {
+      min-width: 68px;
+      font-weight: 600;
+    }
+
+    .nn-bar-wrap {
+      flex: 1;
+      background: #1a1a3a;
+      border-radius: 3px;
+      height: 7px;
+      overflow: hidden;
+    }
+
+    .nn-bar {
+      height: 100%;
+      border-radius: 3px;
+      transition: width 0.2s;
+    }
+
+    .nn-sim {
+      min-width: 42px;
+      text-align: right;
+      color: #6677aa;
+      font-size: 0.75rem;
+    }
+
+    /* ── Analogy ─────────────────────────────── */
+    .analogy-inputs {
+      display: grid;
+      grid-template-columns: 1fr 8px 1fr 8px 1fr;
+      gap: 4px;
+      align-items: center;
+    }
+
+    .analogy-inputs input {
+      background: #0f0f2e;
+      border: 1px solid #3a3a6a;
+      border-radius: 6px;
+      padding: 5px 6px;
+      color: #e0e0f0;
+      font-size: 0.78rem;
+      width: 100%;
+    }
+
+    .analogy-inputs span {
+      text-align: center;
+      font-size: 0.7rem;
+      color: #6677aa;
+    }
+
+    .analogy-hint {
+      font-size: 0.72rem;
+      color: #444466;
+      margin-top: 3px;
+    }
+
+    /* ── Info box ────────────────────────────── */
+    .info-box {
+      font-size: 0.72rem;
+      color: #5566aa;
+      line-height: 1.55;
+      padding: 8px 10px;
+      background: #0f0f28;
+      border-left: 3px solid #a78bfa;
+      border-radius: 4px;
+    }
+
+    @media (max-width: 800px) {
+      .layout { grid-template-columns: 1fr; }
+    }
+  </style>
+</head>
+<body>
+  <h1>Word Embeddings (word2vec) Lab</h1>
+  <p class="subtitle">
+    Skip-gram with negative sampling — watch words drift into semantic clusters in real time
+  </p>
+
+  <div class="layout">
+
+    <!-- ── Left: controls ─────────────────────────────── -->
+    <div class="panel">
+      <div>
+        <h2>Playback</h2>
+        <div class="btn-row" style="margin-top:8px">
+          <button id="btn-play">&#9654; Play</button>
+          <button id="btn-pause">&#9646;&#9646; Pause</button>
+          <button id="btn-step">Step</button>
+          <button id="btn-reset">Reset</button>
+        </div>
+      </div>
+
+      <div id="status-bar">Epoch <b>0</b></div>
+
+      <div class="param-row">
+        <label>Learning rate <span class="val-badge" id="label-lr">0.025</span></label>
+        <input type="range" id="slider-lr" min="0.001" max="0.2" step="0.001" value="0.025">
+      </div>
+
+      <div class="param-row">
+        <label>Embedding dim <span class="val-badge" id="label-dim">12</span></label>
+        <input type="range" id="slider-dim" min="2" max="32" step="1" value="12">
+      </div>
+
+      <div class="param-row">
+        <label>Window size <span class="val-badge" id="label-win">3</span></label>
+        <input type="range" id="slider-win" min="1" max="6" step="1" value="3">
+      </div>
+
+      <div class="param-row">
+        <label>Negative samples <span class="val-badge" id="label-neg">5</span></label>
+        <input type="range" id="slider-neg" min="1" max="15" step="1" value="5">
+      </div>
+
+      <div class="toggle-row">
+        <input type="checkbox" id="toggle-pca" checked>
+        <label for="toggle-pca" style="display:inline;margin:0">PCA projection (vs raw 2D when dim=2)</label>
+      </div>
+
+      <div>
+        <h2 style="margin-bottom:6px">Categories</h2>
+        <div id="legend-items"></div>
+      </div>
+
+      <div class="info-box">
+        <b>Skip-gram:</b> predict context words from center word.
+        <b>Neg-sampling:</b> contrast positives with random negatives.
+        PCA projects high-dim vectors to 2D for visualization.
+        <br><br>
+        Try analogy: <em>king &minus; man + woman &asymp; queen</em>
+      </div>
+    </div>
+
+    <!-- ── Centre: scatter + loss ─────────────────────── -->
+    <div class="viz-panel">
+      <svg id="scatter-svg" viewBox="0 0 580 480"></svg>
+      <canvas id="loss-canvas" width="560" height="120"></canvas>
+    </div>
+
+    <!-- ── Right: nearest neighbors + analogy ─────────── -->
+    <div class="right-panel">
+
+      <!-- nearest neighbors -->
+      <div class="panel">
+        <h2>Nearest Neighbors</h2>
+        <div class="nn-input-row">
+          <input type="text" id="nn-word-input" list="word-list" placeholder="e.g. king">
+          <button class="small-btn" id="nn-word-btn">Go</button>
+        </div>
+        <datalist id="word-list"></datalist>
+        <div id="nn-results"><p class="placeholder">Hover a dot or type a word above</p></div>
+      </div>
+
+      <!-- analogy -->
+      <div class="panel">
+        <h2>Vector Analogy</h2>
+        <p style="font-size:0.75rem;color:#6677aa;margin:-4px 0 4px">
+          A is to B &nbsp;as&nbsp; C is to ?
+        </p>
+        <div class="analogy-inputs">
+          <input type="text" id="analogy-a" list="word-list" placeholder="A">
+          <span>&#8722;</span>
+          <input type="text" id="analogy-b" list="word-list" placeholder="B">
+          <span>&#43;</span>
+          <input type="text" id="analogy-c" list="word-list" placeholder="C">
+        </div>
+        <p class="analogy-hint">e.g. A=king B=man C=woman &rarr; queen</p>
+        <button class="small-btn" id="analogy-btn" style="align-self:flex-start">Compute</button>
+        <div id="analogy-results"><p class="placeholder">Fill in the three words above</p></div>
+      </div>
+
+    </div>
+  </div>
+
+  <script src="bundleword2vec.js"></script>
+</body>
+</html>

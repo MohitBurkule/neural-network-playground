@@ -1,0 +1,268 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Denoising Diffusion Playground</title>
+  <style>
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+    body {
+      background: #0a0a1a;
+      color: #d0d0e8;
+      font-family: 'Segoe UI', system-ui, sans-serif;
+      font-size: 14px;
+      min-height: 100vh;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      padding: 20px 12px 40px;
+    }
+    h1 {
+      font-size: 1.5rem;
+      font-weight: 700;
+      color: #c084fc;
+      margin-bottom: 4px;
+      letter-spacing: 0.04em;
+    }
+    .subtitle {
+      color: #6b7280;
+      font-size: 0.82rem;
+      margin-bottom: 18px;
+      text-align: center;
+    }
+    .main-row {
+      display: flex;
+      gap: 18px;
+      align-items: flex-start;
+      flex-wrap: wrap;
+      justify-content: center;
+    }
+    .canvas-col {
+      display: flex;
+      flex-direction: column;
+      gap: 10px;
+    }
+    .panel-label {
+      font-size: 0.72rem;
+      color: #5a5a8a;
+      text-transform: uppercase;
+      letter-spacing: 0.07em;
+      margin-bottom: 2px;
+    }
+    canvas#mainCanvas {
+      border-radius: 8px;
+      border: 1px solid #2a2a4a;
+      display: block;
+    }
+    .loss-box {
+      background: #0d0d1f;
+      border-radius: 8px;
+      border: 1px solid #2a2a4a;
+      overflow: hidden;
+      position: relative;
+    }
+    canvas#lossCanvas {
+      display: block;
+    }
+    .controls-col {
+      background: #10102a;
+      border: 1px solid #2a2a4a;
+      border-radius: 10px;
+      padding: 18px 20px;
+      width: 248px;
+      display: flex;
+      flex-direction: column;
+      gap: 14px;
+    }
+    .section-title {
+      font-size: 0.72rem;
+      color: #5a5a8a;
+      text-transform: uppercase;
+      letter-spacing: 0.07em;
+      border-bottom: 1px solid #22224a;
+      padding-bottom: 4px;
+    }
+    .ctrl-group {
+      display: flex;
+      flex-direction: column;
+      gap: 4px;
+    }
+    .ctrl-group label {
+      font-size: 0.78rem;
+      color: #8888bb;
+      text-transform: uppercase;
+      letter-spacing: 0.06em;
+    }
+    select, input[type=range] {
+      width: 100%;
+      background: #1a1a38;
+      border: 1px solid #3a3a5c;
+      border-radius: 5px;
+      color: #d0d0e8;
+      padding: 4px 6px;
+      font-size: 0.85rem;
+      cursor: pointer;
+    }
+    input[type=range] {
+      padding: 0;
+      accent-color: #c084fc;
+      height: 18px;
+    }
+    .range-row {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      gap: 6px;
+    }
+    .range-row span {
+      min-width: 40px;
+      text-align: right;
+      font-size: 0.82rem;
+      color: #c0c0e0;
+      font-variant-numeric: tabular-nums;
+    }
+    .btn-row {
+      display: flex;
+      gap: 6px;
+    }
+    button {
+      flex: 1;
+      padding: 7px 4px;
+      border: none;
+      border-radius: 6px;
+      cursor: pointer;
+      font-size: 0.80rem;
+      font-weight: 600;
+      transition: opacity 0.15s;
+    }
+    button:hover { opacity: 0.82; }
+    #playPause { background: #7c3aed; color: #fff; }
+    #stepBtn   { background: #1e3a5f; color: #7dd3fc; }
+    #resetBtn  { background: #3b1f1f; color: #fca5a5; }
+    #sampleBtn { background: #1a3a2a; color: #6ee7b7; flex: 2; }
+    .stats {
+      display: flex;
+      flex-direction: column;
+      gap: 5px;
+    }
+    .stat-row {
+      display: flex;
+      justify-content: space-between;
+      font-size: 0.82rem;
+    }
+    .stat-row .label { color: #6b7280; }
+    .stat-row .val   { color: #e0e0ff; font-variant-numeric: tabular-nums; }
+    .legend {
+      display: flex;
+      gap: 10px;
+      flex-wrap: wrap;
+      font-size: 0.75rem;
+      color: #6b7280;
+    }
+    .legend-item { display: flex; align-items: center; gap: 4px; }
+    .dot { width: 9px; height: 9px; border-radius: 50%; display: inline-block; }
+    .fwd-explain {
+      font-size: 0.72rem;
+      color: #5a5a8a;
+      line-height: 1.5;
+    }
+  </style>
+</head>
+<body>
+  <h1>Denoising Diffusion Playground</h1>
+  <p class="subtitle">DDPM-style diffusion on 2D toy distributions — train a denoiser, watch it reverse noise back to data</p>
+
+  <div class="main-row">
+    <div class="canvas-col">
+      <p class="panel-label" id="mainLabel">Forward noise process — scrub t below</p>
+      <canvas id="mainCanvas"></canvas>
+      <div class="legend">
+        <span class="legend-item"><span class="dot" style="background:#64dc64;"></span>Real (reference)</span>
+        <span class="legend-item"><span class="dot" style="background:#6496ff;"></span>Generated (sampling)</span>
+        <span class="legend-item"><span class="dot" style="background:#ff6464;"></span>Noisy (forward, high t)</span>
+      </div>
+      <div class="loss-box">
+        <canvas id="lossCanvas"></canvas>
+      </div>
+    </div>
+
+    <div class="controls-col">
+      <div class="section-title">Training</div>
+
+      <div class="btn-row">
+        <button id="playPause">Play</button>
+        <button id="stepBtn">Step</button>
+        <button id="resetBtn">Reset</button>
+      </div>
+      <div class="btn-row">
+        <button id="sampleBtn">Sample (Reverse Diffusion)</button>
+      </div>
+
+      <div class="ctrl-group">
+        <label>Target Distribution</label>
+        <select id="distSelect">
+          <option value="ring">Ring / Circle</option>
+          <option value="two-moons">Two Moons</option>
+          <option value="spiral">Spiral</option>
+          <option value="8-gaussians">8 Gaussians Grid</option>
+          <option value="s-curve">S Curve</option>
+        </select>
+      </div>
+
+      <div class="section-title">Hyperparameters</div>
+
+      <div class="ctrl-group">
+        <label>Learning Rate</label>
+        <div class="range-row">
+          <input type="range" id="lrInput" min="0.0005" max="0.02" step="0.0005" value="0.005" />
+          <span id="lrVal">0.0050</span>
+        </div>
+      </div>
+
+      <div class="ctrl-group">
+        <label>Timesteps T</label>
+        <div class="range-row">
+          <input type="range" id="tInput" min="10" max="80" step="5" value="40" />
+          <span id="tVal">40</span>
+        </div>
+      </div>
+
+      <div class="ctrl-group">
+        <label>Hidden Size</label>
+        <div class="range-row">
+          <input type="range" id="hiddenInput" min="16" max="64" step="8" value="32" />
+          <span id="hiddenVal">32</span>
+        </div>
+      </div>
+
+      <div class="section-title">Forward Process (q)</div>
+      <div class="ctrl-group">
+        <label>Scrub Noise Level t</label>
+        <div class="range-row">
+          <input type="range" id="fwdSlider" min="0" max="39" step="1" value="0" />
+          <span id="fwdTVal">0</span>
+        </div>
+        <p class="fwd-explain">t = 0: original data &nbsp;→&nbsp; t = T−1: pure noise</p>
+      </div>
+
+      <div class="section-title">Stats</div>
+      <div class="stats">
+        <div class="stat-row">
+          <span class="label">Training step</span>
+          <span class="val" id="stepCount">0</span>
+        </div>
+        <div class="stat-row">
+          <span class="label">Loss (MSE ε)</span>
+          <span class="val" id="lossVal">—</span>
+        </div>
+        <div class="stat-row">
+          <span class="label">Sample status</span>
+          <span class="val" id="sampleStatus">—</span>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <script src="bundlediffusion.js"></script>
+</body>
+</html>
