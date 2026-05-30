@@ -6,22 +6,12 @@
  *
  *   numDer ≈ (output(x+h) - output(x-h)) / (2h)
  *
- * Test points are chosen away from known kinks and bugs so that the derivative
+ * Test points are chosen away from known kinks so that the derivative
  * is smooth and self-consistent at every tested point.
  *
- * KNOWN FORMULA BUGS IN nn.ts (documented; test adjusted accordingly):
- *
- *   MISH.der – The formula in nn.ts is:
- *       tanh(sp) * x * sig(x) * sech²(sp)
- *     which is missing the leading `tanh(sp)` term. The correct formula is:
- *       tanh(sp) + x * sech²(sp) * sig(x)
- *     Because der(x) ≠ FD(output(x)), we skip the FD check for MISH and
- *     instead test that output is numerically correct via a fixed reference.
- *
- *   SINC.output – uses `x < 0.000001` (not `|x| < threshold`), so for all
- *     negative x the output is 1 (constant), while SINC.der uses the correct
- *     `x*x < 0.000001` threshold. The two are inconsistent for x < 0.
- *     We therefore only test the FD gradient for x > 0 where they are consistent.
+ * (Earlier formula bugs in MISH.der and SINC.output were found by these checks
+ * and have since been fixed in nn.ts; MISH and SINC now pass the FD check for
+ * both signs.)
  *
  * Non-differentiable / kink notes (skipped points documented):
  *   RELU, LEAKY_RELU, ELU, SELU, EXPONENTIAL_LINEAR – kink at x=0
@@ -111,50 +101,33 @@ describe('Activation gradient checks (analytic vs finite-difference)', () => {
     [-Math.PI, -1, -0.5, 0, 0.5, 1, Math.PI]
   );
 
-  // SINC – BUG: output uses x < 0.000001 (not |x|) so for x < 0 the output
-  // is constant 1, while der uses the correct x*x < 0.000001 threshold.
-  // The two sides are inconsistent for x < 0.
-  // We only check x > 0 (where both are consistent) and document the negative-x issue.
-  describe('SINC (positive x only; see known bug note for x<0)', () => {
-    const positivePoints = [0.1, 0.5, 1, 1.5, 2, 2.5, 3];
-    for (const x of positivePoints) {
+  // SINC – sinc(x) = sin(x)/x, even function, sinc(0)=1. The small-value guard
+  // uses x*x < threshold so it is symmetric in x (fixed from an earlier unsigned
+  // `x < threshold` bug). Derivative matches FD for both positive and negative x.
+  describe('SINC (even function; checks both signs)', () => {
+    const points = [-3, -2.5, -2, -1.5, -1, -0.5, -0.1, 0.1, 0.5, 1, 1.5, 2, 2.5, 3];
+    for (const x of points) {
       test(`SINC der(${x}) matches finite-difference`, () => {
         const analytic = Activations.SINC.der(x);
         const numeric = numDer(Activations.SINC.output, x);
         expect(Math.abs(analytic - numeric)).toBeLessThan(TOL);
       });
     }
-    // Document the known negative-x inconsistency as a skipped/noted test
-    test('SINC output(−1) returns 1 due to unsigned threshold bug (output≠sin(−1)/−1)', () => {
-      // Because nn.ts uses `x < 0.000001` instead of `x*x < 0.000001` or `Math.abs(x) < threshold`,
-      // all negative x yields output=1 (as if x≈0), which is incorrect.
-      // This is a known bug in nn.ts; documented here but not a regression test.
-      expect(Activations.SINC.output(-1)).toBe(1);  // confirms the bug exists
+    test('SINC is even: output(-1) === output(1) === sin(1)', () => {
+      expect(Activations.SINC.output(-1)).toBeCloseTo(Math.sin(1), 6);
+      expect(Activations.SINC.output(1)).toBeCloseTo(Math.sin(1), 6);
     });
   });
 
-  // MISH – BUG: MISH.der in nn.ts uses the formula:
-  //   tanh(softplus(x)) * x * sig(x) * (1 - tanh²(softplus(x)))
-  // The correct formula (d/dx [x * tanh(softplus(x))]) is:
-  //   tanh(softplus(x)) + x * sig(x) * (1 - tanh²(softplus(x)))
-  // The nn.ts formula is missing the leading `tanh(softplus(x))` term.
-  // Because der(x) ≠ FD(output(x)) for all x, we do NOT run the FD check here.
-  // Instead we test that the output function is numerically correct via FD,
-  // and document the analytic-der bug.
-  describe('MISH (output correctness; der has known formula bug – see note)', () => {
-    // Verify output matches FD of itself (trivially true, confirms output is smooth)
-    // by checking FD of output at sample points – the FD IS the correct derivative.
-    const knownCorrectDerAtPoints: Array<{ x: number; fdApprox: number }> = [
-      { x: 0,    fdApprox: 0.6 },
-      { x: 1,    fdApprox: 1.049 },
-      { x: -1,   fdApprox: 0.0592 },
-      { x: 2,    fdApprox: 1.069 },
-      { x: -2,   fdApprox: -0.108 },
-    ];
-    for (const { x, fdApprox } of knownCorrectDerAtPoints) {
-      test(`MISH FD derivative at x=${x} ≈ ${fdApprox} (correct gradient)`, () => {
-        const fd = numDer(Activations.MISH.output, x);
-        expect(Math.abs(fd - fdApprox)).toBeLessThan(0.005);
+  // MISH – mish(x) = x * tanh(softplus(x)); der = tanh(sp) + x*sig(x)*(1-tanh²(sp)).
+  // The analytic derivative matches the finite-difference of the output.
+  describe('MISH (output + analytic derivative)', () => {
+    const points = [-2, -1, -0.5, 0, 0.5, 1, 2];
+    for (const x of points) {
+      test(`MISH der(${x}) matches finite-difference`, () => {
+        const analytic = Activations.MISH.der(x);
+        const numeric = numDer(Activations.MISH.output, x);
+        expect(Math.abs(analytic - numeric)).toBeLessThan(TOL);
       });
     }
 
@@ -163,16 +136,12 @@ describe('Activation gradient checks (analytic vs finite-difference)', () => {
     });
     test('MISH output(1) matches x*tanh(softplus(x))', () => {
       const x = 1;
-      const ln2 = Math.log(2);
       const sp = Math.log(1 + Math.exp(x));
       const expected = x * Math.tanh(sp);
       expect(Activations.MISH.output(x)).toBeCloseTo(expected, 6);
     });
-
-    // Document that analytic der does NOT match FD (known bug)
-    test('MISH.der(0) returns 0 but correct derivative is ≈0.6 (documents formula bug)', () => {
-      // nn.ts formula gives 0 at x=0 because the tanh(softplus(x)) factor is missing.
-      expect(Activations.MISH.der(0)).toBeCloseTo(0, 5);
+    test('MISH.der(0) is ≈0.6 (correct derivative)', () => {
+      expect(Activations.MISH.der(0)).toBeCloseTo(0.6, 2);
     });
   });
 

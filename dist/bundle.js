@@ -89114,7 +89114,7 @@ var Activations = (function () {
         compileToJs: function (arg) { return "Math.sin(".concat(arg, ")"); }
     };
     Activations.SINC = {
-        output: function (x) { return x < 0.000001 ? 1 : Math.sin(x) / x; },
+        output: function (x) { return (x * x) < 0.000001 ? 1 : Math.sin(x) / x; },
         der: function (x) { return (x * x) < 0.000001 ? 0 : (x * Math.cos(x) - Math.sin(x)) / (x * x); },
         compileToJs: function (arg) { return "Math.sinc(".concat(arg, ")"); }
     };
@@ -89123,7 +89123,7 @@ var Activations = (function () {
         der: function (x) {
             var sig_x = Activations.SIGMOID.output(x);
             var tanh_sp_x = Activations.TANH.output(Math.softplus(x));
-            return tanh_sp_x * x * sig_x * (1 - tanh_sp_x * tanh_sp_x);
+            return tanh_sp_x + x * sig_x * (1 - tanh_sp_x * tanh_sp_x);
         },
         compileToJs: function (arg) { return "mish(".concat(arg, ")"); }
     };
