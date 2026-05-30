@@ -146,6 +146,53 @@ export class Errors {
                0.5 * Math.pow(output - target, 2),
     der: (output: number, target: number) => output - target
   };
+  /** Hinge loss for targets in {-1, +1}. */
+  public static HINGE: ErrorFunction = {
+    error: (output: number, target: number) =>
+               Math.max(0, 1 - output * target),
+    der: (output: number, target: number) =>
+               (1 - output * target > 0) ? -target : 0
+  };
+  /**
+   * Logistic / cross-entropy loss. Maps output and target from (-1,1) to (0,1)
+   * probabilities (p = (v+1)/2), so it works with the playground's tanh-style
+   * outputs without changing any existing behavior elsewhere.
+   */
+  public static LOGLOSS: ErrorFunction = {
+    error: (output: number, target: number) => {
+      let eps = 1e-7;
+      let p = Math.min(1 - eps, Math.max(eps, (output + 1) / 2));
+      let t = (target + 1) / 2;
+      return -(t * Math.log(p) + (1 - t) * Math.log(1 - p));
+    },
+    der: (output: number, target: number) => {
+      let eps = 1e-7;
+      let p = Math.min(1 - eps, Math.max(eps, (output + 1) / 2));
+      let t = (target + 1) / 2;
+      // d/d(output): chain through p = (output+1)/2 (dp/doutput = 1/2).
+      return 0.5 * (p - t) / (p * (1 - p));
+    }
+  };
+  /** Huber loss (smooth L1) with delta = 1. */
+  public static HUBER: ErrorFunction = {
+    error: (output: number, target: number) => {
+      let d = output - target;
+      let delta = 1;
+      return Math.abs(d) <= delta ?
+          0.5 * d * d : delta * (Math.abs(d) - 0.5 * delta);
+    },
+    der: (output: number, target: number) => {
+      let d = output - target;
+      let delta = 1;
+      return Math.abs(d) <= delta ? d : delta * Math.sign(d);
+    }
+  };
+  /** Absolute (L1) error. */
+  public static ABSOLUTE: ErrorFunction = {
+    error: (output: number, target: number) => Math.abs(output - target),
+    der: (output: number, target: number) =>
+               output > target ? 1 : (output < target ? -1 : 0)
+  };
 }
 
 /** Polyfill for TANH */

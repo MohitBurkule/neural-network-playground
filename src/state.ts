@@ -35,6 +35,15 @@ export let optimizers: {[key: string]: nn.OptimizerType} = {
   "adamw": nn.OptimizerType.ADAMW,
 };
 
+/** A map between names and loss (error) functions. */
+export let lossFunctions: {[key: string]: nn.ErrorFunction} = {
+  "square": nn.Errors.SQUARE,
+  "hinge": nn.Errors.HINGE,
+  "logloss": nn.Errors.LOGLOSS,
+  "huber": nn.Errors.HUBER,
+  "absolute": nn.Errors.ABSOLUTE,
+};
+
 /** A map between names and weight initialization schemes. */
 export let weightInits: {[key: string]: nn.WeightInit} = {
   "random-uniform": nn.WeightInit.RANDOM_UNIFORM,
@@ -247,7 +256,14 @@ export class State {
     {name: "advEpsilon", type: Type.NUMBER},
     {name: "advMethod", type: Type.STRING},
     {name: "threeD", type: Type.BOOLEAN},
-    {name: "threeDDataset", type: Type.STRING}
+    {name: "threeDDataset", type: Type.STRING},
+    {name: "lossFunction", type: Type.STRING},
+    {name: "classWeighting", type: Type.BOOLEAN},
+    {name: "labelNoise", type: Type.NUMBER},
+    {name: "mixup", type: Type.BOOLEAN},
+    {name: "inputJitter", type: Type.NUMBER},
+    {name: "gradientNoise", type: Type.NUMBER},
+    {name: "epochShuffle", type: Type.BOOLEAN}
   ];
 
   [key: string]: any;
@@ -299,6 +315,13 @@ export class State {
   advMethod: string = "fgsm";
   threeD = false;
   threeDDataset: string = "blobs";
+  lossFunction: string = "square";
+  classWeighting = false;
+  labelNoise = 0;
+  mixup = false;
+  inputJitter = 0;
+  gradientNoise = 0;
+  epochShuffle = false;
   dataset: dataset.DataGenerator = dataset.classifyCircleData;
   regDataset: dataset.DataGenerator = dataset.regressPlane;
   trainData: dataset.Example2D[] = [];

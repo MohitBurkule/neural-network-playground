@@ -26,6 +26,7 @@ import {
   problems,
   regularizations,
   weightQuantizations,
+  lossFunctions,
   getKeyFromValue,
   Problem
 } from "./state";
@@ -193,6 +194,9 @@ class Player {
 let uxStepsPerTick = 1;
 /** Hook invoked after each oneStep() to power convergence / run-N / NaN logic. */
 let uxAfterStep: (() => void) | null = null;
+/** Early-stopping monitor state (training-methodology feature 2). */
+let tmEarlyStopBest = Infinity;
+let tmEarlyStopWait = 0;
 
 let state = State.deserializeState();
 
@@ -1043,13 +1047,40 @@ function updateDecisionBoundary(network: nn.Node[][], firstTime: boolean) {
   }
 }
 
+/** Returns the currently selected error/loss function (defaults to SQUARE). */
+function currentErrorFunc(): nn.ErrorFunction {
+  return lossFunctions[state.lossFunction] || nn.Errors.SQUARE;
+}
+
+/**
+ * Computes inverse-frequency class weights for the +1 / -1 classes in a
+ * dataset. Returns a function mapping a label to its weight (mean weight 1).
+ * When class weighting is disabled, every weight is 1.
+ */
+function classWeightFor(dataPoints: Example2D[]): (label: number) => number {
+  if (!state.classWeighting || dataPoints.length === 0) {
+    return () => 1;
+  }
+  let pos = 0, neg = 0;
+  for (let i = 0; i < dataPoints.length; i++) {
+    if (dataPoints[i].label >= 0) { pos++; } else { neg++; }
+  }
+  if (pos === 0 || neg === 0) { return () => 1; }
+  let n = dataPoints.length;
+  // Inverse frequency, normalized so the average weight is ~1.
+  let wPos = n / (2 * pos);
+  let wNeg = n / (2 * neg);
+  return (label: number) => label >= 0 ? wPos : wNeg;
+}
+
 function getLoss(network: nn.Node[][], dataPoints: Example2D[]): number {
+  let errFunc = currentErrorFunc();
   let loss = 0;
   for (let i = 0; i < dataPoints.length; i++) {
     let dataPoint = dataPoints[i];
     let input = constructInput(dataPoint.x, dataPoint.y);
     let output = nn.forwardProp(network, input, state.weightQuantization, state.layerNorm);
-    loss += nn.Errors.SQUARE.error(output, dataPoint.label);
+    loss += errFunc.error(output, dataPoint.label);
   }
   return loss / dataPoints.length;
 }
@@ -1164,6 +1195,7 @@ function updateUI(firstStep = false) {
   lineChart.addDataPoint([lossTrain, lossTest]);
   updateClassificationMetricsUI();
   updateAnalysis();
+  updateTrainingConfigSummary();
 
   // Now "draw" it as JavaScript
   d3.select("#network-as-javascript").text(nn.compileNetworkToJs(network));
@@ -1493,6 +1525,46 @@ function effectiveLearningRate(): number {
   }
 }
 
+/** Standard normal sample via Box-Muller. */
+function gaussianNoise(): number {
+  let u = 0, v = 0;
+  while (u === 0) { u = Math.random(); }
+  while (v === 0) { v = Math.random(); }
+  return Math.sqrt(-2 * Math.log(u)) * Math.cos(2 * Math.PI * v);
+}
+
+/**
+ * Returns an error function whose derivative is scaled by a constant (used for
+ * class weighting and mixup mixing coefficients). error() is unscaled.
+ */
+function scaledErrorFunc(base: nn.ErrorFunction, scale: number): nn.ErrorFunction {
+  if (scale === 1) { return base; }
+  return {
+    error: (o, t) => base.error(o, t),
+    der: (o, t) => scale * base.der(o, t)
+  };
+}
+
+/**
+ * Adds annealed Gaussian noise to every accumulated gradient in the network.
+ * Variance decays with iteration count (a known regularizer; Neelakantan 2015).
+ */
+function addGradientNoise(net: nn.Node[][], eta: number, t: number): void {
+  if (eta <= 0) { return; }
+  let std = Math.sqrt(eta / Math.pow(1 + t, 0.55));
+  nn.forEachNode(net, true, (node) => {
+    if (node.numAccumulatedDers > 0) {
+      node.accInputDer += gaussianNoise() * std * node.numAccumulatedDers;
+    }
+    for (let j = 0; j < node.inputLinks.length; j++) {
+      let link = node.inputLinks[j];
+      if (link.numAccumulatedDers > 0) {
+        link.accErrorDer += gaussianNoise() * std * link.numAccumulatedDers;
+      }
+    }
+  });
+}
+
 function oneStep(): void {
   iter++;
   if (state.threeD) {
@@ -1501,20 +1573,49 @@ function oneStep(): void {
   }
   let optimizerType = optimizers[state.optimizer] || nn.OptimizerType.SGD;
   let lr = effectiveLearningRate();
-  state.trainData.forEach((point, i) => {
-    let input = constructInput(point.x, point.y);
+  let errFunc = currentErrorFunc();
+  let weightOf = classWeightFor(state.trainData);
+  // Epoch-wise shuffling of training data (off by default to preserve order).
+  let order = state.trainData;
+  if (state.epochShuffle) {
+    order = state.trainData.slice();
+    shuffle(order);
+  }
+  order.forEach((point, i) => {
+    // Input jitter (data augmentation): perturb raw inputs during training.
+    let px = point.x, py = point.y;
+    if (state.inputJitter > 0) {
+      px += gaussianNoise() * state.inputJitter;
+      py += gaussianNoise() * state.inputJitter;
+    }
+    let w = weightOf(point.label);
+    let input = constructInput(px, py);
     nn.forwardProp(network, input, state.weightQuantization, state.layerNorm,
         state.dropout, true, state.batchNorm);
-    nn.backProp(network, point.label, nn.Errors.SQUARE);
+    nn.backProp(network, point.label, scaledErrorFunc(errFunc, w));
+    // Mixup-style augmentation: occasionally train on a convex combination of
+    // this point and another random training point.
+    if (state.mixup && state.trainData.length > 1 && Math.random() < 0.5) {
+      let other = state.trainData[Math.floor(Math.random() * state.trainData.length)];
+      let lam = Math.random();
+      let mx = lam * point.x + (1 - lam) * other.x;
+      let my = lam * point.y + (1 - lam) * other.y;
+      let mTarget = lam * point.label + (1 - lam) * other.label;
+      nn.forwardProp(network, constructInput(mx, my),
+          state.weightQuantization, state.layerNorm,
+          state.dropout, true, state.batchNorm);
+      nn.backProp(network, mTarget, errFunc);
+    }
     if (state.adversarialTraining) {
       // Train also on an on-the-fly adversarial perturbation of this point.
       let adv = perturb(point);
       nn.forwardProp(network, constructInput(adv.x, adv.y),
           state.weightQuantization, state.layerNorm,
           state.dropout, true, state.batchNorm);
-      nn.backProp(network, point.label, nn.Errors.SQUARE);
+      nn.backProp(network, point.label, errFunc);
     }
     if ((i + 1) % state.batchSize === 0) {
+      addGradientNoise(network, state.gradientNoise, iter);
       nn.updateWeights(network, lr, state.regularization,
           state.regularizationRate, optimizerType, state.gradClip,
           state.weightDecay);
@@ -1545,6 +1646,12 @@ export function getOutputWeights(network: nn.Node[][]): number[] {
 }
 
 function reset(onStartup=false) {
+  // Clear early-stopping state/badge on every reset.
+  tmEarlyStopBest = Infinity;
+  tmEarlyStopWait = 0;
+  let esBadge = (typeof document !== "undefined") ?
+      document.getElementById("tm-earlystop-badge") : null;
+  if (esBadge) { esBadge.style.display = "none"; }
   lineChart.reset();
   trainingHistory = [];
   weightMagHistory = [];
@@ -1707,8 +1814,33 @@ function generateData(firstTime = false) {
   let splitIndex = Math.floor(data.length * state.percTrainData / 100);
   state.trainData = data.slice(0, splitIndex);
   state.testData = data.slice(splitIndex);
+  // Label-noise injection: randomly flip a fraction of TRAIN labels only.
+  if (state.labelNoise > 0 && state.problem === Problem.CLASSIFICATION) {
+    let frac = state.labelNoise / 100;
+    state.trainData.forEach((p) => {
+      if (Math.random() < frac) {
+        p.label = -p.label;
+      }
+    });
+  }
   heatMap.updatePoints(state.trainData);
   heatMap.updateTestPoints(state.showTestData ? state.testData : []);
+}
+
+/**
+ * Re-shuffles the existing data into a fresh train/test split without
+ * regenerating the underlying points (keeps the same sample distribution).
+ */
+function reshuffleSplit(): void {
+  let all = state.trainData.concat(state.testData);
+  if (all.length === 0) { return; }
+  shuffle(all);
+  let splitIndex = Math.floor(all.length * state.percTrainData / 100);
+  state.trainData = all.slice(0, splitIndex);
+  state.testData = all.slice(splitIndex);
+  heatMap.updatePoints(state.trainData);
+  heatMap.updateTestPoints(state.showTestData ? state.testData : []);
+  reset();
 }
 
 let firstInteraction = true;
@@ -3374,6 +3506,470 @@ function uxRandomizeWeights(): void {
   uxToast("Weights re-initialized.");
 }
 
+// ===========================================================================
+// Training-methodology features (k-fold CV, LR finder, ensemble, weight noise).
+// All operate on throwaway networks (except weight-noise, which can restore the
+// real model) and reuse the existing build/train primitives.
+// ===========================================================================
+
+/** Builds a fresh network matching the current architecture & init scheme. */
+function buildFreshNetwork(): nn.Node[][] {
+  let inputIds = constructInputIds();
+  let shape = [inputIds.length].concat(state.networkShape).concat([1]);
+  let net = nn.buildNetwork(shape, state.activation, nn.Activations.TANH,
+      inputIds, state.initZero);
+  nn.applyWeightInit(net, weightInits[state.weightInit]);
+  return net;
+}
+
+/** Loss for an arbitrary network/dataset using the active error function. */
+function lossOf(net: nn.Node[][], data: Example2D[]): number {
+  let errFunc = currentErrorFunc();
+  let loss = 0;
+  for (let i = 0; i < data.length; i++) {
+    let out = nn.forwardProp(net, constructInput(data[i].x, data[i].y),
+        state.weightQuantization, state.layerNorm);
+    loss += errFunc.error(out, data[i].label);
+  }
+  return data.length ? loss / data.length : 0;
+}
+
+/** Accuracy for an arbitrary network/dataset. */
+function accuracyOf(net: nn.Node[][], data: Example2D[]): number {
+  let correct = 0;
+  for (let i = 0; i < data.length; i++) {
+    let out = nn.forwardProp(net, constructInput(data[i].x, data[i].y),
+        state.weightQuantization, state.layerNorm);
+    if ((out >= 0 ? 1 : -1) === (data[i].label >= 0 ? 1 : -1)) { correct++; }
+  }
+  return data.length ? correct / data.length : 0;
+}
+
+/** Trains a network in place for a number of epochs over the given data. */
+function trainNetwork(net: nn.Node[][], data: Example2D[], epochs: number,
+    lr: number): void {
+  let optimizerType = optimizers[state.optimizer] || nn.OptimizerType.SGD;
+  let errFunc = currentErrorFunc();
+  for (let e = 0; e < epochs; e++) {
+    data.forEach((point, i) => {
+      nn.forwardProp(net, constructInput(point.x, point.y),
+          state.weightQuantization, state.layerNorm, state.dropout, true,
+          state.batchNorm);
+      nn.backProp(net, point.label, errFunc);
+      if ((i + 1) % state.batchSize === 0) {
+        nn.updateWeights(net, lr, state.regularization,
+            state.regularizationRate, optimizerType, state.gradClip,
+            state.weightDecay);
+      }
+    });
+  }
+}
+
+/** Returns a bootstrap (sample-with-replacement) copy of the data. */
+function bootstrapSample(data: Example2D[]): Example2D[] {
+  let out: Example2D[] = [];
+  for (let i = 0; i < data.length; i++) {
+    out.push(data[Math.floor(Math.random() * data.length)]);
+  }
+  return out;
+}
+
+function mean(xs: number[]): number {
+  return xs.reduce((a, b) => a + b, 0) / (xs.length || 1);
+}
+function std(xs: number[]): number {
+  let m = mean(xs);
+  return Math.sqrt(mean(xs.map(x => (x - m) * (x - m))));
+}
+
+/** Feature 3: k-fold cross-validation on the training data. */
+function runKFoldCV(k: number, epochs: number): void {
+  let data = state.trainData.slice();
+  if (data.length < k) {
+    uxToast("Not enough training data for " + k + " folds.", true);
+    return;
+  }
+  shuffle(data);
+  let accs: number[] = [];
+  let losses: number[] = [];
+  let foldSize = Math.floor(data.length / k);
+  let lr = state.learningRate;
+  for (let f = 0; f < k; f++) {
+    let start = f * foldSize;
+    let end = f === k - 1 ? data.length : start + foldSize;
+    let valFold = data.slice(start, end);
+    let trainFold = data.slice(0, start).concat(data.slice(end));
+    let net = buildFreshNetwork();
+    trainNetwork(net, trainFold, epochs, lr);
+    accs.push(accuracyOf(net, valFold));
+    losses.push(lossOf(net, valFold));
+  }
+  let readout = document.getElementById("tm-cv-readout");
+  if (readout) {
+    readout.innerHTML =
+        "k=" + k + " folds, " + epochs + " epochs/fold<br>" +
+        "Val accuracy: " + (mean(accs) * 100).toFixed(1) + "% ± " +
+        (std(accs) * 100).toFixed(1) + "%<br>" +
+        "Val loss: " + mean(losses).toFixed(3) + " ± " + std(losses).toFixed(3);
+  }
+  uxToast("k-fold CV done: " + (mean(accs) * 100).toFixed(1) + "% mean acc.");
+}
+
+/** Feature 4: learning-rate finder — sweep LR and plot loss vs LR. */
+function runLRFinder(): void {
+  let data = state.trainData;
+  if (data.length === 0) { uxToast("No training data.", true); return; }
+  let lrMin = 1e-4, lrMax = 3;
+  let steps = 25;
+  let results: {lr: number; loss: number}[] = [];
+  let net = buildFreshNetwork();
+  for (let s = 0; s < steps; s++) {
+    let lr = lrMin * Math.pow(lrMax / lrMin, s / (steps - 1));
+    // A few mini-batches per LR on the evolving throwaway net.
+    trainNetwork(net, data, 1, lr);
+    let loss = lossOf(net, data);
+    results.push({lr, loss});
+    if (!isFinite(loss) || loss > 1e3) { break; }
+  }
+  // Suggest LR at steepest descent (min loss with some margin before blow-up).
+  let best = results.reduce((a, b) => b.loss < a.loss ? b : a, results[0]);
+  let suggested = best.lr / 10;  // common heuristic: an order below the min.
+  plotLRFinder(results, suggested);
+  let readout = document.getElementById("tm-lrf-readout");
+  if (readout) {
+    readout.textContent = "Suggested LR ~ " + suggested.toPrecision(2) +
+        " (min loss " + best.loss.toFixed(3) + " at LR " +
+        best.lr.toPrecision(2) + ")";
+  }
+  uxToast("LR finder done. Suggested ~ " + suggested.toPrecision(2));
+}
+
+function plotLRFinder(results: {lr: number; loss: number}[],
+    suggested: number): void {
+  let svg = d3.select<SVGSVGElement, unknown>("#tm-lrf-plot");
+  if (svg.empty()) { return; }
+  svg.selectAll("*").remove();
+  let W = 260, H = 140, m = {t: 8, r: 8, b: 24, l: 36};
+  svg.attr("width", W).attr("height", H);
+  let x = d3.scaleLog()
+      .domain([results[0].lr, results[results.length - 1].lr])
+      .range([m.l, W - m.r]);
+  let maxLoss = d3.max(results, d => d.loss) || 1;
+  let y = d3.scaleLinear().domain([0, maxLoss]).range([H - m.b, m.t]);
+  let line = d3.line<{lr: number; loss: number}>()
+      .x(d => x(d.lr)).y(d => y(d.loss));
+  svg.append("path").datum(results)
+      .attr("fill", "none").attr("stroke", "#f59322").attr("stroke-width", 2)
+      .attr("d", line);
+  svg.append("line")
+      .attr("x1", x(suggested)).attr("x2", x(suggested))
+      .attr("y1", m.t).attr("y2", H - m.b)
+      .attr("stroke", "#0877bd").attr("stroke-dasharray", "3,3");
+  svg.append("g").attr("transform", "translate(0," + (H - m.b) + ")")
+      .call(d3.axisBottom(x).ticks(4, "~g"));
+  svg.append("g").attr("transform", "translate(" + m.l + ",0)")
+      .call(d3.axisLeft(y).ticks(4));
+}
+
+/** Feature 9/10: train an ensemble and draw the averaged decision boundary. */
+function runEnsemble(n: number, bagging: boolean): void {
+  if (state.trainData.length === 0) { uxToast("No training data.", true); return; }
+  let epochs = 30;
+  let lr = state.learningRate;
+  let members: nn.Node[][][] = [];
+  for (let i = 0; i < n; i++) {
+    let net = buildFreshNetwork();
+    let trainSet = bagging ? bootstrapSample(state.trainData) : state.trainData;
+    trainNetwork(net, trainSet, epochs, lr);
+    members.push(net);
+  }
+  // Averaged-output boundary on the heatmap.
+  let xScale = d3.scaleLinear().domain([0, DENSITY - 1]).range(xDomain);
+  let yScale = d3.scaleLinear().domain([DENSITY - 1, 0]).range(xDomain);
+  let mat: number[][] = new Array(DENSITY);
+  for (let i = 0; i < DENSITY; i++) {
+    mat[i] = new Array(DENSITY);
+    for (let j = 0; j < DENSITY; j++) {
+      let xv = xScale(i), yv = yScale(j);
+      let sum = 0;
+      for (let mIdx = 0; mIdx < members.length; mIdx++) {
+        sum += nn.forwardProp(members[mIdx], constructInput(xv, yv),
+            state.weightQuantization, state.layerNorm);
+      }
+      mat[i][j] = sum / members.length;
+    }
+  }
+  heatMap.updateBackground(mat, state.discretize);
+  // Ensemble vs single accuracy on the test set.
+  let single = accuracyOf(members[0], state.testData);
+  let ensCorrect = 0;
+  for (let t = 0; t < state.testData.length; t++) {
+    let p = state.testData[t];
+    let sum = 0;
+    for (let mIdx = 0; mIdx < members.length; mIdx++) {
+      sum += nn.forwardProp(members[mIdx], constructInput(p.x, p.y),
+          state.weightQuantization, state.layerNorm);
+    }
+    let avg = sum / members.length;
+    if ((avg >= 0 ? 1 : -1) === (p.label >= 0 ? 1 : -1)) { ensCorrect++; }
+  }
+  let ensAcc = state.testData.length ? ensCorrect / state.testData.length : 0;
+  let readout = document.getElementById("tm-ensemble-readout");
+  if (readout) {
+    readout.innerHTML = "N=" + n + (bagging ? " (bagging)" : "") + "<br>" +
+        "Single test acc: " + (single * 100).toFixed(1) + "%<br>" +
+        "Ensemble test acc: " + (ensAcc * 100).toFixed(1) + "%";
+  }
+  uxToast("Ensemble drawn (avg of " + n + "). Reset to restore the live model.");
+}
+
+/** Feature 12: perturb the trained weights with Gaussian noise, show delta. */
+let tmWeightNoiseSnapshot: {biases: {[id: string]: number};
+    links: {[id: string]: number}} | null = null;
+
+function applyWeightNoise(sigma: number): void {
+  if (network == null) { uxToast("No network.", true); return; }
+  // Snapshot so it can be restored.
+  let biases: {[id: string]: number} = {};
+  let links: {[id: string]: number} = {};
+  nn.forEachNode(network, true, node => {
+    biases[node.id] = node.bias;
+    node.inputLinks.forEach(link => { links[link.id] = link.weight; });
+  });
+  tmWeightNoiseSnapshot = {biases, links};
+  let accBefore = accuracyOf(network, state.testData);
+  nn.forEachNode(network, true, node => {
+    node.bias += gaussianNoise() * sigma;
+    node.inputLinks.forEach(link => { link.weight += gaussianNoise() * sigma; });
+  });
+  let accAfter = accuracyOf(network, state.testData);
+  lossTrain = getLoss(network, state.trainData);
+  lossTest = getLoss(network, state.testData);
+  drawNetwork(network);
+  updateUI(true);
+  let readout = document.getElementById("tm-weightnoise-readout");
+  if (readout) {
+    readout.innerHTML = "σ=" + sigma + "<br>" +
+        "Test acc: " + (accBefore * 100).toFixed(1) + "% → " +
+        (accAfter * 100).toFixed(1) + "% (Δ " +
+        ((accAfter - accBefore) * 100).toFixed(1) + " pts)";
+  }
+}
+
+function restoreWeightNoise(): void {
+  if (network == null || tmWeightNoiseSnapshot == null) {
+    uxToast("Nothing to restore.", true);
+    return;
+  }
+  nn.forEachNode(network, true, node => {
+    if (tmWeightNoiseSnapshot.biases[node.id] != null) {
+      node.bias = tmWeightNoiseSnapshot.biases[node.id];
+    }
+    node.inputLinks.forEach(link => {
+      if (tmWeightNoiseSnapshot.links[link.id] != null) {
+        link.weight = tmWeightNoiseSnapshot.links[link.id];
+      }
+    });
+  });
+  lossTrain = getLoss(network, state.trainData);
+  lossTest = getLoss(network, state.testData);
+  drawNetwork(network);
+  updateUI(true);
+  uxToast("Weights restored.");
+}
+
+/** Feature 15: training-config summary readout. */
+function updateTrainingConfigSummary(): void {
+  let el = document.getElementById("tm-config-summary");
+  if (!el) { return; }
+  let lossKey = getKeyFromValue(lossFunctions, currentErrorFunc()) ||
+      state.lossFunction;
+  let regKey = getKeyFromValue(regularizations, state.regularization) || "none";
+  let parts = [
+    "loss: " + lossKey,
+    "optimizer: " + state.optimizer,
+    "lr: " + state.learningRate,
+    "lr-schedule: " + state.lrSchedule,
+    "batch: " + state.batchSize,
+    "reg: " + regKey + " (" + state.regularizationRate + ")",
+    "dropout: " + state.dropout,
+    "weight-decay: " + state.weightDecay,
+    "class-weighting: " + (state.classWeighting ? "on" : "off"),
+    "label-noise: " + state.labelNoise + "%",
+    "input-jitter: " + state.inputJitter,
+    "mixup: " + (state.mixup ? "on" : "off"),
+    "grad-noise: " + state.gradientNoise,
+    "epoch-shuffle: " + (state.epochShuffle ? "on" : "off")
+  ];
+  el.innerHTML = parts.join("<br>");
+}
+
+/** Feature 2: early-stopping monitor (called from the after-step hook). */
+function tmEarlyStopCheck(): void {
+  let chk = document.getElementById("tm-earlystop-enable") as HTMLInputElement;
+  if (!chk || !chk.checked) { tmEarlyStopBest = Infinity; tmEarlyStopWait = 0; return; }
+  let patienceInput = document.getElementById("tm-earlystop-patience") as HTMLInputElement;
+  let patience = patienceInput ? Math.max(1, +patienceInput.value || 10) : 10;
+  if (lossTest < tmEarlyStopBest - 1e-6) {
+    tmEarlyStopBest = lossTest;
+    tmEarlyStopWait = 0;
+  } else {
+    tmEarlyStopWait++;
+    if (tmEarlyStopWait >= patience && player.isActive()) {
+      player.pause();
+      tmEarlyStopWait = 0;
+      tmEarlyStopBest = Infinity;
+      let badge = document.getElementById("tm-earlystop-badge");
+      if (badge) { badge.style.display = "inline"; }
+      uxToast("Stopped early (no test-loss improvement for " + patience + " evals).");
+    }
+  }
+}
+
+/** Wires up all training-methodology controls. */
+function initTrainingMethodologyGUI(): void {
+  // ---- Feature 1: loss-function dropdown ----
+  let lossSel = d3.select("#loss-function");
+  if (!lossSel.empty()) {
+    lossSel.property("value", state.lossFunction);
+    lossSel.on("change.tm", function() {
+      state.lossFunction = (this as HTMLSelectElement).value;
+      state.serialize();
+      parametersChanged = true;
+      updateTrainingConfigSummary();
+      reset();
+    });
+  }
+
+  // ---- Feature 5: class weighting ----
+  let cw = d3.select("#tm-class-weighting");
+  if (!cw.empty()) {
+    cw.property("checked", state.classWeighting);
+    cw.on("change.tm", function() {
+      state.classWeighting = (this as HTMLInputElement).checked;
+      state.serialize();
+      updateTrainingConfigSummary();
+    });
+  }
+
+  // ---- Feature 6: label noise ----
+  let ln = d3.select("#tm-label-noise");
+  if (!ln.empty()) {
+    ln.property("value", state.labelNoise);
+    d3.select("#tm-label-noise-val").text(String(state.labelNoise));
+    ln.on("input.tm", function() {
+      state.labelNoise = +(this as HTMLInputElement).value;
+      d3.select("#tm-label-noise-val").text(String(state.labelNoise));
+      state.serialize();
+      updateTrainingConfigSummary();
+      generateData();
+      reset();
+    });
+  }
+
+  // ---- Feature 7: mixup ----
+  let mx = d3.select("#tm-mixup");
+  if (!mx.empty()) {
+    mx.property("checked", state.mixup);
+    mx.on("change.tm", function() {
+      state.mixup = (this as HTMLInputElement).checked;
+      state.serialize();
+      updateTrainingConfigSummary();
+    });
+  }
+
+  // ---- Feature 8: input jitter ----
+  let ij = d3.select("#tm-input-jitter");
+  if (!ij.empty()) {
+    ij.property("value", state.inputJitter);
+    d3.select("#tm-input-jitter-val").text(String(state.inputJitter));
+    ij.on("input.tm", function() {
+      state.inputJitter = +(this as HTMLInputElement).value;
+      d3.select("#tm-input-jitter-val").text(String(state.inputJitter));
+      state.serialize();
+      updateTrainingConfigSummary();
+    });
+  }
+
+  // ---- Feature 11: gradient noise ----
+  let gnoise = d3.select("#tm-grad-noise");
+  if (!gnoise.empty()) {
+    gnoise.property("value", state.gradientNoise);
+    d3.select("#tm-grad-noise-val").text(String(state.gradientNoise));
+    gnoise.on("input.tm", function() {
+      state.gradientNoise = +(this as HTMLInputElement).value;
+      d3.select("#tm-grad-noise-val").text(String(state.gradientNoise));
+      state.serialize();
+      updateTrainingConfigSummary();
+    });
+  }
+
+  // ---- Feature 14: epoch-wise shuffling ----
+  let es = d3.select("#tm-epoch-shuffle");
+  if (!es.empty()) {
+    es.property("checked", state.epochShuffle);
+    es.on("change.tm", function() {
+      state.epochShuffle = (this as HTMLInputElement).checked;
+      state.serialize();
+      updateTrainingConfigSummary();
+    });
+  }
+
+  // ---- Feature 2: early stopping ----
+  let esBadge = document.getElementById("tm-earlystop-badge");
+  let esChk = d3.select("#tm-earlystop-enable");
+  if (!esChk.empty()) {
+    esChk.on("change.tm", () => {
+      tmEarlyStopBest = Infinity;
+      tmEarlyStopWait = 0;
+      if (esBadge) { esBadge.style.display = "none"; }
+    });
+  }
+
+  // ---- Feature 3: k-fold CV ----
+  let cvBtn = document.getElementById("tm-cv-btn");
+  if (cvBtn) {
+    cvBtn.addEventListener("click", () => {
+      let kInput = document.getElementById("tm-cv-k") as HTMLInputElement;
+      let k = kInput ? Math.max(2, +kInput.value || 5) : 5;
+      runKFoldCV(k, 30);
+    });
+  }
+
+  // ---- Feature 4: LR finder ----
+  let lrfBtn = document.getElementById("tm-lrf-btn");
+  if (lrfBtn) { lrfBtn.addEventListener("click", () => runLRFinder()); }
+
+  // ---- Feature 9/10: ensemble + bagging ----
+  let ensBtn = document.getElementById("tm-ensemble-btn");
+  if (ensBtn) {
+    ensBtn.addEventListener("click", () => {
+      let nInput = document.getElementById("tm-ensemble-n") as HTMLInputElement;
+      let n = nInput ? Math.max(2, +nInput.value || 5) : 5;
+      let bagChk = document.getElementById("tm-ensemble-bagging") as HTMLInputElement;
+      runEnsemble(n, bagChk ? bagChk.checked : false);
+    });
+  }
+
+  // ---- Feature 12: weight noise / perturbation ----
+  let wnBtn = document.getElementById("tm-weightnoise-btn");
+  if (wnBtn) {
+    wnBtn.addEventListener("click", () => {
+      let sInput = document.getElementById("tm-weightnoise-sigma") as HTMLInputElement;
+      let sigma = sInput ? Math.max(0, +sInput.value || 0.1) : 0.1;
+      applyWeightNoise(sigma);
+    });
+  }
+  let wnRestore = document.getElementById("tm-weightnoise-restore");
+  if (wnRestore) { wnRestore.addEventListener("click", () => restoreWeightNoise()); }
+
+  // ---- Feature 13: re-shuffle split ----
+  let reshufBtn = document.getElementById("tm-reshuffle-split");
+  if (reshufBtn) { reshufBtn.addEventListener("click", () => reshuffleSplit()); }
+
+  updateTrainingConfigSummary();
+}
+
 /** Main entry point for all UX features. */
 function initUXFeatures(): void {
   let prefs = uxLoadPrefs();
@@ -3471,6 +4067,8 @@ function initUXFeatures(): void {
         }
       }
     }
+    // Early stopping (training-methodology feature 2).
+    tmEarlyStopCheck();
     // Status bar steps/sec (feature 12).
     uxTickStatus();
   };
@@ -3651,4 +4249,5 @@ function uxTickStatus(): void {
   set("ux-status-sps", uxStepsPerSec ? uxStepsPerSec.toFixed(1) : "0");
 }
 
+initTrainingMethodologyGUI();
 initUXFeatures();
