@@ -40,7 +40,8 @@
         "serve": "npx serve dist/",
         "serve-watch": "concurrently \"npx serve dist/\" \"npm run watch\"",
         "test": "jest",
-        "test:e2e": "playwright test"
+        "test:e2e": "playwright test",
+        "test:labs": "node scripts/smoke-labs.js"
     },
     "devDependencies": {
         "@playwright/test": "^1.60.0",
@@ -52,6 +53,7 @@
         "copyfiles": "2.4.1",
         "esmify": "^2.1.1",
         "jest": "^30.4.2",
+        "jsdom": "^29.1.1",
         "rimraf": "6.0.1",
         "serve": "^14.2.3",
         "ts-jest": "^29.4.11",
