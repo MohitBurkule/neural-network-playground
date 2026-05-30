@@ -1,0 +1,316 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Self-Organizing Map Lab</title>
+  <style>
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+
+    body {
+      font-family: 'Segoe UI', Arial, sans-serif;
+      background: #1a1a2e;
+      color: #e0e0f0;
+      min-height: 100vh;
+      padding: 16px;
+    }
+
+    h1 {
+      font-size: 1.6rem;
+      font-weight: 700;
+      color: #a78bfa;
+      margin-bottom: 4px;
+      letter-spacing: 0.5px;
+    }
+
+    .subtitle {
+      font-size: 0.85rem;
+      color: #8888aa;
+      margin-bottom: 16px;
+    }
+
+    .layout {
+      display: grid;
+      grid-template-columns: 230px 1fr;
+      gap: 12px;
+      align-items: start;
+    }
+
+    /* Controls panel */
+    .controls {
+      background: #16213e;
+      border: 1px solid #2a2a5a;
+      border-radius: 10px;
+      padding: 14px;
+      display: flex;
+      flex-direction: column;
+      gap: 14px;
+    }
+
+    .controls h2 {
+      font-size: 0.78rem;
+      text-transform: uppercase;
+      letter-spacing: 1px;
+      color: #7777aa;
+      margin-bottom: 2px;
+    }
+
+    .btn-row {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 6px;
+    }
+
+    button {
+      padding: 7px 14px;
+      border: none;
+      border-radius: 6px;
+      font-size: 0.82rem;
+      font-weight: 600;
+      cursor: pointer;
+      transition: opacity 0.15s;
+    }
+    button:hover { opacity: 0.85; }
+
+    #btn-play  { background: #27ae60; color: #fff; }
+    #btn-pause { background: #e67e22; color: #fff; }
+    #btn-step  { background: #3498db; color: #fff; }
+    #btn-reset { background: #e74c3c; color: #fff; }
+
+    label {
+      font-size: 0.8rem;
+      color: #aaa;
+      display: block;
+      margin-bottom: 4px;
+    }
+
+    input[type=range] {
+      width: 100%;
+      accent-color: #a78bfa;
+    }
+
+    select {
+      width: 100%;
+      background: #0f3460;
+      color: #e0e0f0;
+      border: 1px solid #3a3a6a;
+      border-radius: 6px;
+      padding: 6px 8px;
+      font-size: 0.82rem;
+    }
+
+    .param-row {
+      display: flex;
+      flex-direction: column;
+      gap: 4px;
+    }
+
+    .slider-row {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+    }
+
+    .slider-val {
+      font-size: 0.82rem;
+      color: #a78bfa;
+      min-width: 38px;
+      text-align: right;
+      font-variant-numeric: tabular-nums;
+    }
+
+    /* Right column */
+    .right-col {
+      display: flex;
+      flex-direction: column;
+      gap: 12px;
+    }
+
+    /* Canvas panels */
+    .panel {
+      background: #12122a;
+      border: 1px solid #2a2a5a;
+      border-radius: 10px;
+      padding: 12px;
+    }
+
+    .panel-title {
+      font-size: 0.78rem;
+      text-transform: uppercase;
+      letter-spacing: 1px;
+      color: #7777aa;
+      margin-bottom: 8px;
+    }
+
+    .canvas-wrap {
+      width: 100%;
+      aspect-ratio: 1;
+      max-width: 580px;
+      position: relative;
+    }
+
+    .canvas-wrap-umat {
+      width: 100%;
+      aspect-ratio: 2.5 / 1;
+      max-width: 580px;
+      position: relative;
+    }
+
+    canvas {
+      display: block;
+      border-radius: 8px;
+      background: #0d0d1e;
+      width: 100%;
+      height: 100%;
+    }
+
+    .status-bar {
+      display: flex;
+      gap: 20px;
+      flex-wrap: wrap;
+      font-size: 0.82rem;
+      color: #aaa;
+      margin-top: 8px;
+    }
+
+    .status-bar span b {
+      color: #a78bfa;
+      font-variant-numeric: tabular-nums;
+    }
+
+    .info-box {
+      background: #0f3460;
+      border: 1px solid #2a4a8a;
+      border-radius: 8px;
+      padding: 10px 12px;
+      font-size: 0.78rem;
+      color: #9999cc;
+      line-height: 1.6;
+    }
+
+    .info-box b {
+      color: #a78bfa;
+    }
+
+    .umat-legend {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      font-size: 0.75rem;
+      color: #8888aa;
+      margin-top: 6px;
+    }
+
+    .umat-gradient {
+      flex: 1;
+      max-width: 180px;
+      height: 12px;
+      border-radius: 4px;
+      background: linear-gradient(to right, #1a0533, #7b2d8b, #e05c2a, #fde74c);
+    }
+
+    @media (max-width: 700px) {
+      .layout {
+        grid-template-columns: 1fr;
+      }
+    }
+  </style>
+</head>
+<body>
+
+  <h1>Self-Organizing Map (Kohonen SOM)</h1>
+  <p class="subtitle">A 2-D lattice of neurons learns to tile the input distribution — watch the mesh unfold in real time.</p>
+
+  <div class="layout">
+
+    <!-- Controls -->
+    <div class="controls">
+
+      <div>
+        <h2>Dataset</h2>
+        <select id="sel-dataset">
+          <option value="ring">Ring</option>
+          <option value="moons">Two Moons</option>
+          <option value="grid">Grid</option>
+          <option value="blobs">Blobs</option>
+          <option value="rgb">RGB Colors (3-D)</option>
+        </select>
+      </div>
+
+      <div class="param-row">
+        <label>Grid size <span class="slider-val" id="val-grid">15x15</span></label>
+        <input type="range" id="sl-grid" min="5" max="25" step="1" value="15">
+      </div>
+
+      <div class="param-row">
+        <label>Initial learning rate <span class="slider-val" id="val-lr">0.50</span></label>
+        <input type="range" id="sl-lr" min="0.05" max="1.0" step="0.05" value="0.5">
+      </div>
+
+      <div class="param-row">
+        <label>Initial neighbourhood &sigma; <span class="slider-val" id="val-sigma">7.0</span></label>
+        <input type="range" id="sl-sigma" min="1" max="20" step="0.5" value="7">
+      </div>
+
+      <div class="param-row">
+        <label>Max iterations <span class="slider-val" id="val-maxiter">5000</span></label>
+        <input type="range" id="sl-maxiter" min="500" max="20000" step="500" value="5000">
+      </div>
+
+      <div class="param-row">
+        <label>Steps / frame <span class="slider-val" id="val-speed">30</span></label>
+        <input type="range" id="sl-speed" min="1" max="200" step="1" value="30">
+      </div>
+
+      <div>
+        <h2>Playback</h2>
+        <div class="btn-row">
+          <button id="btn-play">&#9654; Play</button>
+          <button id="btn-pause">&#10074;&#10074; Pause</button>
+          <button id="btn-step">&#9654;| Step</button>
+          <button id="btn-reset">&#8635; Reset</button>
+        </div>
+      </div>
+
+      <div class="info-box">
+        <b>How it works</b><br>
+        Each training sample selects its <b>Best Matching Unit</b> (closest neuron). That neuron and its grid neighbours are pulled toward the sample. The pull strength decays with grid distance (Gaussian) and with training time — so the lattice first coarsely organises, then fine-tunes.
+      </div>
+
+    </div>
+
+    <!-- Right column: main view + U-matrix -->
+    <div class="right-col">
+
+      <!-- Main canvas -->
+      <div class="panel">
+        <div class="panel-title" id="main-panel-title">SOM Lattice — 2-D projection</div>
+        <div class="canvas-wrap">
+          <canvas id="main-canvas"></canvas>
+        </div>
+        <div class="status-bar">
+          <span>Iteration <b id="stat-iter">0</b></span>
+          <span>LR <b id="stat-lr">—</b></span>
+          <span>&sigma; <b id="stat-sigma">—</b></span>
+        </div>
+      </div>
+
+      <!-- U-Matrix -->
+      <div class="panel">
+        <div class="panel-title">U-Matrix — mean distance to neighbours (cluster boundaries)</div>
+        <div class="canvas-wrap-umat">
+          <canvas id="umat-canvas"></canvas>
+        </div>
+        <div class="umat-legend">
+          <span>Low (dense cluster)</span>
+          <div class="umat-gradient"></div>
+          <span>High (boundary)</span>
+        </div>
+      </div>
+
+    </div>
+  </div>
+
+  <script src="bundlesom.js"></script>
+</body>
+</html>
