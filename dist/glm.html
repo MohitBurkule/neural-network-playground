@@ -1,0 +1,417 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Classic Linear Models Lab</title>
+  <style>
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+
+    body {
+      font-family: 'Segoe UI', Arial, sans-serif;
+      background: #0f0f23;
+      color: #e0e0f0;
+      min-height: 100vh;
+      padding: 16px;
+    }
+
+    h1 {
+      font-size: 1.5rem;
+      font-weight: 700;
+      color: #a78bfa;
+      margin-bottom: 2px;
+      letter-spacing: 0.5px;
+    }
+
+    .subtitle {
+      font-size: 0.82rem;
+      color: #6666aa;
+      margin-bottom: 14px;
+    }
+
+    /* Model tabs */
+    .model-tabs {
+      display: flex;
+      gap: 6px;
+      margin-bottom: 12px;
+    }
+
+    .model-tab {
+      padding: 6px 14px;
+      border: 1px solid #3a3a6a;
+      border-radius: 6px;
+      background: #16213e;
+      color: #aaa;
+      cursor: pointer;
+      font-size: 0.82rem;
+      font-weight: 600;
+      transition: all 0.15s;
+    }
+
+    .model-tab:hover {
+      border-color: #a78bfa;
+      color: #c4b5fd;
+    }
+
+    .model-tab.active {
+      background: #4c1d95;
+      border-color: #a78bfa;
+      color: #ede9fe;
+    }
+
+    /* Layout */
+    .layout {
+      display: grid;
+      grid-template-columns: 220px 1fr 240px;
+      gap: 12px;
+      align-items: start;
+    }
+
+    /* Controls panel */
+    .controls {
+      background: #16213e;
+      border: 1px solid #2a2a5a;
+      border-radius: 10px;
+      padding: 14px;
+      display: flex;
+      flex-direction: column;
+      gap: 12px;
+    }
+
+    .controls h2 {
+      font-size: 0.78rem;
+      font-weight: 700;
+      text-transform: uppercase;
+      letter-spacing: 1px;
+      color: #6666aa;
+      border-bottom: 1px solid #2a2a5a;
+      padding-bottom: 6px;
+    }
+
+    .ctrl-row {
+      display: flex;
+      flex-direction: column;
+      gap: 4px;
+    }
+
+    .ctrl-row label {
+      font-size: 0.78rem;
+      color: #9999cc;
+      display: flex;
+      justify-content: space-between;
+    }
+
+    .ctrl-row label span {
+      color: #c4b5fd;
+      font-weight: 600;
+    }
+
+    input[type="range"] {
+      width: 100%;
+      accent-color: #a78bfa;
+      cursor: pointer;
+    }
+
+    select {
+      width: 100%;
+      background: #0f0f23;
+      border: 1px solid #3a3a6a;
+      color: #e0e0f0;
+      padding: 5px 8px;
+      border-radius: 6px;
+      font-size: 0.82rem;
+      cursor: pointer;
+    }
+
+    select:focus { outline: 1px solid #a78bfa; }
+
+    /* Buttons */
+    .btn-row {
+      display: flex;
+      gap: 6px;
+      flex-wrap: wrap;
+    }
+
+    button {
+      padding: 5px 12px;
+      border: 1px solid #3a3a6a;
+      border-radius: 6px;
+      background: #1e1e40;
+      color: #c4b5fd;
+      cursor: pointer;
+      font-size: 0.78rem;
+      font-weight: 600;
+      transition: all 0.15s;
+    }
+
+    button:hover { background: #2a2a5a; border-color: #a78bfa; }
+    button:active { background: #4c1d95; }
+
+    button.primary {
+      background: #4c1d95;
+      border-color: #a78bfa;
+      color: #ede9fe;
+    }
+
+    button.primary:hover { background: #6d28d9; }
+
+    #gd-controls {
+      display: flex;
+      gap: 6px;
+      flex-wrap: wrap;
+    }
+
+    /* Canvas area */
+    .canvas-area {
+      display: flex;
+      flex-direction: column;
+      gap: 8px;
+    }
+
+    canvas {
+      border-radius: 8px;
+      border: 1px solid #2a2a5a;
+      display: block;
+      max-width: 100%;
+    }
+
+    #stats-display {
+      font-size: 0.8rem;
+      color: #9999cc;
+      background: #16213e;
+      border: 1px solid #2a2a5a;
+      border-radius: 6px;
+      padding: 6px 10px;
+      display: flex;
+      gap: 16px;
+    }
+
+    #stats-display b { color: #facc15; }
+
+    /* Right panel */
+    .right-panel {
+      display: flex;
+      flex-direction: column;
+      gap: 10px;
+    }
+
+    .panel-box {
+      background: #16213e;
+      border: 1px solid #2a2a5a;
+      border-radius: 10px;
+      padding: 12px;
+    }
+
+    .panel-box h3 {
+      font-size: 0.76rem;
+      font-weight: 700;
+      text-transform: uppercase;
+      letter-spacing: 1px;
+      color: #6666aa;
+      margin-bottom: 8px;
+      border-bottom: 1px solid #2a2a5a;
+      padding-bottom: 5px;
+    }
+
+    /* Loss chart */
+    #loss-chart {
+      display: block;
+    }
+
+    #loss-chart text { fill: #8888aa; }
+    #loss-chart .domain, #loss-chart .tick line { stroke: #2a2a5a; }
+
+    /* Weights */
+    #weights-display {
+      display: flex;
+      flex-direction: column;
+      gap: 5px;
+    }
+
+    .weight-row {
+      display: grid;
+      grid-template-columns: 42px 1fr 55px;
+      align-items: center;
+      gap: 6px;
+    }
+
+    .weight-name {
+      font-size: 0.75rem;
+      color: #8888cc;
+      text-align: right;
+    }
+
+    .weight-bar-wrap {
+      height: 10px;
+      background: #0f0f23;
+      border-radius: 3px;
+      position: relative;
+      display: flex;
+      align-items: center;
+      overflow: hidden;
+    }
+
+    .weight-bar-pos {
+      height: 100%;
+      background: #a78bfa;
+      border-radius: 0 3px 3px 0;
+      min-width: 0;
+      transition: width 0.1s;
+    }
+
+    .weight-bar-neg {
+      height: 100%;
+      background: #fb923c;
+      border-radius: 3px 0 0 3px;
+      min-width: 0;
+      transition: width 0.1s;
+      order: -1;
+    }
+
+    .weight-val {
+      font-size: 0.72rem;
+      color: #c4b5fd;
+      text-align: right;
+      font-family: monospace;
+    }
+
+    /* Legend */
+    .legend {
+      display: flex;
+      gap: 10px;
+      flex-wrap: wrap;
+      font-size: 0.75rem;
+      color: #8888aa;
+    }
+
+    .legend-item {
+      display: flex;
+      align-items: center;
+      gap: 4px;
+    }
+
+    .legend-dot {
+      width: 10px;
+      height: 10px;
+      border-radius: 50%;
+      flex-shrink: 0;
+    }
+
+    .legend-line {
+      width: 18px;
+      height: 3px;
+      flex-shrink: 0;
+      border-radius: 2px;
+    }
+
+    .info-text {
+      font-size: 0.75rem;
+      color: #6666aa;
+      line-height: 1.5;
+    }
+  </style>
+</head>
+<body>
+  <h1>Classic Linear Models Lab</h1>
+  <p class="subtitle">Interactive playground for Linear Regression, Logistic Regression, and Gaussian Naive Bayes on 2D data.</p>
+
+  <div class="model-tabs">
+    <button class="model-tab active" data-model="linear">Linear Regression</button>
+    <button class="model-tab" data-model="logistic">Logistic Regression</button>
+    <button class="model-tab" data-model="gnb">Gaussian Naive Bayes</button>
+  </div>
+
+  <div class="layout">
+    <!-- Controls -->
+    <div class="controls">
+      <h2>Controls</h2>
+
+      <div class="ctrl-row">
+        <label>Dataset</label>
+        <select id="dataset-select">
+          <option value="noisy-line">Noisy Line</option>
+          <option value="noisy-quad">Noisy Quadratic</option>
+          <option value="blobs" hidden>Blobs</option>
+          <option value="moons" hidden>Moons</option>
+          <option value="circles" hidden>Circles</option>
+          <option value="xor" hidden>XOR</option>
+        </select>
+      </div>
+
+      <div class="ctrl-row">
+        <label># Points <span id="n-points-val">120</span></label>
+        <input type="range" id="n-points" min="40" max="400" value="120" step="10">
+      </div>
+
+      <div class="ctrl-row">
+        <label>Noise <span id="noise-val">0.4</span></label>
+        <input type="range" id="noise" min="0" max="1" value="0.4" step="0.05">
+      </div>
+
+      <div class="ctrl-row" id="lr-row">
+        <label>Learning Rate <span id="lr-val">0.050</span></label>
+        <input type="range" id="learning-rate" min="0.001" max="0.5" value="0.05" step="0.001">
+      </div>
+
+      <div class="ctrl-row" id="l2-row" style="display:none">
+        <label>L2 Reg <span id="l2-val">0.000</span></label>
+        <input type="range" id="l2" min="0" max="1" value="0" step="0.01">
+      </div>
+
+      <div class="ctrl-row" id="poly-row" style="display:none">
+        <label>Poly Degree <span id="poly-val">1</span></label>
+        <input type="range" id="poly-degree" min="1" max="3" value="1" step="1">
+      </div>
+
+      <!-- GD buttons -->
+      <div id="gd-controls">
+        <button id="btn-play" class="primary">▶ Play</button>
+        <button id="btn-pause">⏸ Pause</button>
+        <button id="btn-step">Step</button>
+        <button id="btn-reset">Reset</button>
+      </div>
+
+      <!-- GNB train button -->
+      <button id="btn-train" style="display:none" class="primary">Train GNB</button>
+
+      <button id="btn-regen">↺ Regen Data</button>
+
+      <div class="legend" id="legend">
+        <div class="legend-item"><div class="legend-dot" style="background:#60a5fa"></div> Class 0</div>
+        <div class="legend-item"><div class="legend-dot" style="background:#fb923c"></div> Class 1</div>
+        <div class="legend-item"><div class="legend-line" style="background:#facc15"></div> Boundary</div>
+      </div>
+    </div>
+
+    <!-- Main canvas -->
+    <div class="canvas-area">
+      <canvas id="main-canvas"></canvas>
+      <div id="stats-display">
+        <span>Loss: <b>–</b></span>
+      </div>
+    </div>
+
+    <!-- Right panel -->
+    <div class="right-panel">
+      <div class="panel-box">
+        <h3>Loss / Accuracy</h3>
+        <svg id="loss-chart"></svg>
+      </div>
+      <div class="panel-box">
+        <h3>Learned Weights</h3>
+        <div id="weights-display"></div>
+      </div>
+      <div class="panel-box">
+        <h3>About</h3>
+        <p class="info-text">
+          <b>Linear Regression</b> — fits y from x using gradient descent. Yellow line shows fit; faint lines are residuals.<br><br>
+          <b>Logistic Regression</b> — binary classifier with gradient descent. Background shows P(class=1). Polynomial features (degree 1–3) enable curved boundaries. L2 regularization reduces overfitting.<br><br>
+          <b>Gaussian Naive Bayes</b> — analytically fits per-class Gaussians. Ellipses show 1σ/2σ; shaded background is posterior P(class=1).
+        </p>
+      </div>
+    </div>
+  </div>
+
+  <script src="bundleglm.js"></script>
+</body>
+</html>

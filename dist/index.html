@@ -819,7 +819,7 @@ Modified by David Cato
                     </label>
                 </div>
                 <div class="adv-labs-link" style="margin-top:10px;font-size:12px;opacity:.7;">
-                    Advanced labs: <a href="cnn.html">CNN</a> &middot; <a href="transformer.html">Transformer</a> &middot; <a href="autoencoder.html">Autoencoder</a> &middot; <a href="rnn.html">RNN</a> &middot; <a href="gan.html">GAN</a> &middot; <a href="clustering.html">Clustering</a> &middot; <a href="rl.html">RL Gridworld</a> &middot; <a href="dtree.html">Decision Tree</a> &middot; <a href="dimred.html">PCA / t-SNE</a>
+                    Advanced labs: <a href="cnn.html">CNN</a> &middot; <a href="transformer.html">Transformer</a> &middot; <a href="autoencoder.html">Autoencoder</a> &middot; <a href="rnn.html">RNN</a> &middot; <a href="gan.html">GAN</a> &middot; <a href="clustering.html">Clustering</a> &middot; <a href="rl.html">RL Gridworld</a> &middot; <a href="dtree.html">Decision Tree</a> &middot; <a href="dimred.html">PCA / t-SNE</a> &middot; <a href="svm.html">SVM</a> &middot; <a href="glm.html">Linear/Logistic</a> &middot; <a href="gp.html">Gaussian Process</a>
                 </div>
             </div>
         </div>
@@ -1118,6 +1118,71 @@ Modified by David Cato
             <textarea id="model-io-text" rows="6" style="width:100%;box-sizing:border-box;margin-top:8px;" placeholder="Model JSON appears here on export; paste JSON here then click Import model."></textarea>
             <div class="adv-readout" id="model-io-readout"></div>
         </div>
+    </div>
+
+    <!-- Experiments: run tracking & comparison -->
+    <div class="l--page experiments-section collapsed" id="experiments-section">
+      <h4 class="analysis-header" id="experiments-toggle">
+        <i class="material-icons" id="experiments-arrow">keyboard_arrow_down</i>
+        Experiments &mdash; run tracking &amp; comparison
+      </h4>
+      <div id="experiments-body">
+        <div class="xp-actions">
+          <button class="basic-button" id="xp-save-run">Save run</button>
+          <button class="basic-button" id="xp-clear-runs">Clear all runs</button>
+          <button class="basic-button" id="xp-export-runs">Export runs (JSON)</button>
+          <button class="basic-button" id="xp-import-runs">Import runs (JSON)</button>
+          <button class="basic-button" id="xp-export-history-csv">Export this run history (CSV)</button>
+          <button class="basic-button" id="xp-grid-search">Run mini grid search</button>
+        </div>
+
+        <div class="xp-delta-bar">
+          <span class="xp-badge" id="xp-best-badge">Best run: &mdash;</span>
+          <span class="xp-delta" id="xp-current-delta">Current vs best: &mdash;</span>
+        </div>
+
+        <div class="xp-block">
+          <div class="xp-block-title">
+            Leaderboard
+            <span class="xp-sort">sort:
+              <select id="xp-sort-by">
+                <option value="accTest">test accuracy</option>
+                <option value="lossTest">test loss</option>
+                <option value="accTrain">train accuracy</option>
+                <option value="iter">epoch</option>
+              </select>
+            </span>
+          </div>
+          <div id="xp-leaderboard" class="xp-table-wrap"></div>
+        </div>
+
+        <div class="xp-block">
+          <div class="xp-block-title">Overlay comparison</div>
+          <div class="xp-metric-toggle">
+            metric:
+            <label><input type="radio" name="xp-overlay-metric" value="loss" checked> loss</label>
+            <label><input type="radio" name="xp-overlay-metric" value="acc"> accuracy</label>
+          </div>
+          <svg id="xp-overlay-chart" width="440" height="220"></svg>
+          <div id="xp-overlay-legend" class="xp-legend"></div>
+        </div>
+
+        <div class="xp-block">
+          <div class="xp-block-title">Compare A / B</div>
+          <div class="xp-ab-pickers">
+            A: <select id="xp-compare-a"></select>
+            B: <select id="xp-compare-b"></select>
+          </div>
+          <div id="xp-compare-table" class="xp-table-wrap"></div>
+        </div>
+
+        <div class="xp-block">
+          <div class="xp-block-title">Mini grid search (test accuracy)</div>
+          <div id="xp-grid-results" class="xp-table-wrap"></div>
+        </div>
+
+        <textarea id="xp-io-text" rows="5" style="width:100%;box-sizing:border-box;margin-top:8px;" placeholder="Runs JSON appears here on export; paste JSON here then click Import runs."></textarea>
+      </div>
     </div>
 
     <div class="l--page">

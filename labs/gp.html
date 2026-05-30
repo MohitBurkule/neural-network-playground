@@ -1,0 +1,328 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Gaussian Process Regression Lab</title>
+  <style>
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+    body {
+      font-family: 'Segoe UI', Arial, sans-serif;
+      background: #0f1117;
+      color: #e0e0e0;
+      min-height: 100vh;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      padding: 24px 16px 40px;
+    }
+
+    h1 {
+      font-size: 1.6rem;
+      font-weight: 600;
+      color: #7eb8f7;
+      margin-bottom: 4px;
+      letter-spacing: 0.5px;
+    }
+
+    .subtitle {
+      font-size: 0.85rem;
+      color: #888;
+      margin-bottom: 20px;
+    }
+
+    .main-layout {
+      display: flex;
+      gap: 20px;
+      align-items: flex-start;
+      flex-wrap: wrap;
+      justify-content: center;
+    }
+
+    /* ── Plot panel ── */
+    .plot-panel {
+      background: #1a1d27;
+      border: 1px solid #2d3045;
+      border-radius: 10px;
+      padding: 16px;
+    }
+
+    #gp-plot .axis path,
+    #gp-plot .axis line { stroke: #444; }
+    #gp-plot .axis text { fill: #aaa; font-size: 11px; }
+    #gp-plot .axis-label { fill: #aaa; font-size: 12px; }
+    #gp-plot .zero-line {
+      stroke: #444;
+      stroke-dasharray: 4 4;
+      stroke-width: 1;
+    }
+    #gp-plot .confidence-band {
+      fill: #4a90e2;
+      fill-opacity: 0.18;
+    }
+    #gp-plot .mean-line {
+      fill: none;
+      stroke: #4a90e2;
+      stroke-width: 2.5;
+    }
+    #gp-plot .sample-path {
+      fill: none;
+      stroke-width: 1.3;
+      opacity: 0.7;
+    }
+    #gp-plot .train-point {
+      fill: #f5a623;
+      stroke: #fff;
+      stroke-width: 1.5;
+    }
+
+    #kernel-info {
+      margin-top: 8px;
+      font-size: 0.78rem;
+      color: #7eb8f7;
+      font-family: monospace;
+      background: #12141e;
+      border-radius: 6px;
+      padding: 6px 12px;
+      text-align: center;
+    }
+
+    .click-hint {
+      margin-top: 6px;
+      font-size: 0.75rem;
+      color: #555;
+      text-align: center;
+    }
+
+    /* ── Controls panel ── */
+    .controls-panel {
+      background: #1a1d27;
+      border: 1px solid #2d3045;
+      border-radius: 10px;
+      padding: 18px 20px;
+      width: 260px;
+      display: flex;
+      flex-direction: column;
+      gap: 18px;
+    }
+
+    .section-title {
+      font-size: 0.72rem;
+      text-transform: uppercase;
+      letter-spacing: 1px;
+      color: #666;
+      margin-bottom: 8px;
+    }
+
+    .control-group {
+      display: flex;
+      flex-direction: column;
+      gap: 12px;
+    }
+
+    .row {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+    }
+
+    label {
+      font-size: 0.82rem;
+      color: #bbb;
+      min-width: 80px;
+    }
+
+    select {
+      background: #12141e;
+      border: 1px solid #3a3d55;
+      border-radius: 5px;
+      color: #e0e0e0;
+      padding: 4px 8px;
+      font-size: 0.83rem;
+      flex: 1;
+      cursor: pointer;
+    }
+
+    input[type="range"] {
+      flex: 1;
+      accent-color: #4a90e2;
+      cursor: pointer;
+    }
+
+    .val-display {
+      font-size: 0.78rem;
+      color: #7eb8f7;
+      font-family: monospace;
+      min-width: 42px;
+      text-align: right;
+    }
+
+    .checkbox-row {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      font-size: 0.83rem;
+      color: #bbb;
+      cursor: pointer;
+    }
+
+    input[type="checkbox"] {
+      accent-color: #4a90e2;
+      width: 15px;
+      height: 15px;
+      cursor: pointer;
+    }
+
+    button {
+      background: #2a3050;
+      border: 1px solid #4a90e2;
+      border-radius: 6px;
+      color: #7eb8f7;
+      padding: 7px 12px;
+      font-size: 0.82rem;
+      cursor: pointer;
+      transition: background 0.15s;
+      width: 100%;
+    }
+    button:hover { background: #364070; }
+
+    .btn-danger {
+      border-color: #e74c3c;
+      color: #e74c3c;
+    }
+    .btn-danger:hover { background: #3a2020; }
+
+    .divider {
+      border: none;
+      border-top: 1px solid #2d3045;
+    }
+
+    /* Legend */
+    .legend {
+      display: flex;
+      gap: 14px;
+      font-size: 0.75rem;
+      color: #999;
+      flex-wrap: wrap;
+      margin-top: 8px;
+    }
+    .legend-item { display: flex; align-items: center; gap: 5px; }
+    .leg-color {
+      width: 24px;
+      height: 4px;
+      border-radius: 2px;
+    }
+    .leg-band {
+      width: 24px;
+      height: 10px;
+      border-radius: 2px;
+      background: rgba(74, 144, 226, 0.25);
+      border: 1px solid rgba(74, 144, 226, 0.5);
+    }
+    .leg-dot {
+      width: 10px;
+      height: 10px;
+      border-radius: 50%;
+      background: #f5a623;
+      border: 1.5px solid #fff;
+    }
+  </style>
+</head>
+<body>
+
+<h1>Gaussian Process Regression</h1>
+<p class="subtitle">Click the plot to add training points — the GP posterior updates live.</p>
+
+<div class="main-layout">
+
+  <!-- Plot panel -->
+  <div class="plot-panel">
+    <svg id="gp-plot"></svg>
+    <div class="legend">
+      <div class="legend-item"><div class="leg-color" style="background:#4a90e2"></div><span>Posterior mean</span></div>
+      <div class="legend-item"><div class="leg-band"></div><span>±2σ band</span></div>
+      <div class="legend-item"><div class="leg-dot"></div><span>Training points</span></div>
+    </div>
+    <div id="kernel-info">Kernel: rbf | ℓ=0.50 | σ²=1.00 | noise=0.050</div>
+    <div class="click-hint">Click to add points (max 60). Drag not supported — single clicks only.</div>
+  </div>
+
+  <!-- Controls panel -->
+  <div class="controls-panel">
+
+    <!-- Kernel section -->
+    <div>
+      <div class="section-title">Kernel</div>
+      <div class="control-group">
+        <div class="row">
+          <label>Kernel</label>
+          <select id="kernel-select">
+            <option value="rbf">RBF (squared-exp)</option>
+            <option value="matern32">Matérn 3/2</option>
+            <option value="periodic">Periodic</option>
+          </select>
+        </div>
+        <div class="row">
+          <label>Lengthscale</label>
+          <input type="range" id="ls-slider" min="-2.3" max="1.5" step="0.05" value="-0.693" />
+          <span class="val-display" id="ls-slider-val">0.500</span>
+        </div>
+        <div class="row">
+          <label>Signal σ²</label>
+          <input type="range" id="sv-slider" min="-2" max="2" step="0.05" value="0" />
+          <span class="val-display" id="sv-slider-val">1.000</span>
+        </div>
+        <div class="row">
+          <label>Noise σ²</label>
+          <input type="range" id="nv-slider" min="-6" max="1" step="0.1" value="-2.996" />
+          <span class="val-display" id="nv-slider-val">0.050</span>
+        </div>
+        <div class="row" id="period-row" style="display:none">
+          <label>Period</label>
+          <input type="range" id="period-slider" min="-1.5" max="1.5" step="0.05" value="0" />
+          <span class="val-display" id="period-slider-val">1.000</span>
+        </div>
+      </div>
+    </div>
+
+    <hr class="divider" />
+
+    <!-- Samples section -->
+    <div>
+      <div class="section-title">Posterior Samples</div>
+      <div class="control-group">
+        <label class="checkbox-row">
+          <input type="checkbox" id="show-samples" />
+          Show 5 posterior samples
+        </label>
+        <button id="resample-btn">Resample functions</button>
+      </div>
+    </div>
+
+    <hr class="divider" />
+
+    <!-- Target / presets section -->
+    <div>
+      <div class="section-title">Training Data</div>
+      <div class="control-group">
+        <div class="row">
+          <label>Target fn</label>
+          <select id="target-select">
+            <option value="sine">Sine</option>
+            <option value="step">Step</option>
+            <option value="sinc">Sinc</option>
+          </select>
+        </div>
+        <button id="sample-target-btn">Sample 15 pts from target</button>
+        <button id="clear-btn" class="btn-danger">Clear all points</button>
+      </div>
+    </div>
+
+  </div>
+
+</div>
+
+<script src="bundlegp.js"></script>
+</body>
+</html>

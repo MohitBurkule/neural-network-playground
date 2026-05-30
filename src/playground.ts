@@ -1216,6 +1216,11 @@ function updateUI(firstStep = false) {
   updateAnalysis();
   updateTrainingConfigSummary();
   interpAfterUpdate();
+  // Experiments: record downsampled per-epoch history + refresh live readouts.
+  if (typeof xpRecordLiveHistory === "function") {
+    xpRecordLiveHistory();
+    xpRenderBadgeAndDelta();
+  }
 
   // Now "draw" it as JavaScript
   d3.select("#network-as-javascript").text(nn.compileNetworkToJs(network));
@@ -1700,6 +1705,7 @@ function reset(onStartup=false) {
   lineChart.reset();
   trainingHistory = [];
   weightMagHistory = [];
+  xpResetLiveHistory();
   analysisStep = 0;
   state.serialize();
   if (!onStartup) {
@@ -3820,6 +3826,562 @@ function makeInterpGUI(): void {
   refreshNeuronSelects();
 }
 
+// ============================================================================
+// Experiments: run tracking & comparison (features 1-12).
+// ============================================================================
+
+interface SavedRun {
+  id: string;
+  name: string;
+  hash: string;            // serialized State (config) for reproduction.
+  summary: string;         // human-readable config summary.
+  iter: number;
+  lossTrain: number;
+  lossTest: number;
+  accTrain: number;
+  accTest: number;
+  problem: string;
+  // Downsampled per-epoch metric history for overlay comparison.
+  history: Array<{iter: number; lossTrain: number; lossTest: number;
+      accTrain: number; accTest: number}>;
+}
+
+const XP_STORAGE_KEY = "nn-playground-runs";
+let xpRuns: SavedRun[] = [];
+let xpSortBy = "accTest";
+let xpOverlayMetric = "loss";
+// Live per-epoch history of the currently active run (downsampled on save).
+let xpLiveHistory: Array<{iter: number; lossTrain: number; lossTest: number;
+    accTrain: number; accTest: number}> = [];
+
+const XP_PALETTE = ["#e8710a", "#0877bd", "#16a085", "#8e44ad", "#c0392b",
+  "#27ae60", "#2980b9", "#d35400"];
+
+function xpIsClassification(): boolean {
+  return state.problem === Problem.CLASSIFICATION;
+}
+
+/** Current run's accuracy (NaN for regression). */
+function xpCurrentAcc(data: Example2D[]): number {
+  if (!xpIsClassification() || !network) { return NaN; }
+  return computeClassMetrics(network, data).accuracy;
+}
+
+/** Record one downsampled live-history sample for the active run. */
+function xpRecordLiveHistory(): void {
+  let accTrain = xpCurrentAcc(state.trainData);
+  let accTest = xpCurrentAcc(state.testData);
+  xpLiveHistory.push({iter, lossTrain, lossTest, accTrain, accTest});
+  // Downsample: keep at most ~120 evenly-spaced samples.
+  if (xpLiveHistory.length > 240) {
+    let kept: typeof xpLiveHistory = [];
+    for (let i = 0; i < xpLiveHistory.length; i += 2) {
+      kept.push(xpLiveHistory[i]);
+    }
+    xpLiveHistory = kept;
+  }
+}
+
+function xpResetLiveHistory(): void {
+  xpLiveHistory = [];
+}
+
+/** Feature 10: auto-name from key hyperparameters. */
+function xpAutoName(): string {
+  let act = getKeyFromValue(activations, state.activation) || "act";
+  let opt = state.optimizer;
+  let lr = state.learningRate;
+  let shape = state.networkShape.length ? state.networkShape.join("x") : "0";
+  return `${act}·${opt}·lr${lr}·${shape}`;
+}
+
+function xpConfigSummary(): string {
+  let act = getKeyFromValue(activations, state.activation) || "?";
+  let ds = xpIsClassification()
+    ? (getKeyFromValue(datasets, state.dataset) || "?")
+    : (getKeyFromValue(regDatasets, state.regDataset) || "?");
+  let shape = state.networkShape.length ? state.networkShape.join("-") : "none";
+  return `${ds} | ${shape} | ${act}/${state.optimizer} | lr ${state.learningRate}` +
+    ` | bs ${state.batchSize}`;
+}
+
+function xpLoadFromStorage(): void {
+  try {
+    if (typeof localStorage === "undefined") { return; }
+    let raw = localStorage.getItem(XP_STORAGE_KEY);
+    if (!raw) { return; }
+    let parsed = JSON.parse(raw);
+    if (Array.isArray(parsed)) { xpRuns = parsed; }
+  } catch (e) { /* ignore corrupt storage */ }
+}
+
+function xpPersist(): void {
+  try {
+    if (typeof localStorage === "undefined") { return; }
+    localStorage.setItem(XP_STORAGE_KEY, JSON.stringify(xpRuns));
+  } catch (e) { /* ignore quota errors */ }
+}
+
+function xpDownsampleHistory(): SavedRun["history"] {
+  let src = xpLiveHistory.length ? xpLiveHistory : trainingHistory;
+  let max = 60;
+  if (src.length <= max) { return src.map(h => ({...h})); }
+  let step = Math.ceil(src.length / max);
+  let out: SavedRun["history"] = [];
+  for (let i = 0; i < src.length; i += step) {
+    out.push({...src[i]});
+  }
+  return out;
+}
+
+function xpSaveRun(): void {
+  let suggested = xpAutoName();
+  let name = suggested;
+  if (typeof window !== "undefined" && typeof window.prompt === "function") {
+    let entered = window.prompt("Name this run:", suggested);
+    if (entered == null) { return; }       // cancelled
+    if (entered.trim() !== "") { name = entered.trim(); }
+  }
+  // Capture the serialized config without disturbing the URL permanently:
+  // state.serialize() writes to the hash, which already reflects current state.
+  state.serialize();
+  let hash = (typeof window !== "undefined") ? window.location.hash.slice(1) : "";
+  let run: SavedRun = {
+    id: "run-" + Date.now() + "-" + Math.floor(Math.random() * 1e6),
+    name,
+    hash,
+    summary: xpConfigSummary(),
+    iter,
+    lossTrain,
+    lossTest,
+    accTrain: xpCurrentAcc(state.trainData),
+    accTest: xpCurrentAcc(state.testData),
+    problem: getKeyFromValue(problems, state.problem),
+    history: xpDownsampleHistory()
+  };
+  xpRuns.push(run);
+  xpPersist();
+  xpRenderAll();
+}
+
+function xpDeleteRun(id: string): void {
+  xpRuns = xpRuns.filter(r => r.id !== id);
+  xpPersist();
+  xpRenderAll();
+}
+
+function xpClearRuns(): void {
+  if (typeof window !== "undefined" && typeof window.confirm === "function") {
+    if (!window.confirm("Delete all saved runs?")) { return; }
+  }
+  xpRuns = [];
+  xpPersist();
+  xpRenderAll();
+}
+
+/** Feature 3: restore a saved run's CONFIG (apply state, reset). */
+function xpLoadRun(id: string): void {
+  let run = xpRuns.filter(r => r.id === id)[0];
+  if (!run || typeof window === "undefined") { return; }
+  window.location.hash = run.hash;
+  state = State.deserializeState();
+  // Re-filter hidden inputs (mirrors startup behavior).
+  state.getHiddenProps().forEach(prop => {
+    if (prop in INPUTS) { delete INPUTS[prop]; }
+  });
+  // Re-sync controls (d3 .on() replaces handlers, so no double-binding).
+  makeGUI();
+  generateData(false);
+  reset();
+}
+
+function xpBestRun(): SavedRun {
+  let best: SavedRun = null;
+  xpRuns.forEach(r => {
+    if (isNaN(r.accTest)) { return; }
+    if (best == null || r.accTest > best.accTest) { best = r; }
+  });
+  return best;
+}
+
+function xpFmtPct(v: number): string {
+  return isNaN(v) ? "—" : (v * 100).toFixed(1) + "%";
+}
+function xpFmtNum(v: number): string {
+  return isNaN(v) ? "—" : v.toFixed(3);
+}
+
+function xpSortedRuns(): SavedRun[] {
+  let arr = xpRuns.slice();
+  let key = xpSortBy;
+  arr.sort((a, b) => {
+    let av = (a as any)[key];
+    let bv = (b as any)[key];
+    if (isNaN(av)) { av = -Infinity; }
+    if (isNaN(bv)) { bv = -Infinity; }
+    // Loss: lower is better (ascending); others: higher is better.
+    if (key === "lossTest" || key === "lossTrain") { return av - bv; }
+    return bv - av;
+  });
+  return arr;
+}
+
+function xpEscape(s: string): string {
+  return String(s).replace(/&/g, "&amp;").replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;").replace(/"/g, "&quot;");
+}
+
+/** Features 2 & 11: leaderboard + best-run highlight. */
+function xpRenderLeaderboard(): void {
+  let wrap = d3.select("#xp-leaderboard");
+  if (wrap.empty()) { return; }
+  if (!xpRuns.length) {
+    wrap.html("<div class=\"xp-empty\">No saved runs yet. Click \"Save run\".</div>");
+    return;
+  }
+  let best = xpBestRun();
+  let rows = xpSortedRuns();
+  let html = "<table class=\"xp-table\"><thead><tr>" +
+    "<th>Name</th><th>Config</th><th>Epoch</th>" +
+    "<th>Train loss</th><th>Test loss</th>" +
+    "<th>Train acc</th><th>Test acc</th><th></th></tr></thead><tbody>";
+  rows.forEach(r => {
+    let isBest = best && r.id === best.id;
+    html += "<tr class=\"" + (isBest ? "xp-best-row" : "") + "\">" +
+      "<td>" + xpEscape(r.name) + (isBest ? " ★" : "") + "</td>" +
+      "<td>" + xpEscape(r.summary) + "</td>" +
+      "<td>" + r.iter + "</td>" +
+      "<td>" + xpFmtNum(r.lossTrain) + "</td>" +
+      "<td>" + xpFmtNum(r.lossTest) + "</td>" +
+      "<td>" + xpFmtPct(r.accTrain) + "</td>" +
+      "<td>" + xpFmtPct(r.accTest) + "</td>" +
+      "<td class=\"xp-row-actions\">" +
+        "<button data-xp-load=\"" + r.id + "\">Load</button>" +
+        "<button data-xp-del=\"" + r.id + "\">Del</button>" +
+      "</td></tr>";
+  });
+  html += "</tbody></table>";
+  wrap.html(html);
+  wrap.selectAll("button[data-xp-load]").on("click", function() {
+    xpLoadRun((this as HTMLElement).getAttribute("data-xp-load"));
+  });
+  wrap.selectAll("button[data-xp-del]").on("click", function() {
+    xpDeleteRun((this as HTMLElement).getAttribute("data-xp-del"));
+  });
+}
+
+/** Feature 11/12: best badge + live current-vs-best delta. */
+function xpRenderBadgeAndDelta(): void {
+  let best = xpBestRun();
+  let badge = d3.select("#xp-best-badge");
+  if (!badge.empty()) {
+    if (best) {
+      badge.classed("has-best", true)
+        .text("Best run: " + best.name + " (" + xpFmtPct(best.accTest) + ")");
+    } else {
+      badge.classed("has-best", false).text("Best run: —");
+    }
+  }
+  let deltaEl = d3.select("#xp-current-delta");
+  if (!deltaEl.empty()) {
+    if (best && xpIsClassification() && network) {
+      let cur = xpCurrentAcc(state.testData);
+      let d = cur - best.accTest;
+      let sign = d >= 0 ? "+" : "";
+      deltaEl.text("Current vs best: " + xpFmtPct(cur) +
+        " (" + sign + (d * 100).toFixed(1) + " pts)");
+    } else if (best) {
+      let d = lossTest - best.lossTest;
+      let sign = d >= 0 ? "+" : "";
+      deltaEl.text("Current vs best (test loss): " + xpFmtNum(lossTest) +
+        " (" + sign + d.toFixed(3) + ")");
+    } else {
+      deltaEl.text("Current vs best: —");
+    }
+  }
+}
+
+/** Feature 5: overlay comparison chart of saved runs' curves. */
+function xpRenderOverlay(): void {
+  let svgSel = d3.select("#xp-overlay-chart");
+  if (svgSel.empty()) { return; }
+  let svg = svgSel as any;
+  svg.selectAll("*").remove();
+  let legend = d3.select("#xp-overlay-legend");
+  if (!legend.empty()) { legend.html(""); }
+  let runs = xpRuns.filter(r => r.history && r.history.length > 1);
+  if (!runs.length) {
+    svg.append("text").attr("x", 12).attr("y", 24)
+      .attr("fill", "#999").attr("font-size", "12px")
+      .text("Save runs to compare their curves here.");
+    return;
+  }
+  let W = +svg.attr("width");
+  let H = +svg.attr("height");
+  let m = {top: 12, right: 12, bottom: 26, left: 40};
+  let iw = W - m.left - m.right;
+  let ih = H - m.top - m.bottom;
+  let useAcc = xpOverlayMetric === "acc";
+  let valueOf = (h: SavedRun["history"][0]) =>
+    useAcc ? h.accTest : h.lossTest;
+  let maxIter = 1, maxVal = useAcc ? 1 : 1e-9, minVal = 0;
+  runs.forEach(r => {
+    r.history.forEach(h => {
+      if (h.iter > maxIter) { maxIter = h.iter; }
+      let v = valueOf(h);
+      if (!isNaN(v) && v > maxVal) { maxVal = v; }
+    });
+  });
+  if (useAcc) { maxVal = 1; }
+  let xScale = d3.scaleLinear().domain([0, maxIter]).range([0, iw]);
+  let yScale = d3.scaleLinear().domain([minVal, maxVal]).range([ih, 0]);
+  let g = svg.append("g")
+    .attr("transform", "translate(" + m.left + "," + m.top + ")");
+  // Axes (lightweight).
+  g.append("line").attr("x1", 0).attr("y1", ih).attr("x2", iw).attr("y2", ih)
+    .attr("stroke", "#ccc");
+  g.append("line").attr("x1", 0).attr("y1", 0).attr("x2", 0).attr("y2", ih)
+    .attr("stroke", "#ccc");
+  g.append("text").attr("x", -4).attr("y", 0).attr("text-anchor", "end")
+    .attr("font-size", "9px").attr("fill", "#999").text(maxVal.toFixed(2));
+  g.append("text").attr("x", -4).attr("y", ih).attr("text-anchor", "end")
+    .attr("font-size", "9px").attr("fill", "#999").text(minVal.toFixed(2));
+  let line = d3.line<SavedRun["history"][0]>()
+    .defined(h => !isNaN(valueOf(h)))
+    .x(h => xScale(h.iter))
+    .y(h => yScale(valueOf(h)));
+  runs.forEach((r, i) => {
+    let color = XP_PALETTE[i % XP_PALETTE.length];
+    g.append("path").datum(r.history)
+      .attr("fill", "none").attr("stroke", color).attr("stroke-width", 1.5)
+      .attr("d", line as any);
+    if (!legend.empty()) {
+      let item = legend.append("div").attr("class", "xp-legend-item");
+      item.append("span").attr("class", "xp-swatch")
+        .style("background", color);
+      item.append("span").text(r.name);
+    }
+  });
+}
+
+/** Feature 6: compare A/B configs (diff-highlight) + final metrics. */
+function xpPopulateComparePickers(): void {
+  let a = d3.select("#xp-compare-a");
+  let b = d3.select("#xp-compare-b");
+  if (a.empty() || b.empty()) { return; }
+  let prevA = a.property("value");
+  let prevB = b.property("value");
+  let opts = "<option value=\"\">—</option>" + xpRuns.map(r =>
+    "<option value=\"" + r.id + "\">" + xpEscape(r.name) + "</option>").join("");
+  a.html(opts);
+  b.html(opts);
+  a.property("value", prevA);
+  b.property("value", prevB);
+}
+
+function xpRunConfigMap(run: SavedRun): {[k: string]: string} {
+  let map: {[k: string]: string} = {};
+  (run.hash || "").split("&").forEach(kv => {
+    let idx = kv.indexOf("=");
+    if (idx > 0) { map[kv.slice(0, idx)] = kv.slice(idx + 1); }
+  });
+  return map;
+}
+
+function xpRenderCompare(): void {
+  let wrap = d3.select("#xp-compare-table");
+  if (wrap.empty()) { return; }
+  let aId = d3.select("#xp-compare-a").property("value");
+  let bId = d3.select("#xp-compare-b").property("value");
+  let a = xpRuns.filter(r => r.id === aId)[0];
+  let b = xpRuns.filter(r => r.id === bId)[0];
+  if (!a || !b) {
+    wrap.html("<div class=\"xp-empty\">Pick two runs to compare.</div>");
+    return;
+  }
+  let ma = xpRunConfigMap(a);
+  let mb = xpRunConfigMap(b);
+  let keys: string[] = [];
+  let seen: {[k: string]: boolean} = {};
+  Object.keys(ma).concat(Object.keys(mb)).forEach(k => {
+    if (!seen[k]) { seen[k] = true; keys.push(k); }
+  });
+  keys.sort();
+  let html = "<table class=\"xp-table\"><thead><tr><th>Hyperparameter</th>" +
+    "<th>" + xpEscape(a.name) + "</th><th>" + xpEscape(b.name) +
+    "</th></tr></thead><tbody>";
+  keys.forEach(k => {
+    let va = ma[k] == null ? "—" : ma[k];
+    let vb = mb[k] == null ? "—" : mb[k];
+    let diff = va !== vb;
+    let cls = diff ? " class=\"xp-diff\"" : "";
+    html += "<tr><td>" + xpEscape(k) + "</td><td" + cls + ">" +
+      xpEscape(va) + "</td><td" + cls + ">" + xpEscape(vb) + "</td></tr>";
+  });
+  // Final metrics rows.
+  let metricRow = (label: string, fa: string, fb: string) =>
+    "<tr><td><b>" + label + "</b></td><td>" + fa + "</td><td>" + fb + "</td></tr>";
+  html += metricRow("epoch", String(a.iter), String(b.iter));
+  html += metricRow("test loss", xpFmtNum(a.lossTest), xpFmtNum(b.lossTest));
+  html += metricRow("test acc", xpFmtPct(a.accTest), xpFmtPct(b.accTest));
+  html += "</tbody></table>";
+  wrap.html(html);
+}
+
+/** Feature 8: export/import all runs as JSON. */
+function xpExportRuns(): void {
+  let json = JSON.stringify(xpRuns, null, 2);
+  let ta = d3.select("#xp-io-text");
+  if (!ta.empty()) { ta.property("value", json); }
+  downloadText("nn-playground-runs.json", json, "application/json");
+}
+
+function xpImportRuns(): void {
+  let ta = d3.select("#xp-io-text");
+  if (ta.empty()) { return; }
+  let text = ta.property("value") as string;
+  try {
+    let parsed = JSON.parse(text);
+    if (!Array.isArray(parsed)) { throw new Error("not an array"); }
+    // Merge by id (imported wins).
+    let byId: {[k: string]: SavedRun} = {};
+    xpRuns.forEach(r => { byId[r.id] = r; });
+    parsed.forEach((r: SavedRun) => { if (r && r.id) { byId[r.id] = r; } });
+    xpRuns = Object.keys(byId).map(k => byId[k]);
+    xpPersist();
+    xpRenderAll();
+  } catch (e) {
+    if (!ta.empty()) {
+      d3.select("#xp-io-text").property("value",
+        "Import failed: invalid JSON.\n\n" + text);
+    }
+  }
+}
+
+/** Feature 9: export the current run's per-epoch metric history as CSV. */
+function xpExportLiveHistoryCsv(): void {
+  let src = xpLiveHistory.length ? xpLiveHistory : trainingHistory;
+  let rows = ["iter,lossTrain,lossTest,accTrain,accTest"];
+  src.forEach(h => {
+    rows.push(h.iter + "," + h.lossTrain + "," + h.lossTest + "," +
+      (isNaN(h.accTrain) ? "" : h.accTrain) + "," +
+      (isNaN(h.accTest) ? "" : h.accTest));
+  });
+  downloadText("run-history.csv", rows.join("\n"), "text/csv");
+}
+
+/** Feature 7: mini grid search over lr x hidden-size on throwaway networks. */
+function xpGridSearch(): void {
+  let resWrap = d3.select("#xp-grid-results");
+  if (resWrap.empty()) { return; }
+  if (!xpIsClassification() || state.threeD) {
+    resWrap.html("<div class=\"xp-empty\">Grid search requires 2D " +
+      "classification mode.</div>");
+    return;
+  }
+  let lrs = [0.01, 0.03, 0.1];
+  let sizes = [2, 4, 8];        // single hidden layer of N units.
+  let steps = 30;
+  let inputIds = constructInputIds();
+  let numInputs = constructInput(0, 0).length;
+  let errFunc = currentErrorFunc();
+  let train = state.trainData;
+  let test = state.testData;
+  // Results[sizeIdx][lrIdx] = test accuracy.
+  let results: number[][] = [];
+  let bestAcc = -1, bestCell = "";
+  sizes.forEach((size, si) => {
+    results[si] = [];
+    lrs.forEach((lr, li) => {
+      let shape = [numInputs, size, 1];
+      let net = nn.buildNetwork(shape, state.activation, nn.Activations.TANH,
+        inputIds, false);
+      nn.applyWeightInit(net, weightInits[state.weightInit]);
+      let optType = optimizers[state.optimizer] || nn.OptimizerType.SGD;
+      for (let s = 0; s < steps; s++) {
+        train.forEach((point, i) => {
+          nn.forwardProp(net, constructInput(point.x, point.y), null, false);
+          nn.backProp(net, point.label, errFunc);
+          if ((i + 1) % state.batchSize === 0) {
+            nn.updateWeights(net, lr, state.regularization,
+              state.regularizationRate, optType, 0, 0);
+          }
+        });
+      }
+      // Test accuracy on the throwaway net.
+      let correct = 0;
+      test.forEach(p => {
+        let o = nn.forwardProp(net, constructInput(p.x, p.y), null, false);
+        if (Math.sign(o) === Math.sign(p.label)) { correct++; }
+      });
+      let acc = test.length ? correct / test.length : 0;
+      results[si][li] = acc;
+      if (acc > bestAcc) {
+        bestAcc = acc;
+        bestCell = "size " + size + ", lr " + lr;
+      }
+    });
+  });
+  // Render as a heatmap-styled table.
+  let heat = (v: number) => {
+    let t = Math.max(0, Math.min(1, v));
+    let r = Math.round(255 + (39 - 255) * t);
+    let g = Math.round(255 + (174 - 255) * t);
+    let b = Math.round(255 + (96 - 255) * t);
+    return "rgb(" + r + "," + g + "," + b + ")";
+  };
+  let html = "<div class=\"xp-grid-caption\">Best: " + xpEscape(bestCell) +
+    " → " + xpFmtPct(bestAcc) + "</div>";
+  html += "<table class=\"xp-table\"><thead><tr><th>hidden \\ lr</th>";
+  lrs.forEach(lr => { html += "<th>" + lr + "</th>"; });
+  html += "</tr></thead><tbody>";
+  sizes.forEach((size, si) => {
+    html += "<tr><th>" + size + "</th>";
+    lrs.forEach((lr, li) => {
+      let acc = results[si][li];
+      html += "<td class=\"xp-heat\" style=\"background:" + heat(acc) + "\">" +
+        xpFmtPct(acc) + "</td>";
+    });
+    html += "</tr>";
+  });
+  html += "</tbody></table>";
+  resWrap.html(html);
+  // Throwaway nets used local vars only; main model (network) is untouched.
+}
+
+function xpRenderAll(): void {
+  xpRenderLeaderboard();
+  xpRenderBadgeAndDelta();
+  xpRenderOverlay();
+  xpPopulateComparePickers();
+  xpRenderCompare();
+}
+
+function initExperimentsGUI(): void {
+  xpLoadFromStorage();
+  d3.select("#experiments-toggle").on("click", () => {
+    let sec = document.getElementById("experiments-section");
+    if (sec) { sec.classList.toggle("collapsed"); }
+  });
+  d3.select("#xp-save-run").on("click", () => xpSaveRun());
+  d3.select("#xp-clear-runs").on("click", () => xpClearRuns());
+  d3.select("#xp-export-runs").on("click", () => xpExportRuns());
+  d3.select("#xp-import-runs").on("click", () => xpImportRuns());
+  d3.select("#xp-export-history-csv").on("click", () => xpExportLiveHistoryCsv());
+  d3.select("#xp-grid-search").on("click", () => xpGridSearch());
+  d3.select("#xp-sort-by").on("change", function() {
+    xpSortBy = (this as HTMLSelectElement).value;
+    xpRenderLeaderboard();
+  });
+  d3.selectAll("input[name='xp-overlay-metric']").on("change", function() {
+    xpOverlayMetric = (this as HTMLInputElement).value;
+    xpRenderOverlay();
+  });
+  d3.select("#xp-compare-a").on("change", () => xpRenderCompare());
+  d3.select("#xp-compare-b").on("change", () => xpRenderCompare());
+  xpRenderAll();
+}
+
 drawDatasetThumbnails();
 initTutorial();
 makeGUI();
@@ -5165,3 +5727,4 @@ function initA11yFeatures(): void {
 initTrainingMethodologyGUI();
 initUXFeatures();
 initA11yFeatures();
+initExperimentsGUI();

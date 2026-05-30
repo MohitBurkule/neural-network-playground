@@ -89676,6 +89676,17 @@ function compileNetworkToJs(network) {
 
 },{}],1037:[function(require,module,exports){
 "use strict";
+var __assign = (this && this.__assign) || function () {
+    __assign = Object.assign || function(t) {
+        for (var s, i = 1, n = arguments.length; i < n; i++) {
+            s = arguments[i];
+            for (var p in s) if (Object.prototype.hasOwnProperty.call(s, p))
+                t[p] = s[p];
+        }
+        return t;
+    };
+    return __assign.apply(this, arguments);
+};
 Object.defineProperty(exports, "__esModule", { value: true });
 exports.getOutputWeights = getOutputWeights;
 var nn = require("./nn");
@@ -90640,6 +90651,10 @@ function updateUI(firstStep) {
     updateAnalysis();
     updateTrainingConfigSummary();
     interpAfterUpdate();
+    if (typeof xpRecordLiveHistory === "function") {
+        xpRecordLiveHistory();
+        xpRenderBadgeAndDelta();
+    }
     d3.select("#network-as-javascript").text(nn.compileNetworkToJs(network));
 }
 function pct(v) {
@@ -91045,6 +91060,7 @@ function reset(onStartup) {
     lineChart.reset();
     trainingHistory = [];
     weightMagHistory = [];
+    xpResetLiveHistory();
     analysisStep = 0;
     state.serialize();
     if (!onStartup) {
@@ -93055,6 +93071,558 @@ function makeInterpGUI() {
     d3.select("#ip-contrib").on("click", computeContributions);
     refreshNeuronSelects();
 }
+var XP_STORAGE_KEY = "nn-playground-runs";
+var xpRuns = [];
+var xpSortBy = "accTest";
+var xpOverlayMetric = "loss";
+var xpLiveHistory = [];
+var XP_PALETTE = ["#e8710a", "#0877bd", "#16a085", "#8e44ad", "#c0392b",
+    "#27ae60", "#2980b9", "#d35400"];
+function xpIsClassification() {
+    return state.problem === state_1.Problem.CLASSIFICATION;
+}
+function xpCurrentAcc(data) {
+    if (!xpIsClassification() || !network) {
+        return NaN;
+    }
+    return computeClassMetrics(network, data).accuracy;
+}
+function xpRecordLiveHistory() {
+    var accTrain = xpCurrentAcc(state.trainData);
+    var accTest = xpCurrentAcc(state.testData);
+    xpLiveHistory.push({ iter: iter, lossTrain: lossTrain, lossTest: lossTest, accTrain: accTrain, accTest: accTest });
+    if (xpLiveHistory.length > 240) {
+        var kept = [];
+        for (var i = 0; i < xpLiveHistory.length; i += 2) {
+            kept.push(xpLiveHistory[i]);
+        }
+        xpLiveHistory = kept;
+    }
+}
+function xpResetLiveHistory() {
+    xpLiveHistory = [];
+}
+function xpAutoName() {
+    var act = (0, state_1.getKeyFromValue)(state_1.activations, state.activation) || "act";
+    var opt = state.optimizer;
+    var lr = state.learningRate;
+    var shape = state.networkShape.length ? state.networkShape.join("x") : "0";
+    return "".concat(act, "\u00B7").concat(opt, "\u00B7lr").concat(lr, "\u00B7").concat(shape);
+}
+function xpConfigSummary() {
+    var act = (0, state_1.getKeyFromValue)(state_1.activations, state.activation) || "?";
+    var ds = xpIsClassification()
+        ? ((0, state_1.getKeyFromValue)(state_1.datasets, state.dataset) || "?")
+        : ((0, state_1.getKeyFromValue)(state_1.regDatasets, state.regDataset) || "?");
+    var shape = state.networkShape.length ? state.networkShape.join("-") : "none";
+    return "".concat(ds, " | ").concat(shape, " | ").concat(act, "/").concat(state.optimizer, " | lr ").concat(state.learningRate) +
+        " | bs ".concat(state.batchSize);
+}
+function xpLoadFromStorage() {
+    try {
+        if (typeof localStorage === "undefined") {
+            return;
+        }
+        var raw = localStorage.getItem(XP_STORAGE_KEY);
+        if (!raw) {
+            return;
+        }
+        var parsed = JSON.parse(raw);
+        if (Array.isArray(parsed)) {
+            xpRuns = parsed;
+        }
+    }
+    catch (e) { }
+}
+function xpPersist() {
+    try {
+        if (typeof localStorage === "undefined") {
+            return;
+        }
+        localStorage.setItem(XP_STORAGE_KEY, JSON.stringify(xpRuns));
+    }
+    catch (e) { }
+}
+function xpDownsampleHistory() {
+    var src = xpLiveHistory.length ? xpLiveHistory : trainingHistory;
+    var max = 60;
+    if (src.length <= max) {
+        return src.map(function (h) { return (__assign({}, h)); });
+    }
+    var step = Math.ceil(src.length / max);
+    var out = [];
+    for (var i = 0; i < src.length; i += step) {
+        out.push(__assign({}, src[i]));
+    }
+    return out;
+}
+function xpSaveRun() {
+    var suggested = xpAutoName();
+    var name = suggested;
+    if (typeof window !== "undefined" && typeof window.prompt === "function") {
+        var entered = window.prompt("Name this run:", suggested);
+        if (entered == null) {
+            return;
+        }
+        if (entered.trim() !== "") {
+            name = entered.trim();
+        }
+    }
+    state.serialize();
+    var hash = (typeof window !== "undefined") ? window.location.hash.slice(1) : "";
+    var run = {
+        id: "run-" + Date.now() + "-" + Math.floor(Math.random() * 1e6),
+        name: name,
+        hash: hash,
+        summary: xpConfigSummary(),
+        iter: iter,
+        lossTrain: lossTrain,
+        lossTest: lossTest,
+        accTrain: xpCurrentAcc(state.trainData),
+        accTest: xpCurrentAcc(state.testData),
+        problem: (0, state_1.getKeyFromValue)(state_1.problems, state.problem),
+        history: xpDownsampleHistory()
+    };
+    xpRuns.push(run);
+    xpPersist();
+    xpRenderAll();
+}
+function xpDeleteRun(id) {
+    xpRuns = xpRuns.filter(function (r) { return r.id !== id; });
+    xpPersist();
+    xpRenderAll();
+}
+function xpClearRuns() {
+    if (typeof window !== "undefined" && typeof window.confirm === "function") {
+        if (!window.confirm("Delete all saved runs?")) {
+            return;
+        }
+    }
+    xpRuns = [];
+    xpPersist();
+    xpRenderAll();
+}
+function xpLoadRun(id) {
+    var run = xpRuns.filter(function (r) { return r.id === id; })[0];
+    if (!run || typeof window === "undefined") {
+        return;
+    }
+    window.location.hash = run.hash;
+    state = state_1.State.deserializeState();
+    state.getHiddenProps().forEach(function (prop) {
+        if (prop in INPUTS) {
+            delete INPUTS[prop];
+        }
+    });
+    makeGUI();
+    generateData(false);
+    reset();
+}
+function xpBestRun() {
+    var best = null;
+    xpRuns.forEach(function (r) {
+        if (isNaN(r.accTest)) {
+            return;
+        }
+        if (best == null || r.accTest > best.accTest) {
+            best = r;
+        }
+    });
+    return best;
+}
+function xpFmtPct(v) {
+    return isNaN(v) ? "—" : (v * 100).toFixed(1) + "%";
+}
+function xpFmtNum(v) {
+    return isNaN(v) ? "—" : v.toFixed(3);
+}
+function xpSortedRuns() {
+    var arr = xpRuns.slice();
+    var key = xpSortBy;
+    arr.sort(function (a, b) {
+        var av = a[key];
+        var bv = b[key];
+        if (isNaN(av)) {
+            av = -Infinity;
+        }
+        if (isNaN(bv)) {
+            bv = -Infinity;
+        }
+        if (key === "lossTest" || key === "lossTrain") {
+            return av - bv;
+        }
+        return bv - av;
+    });
+    return arr;
+}
+function xpEscape(s) {
+    return String(s).replace(/&/g, "&amp;").replace(/</g, "&lt;")
+        .replace(/>/g, "&gt;").replace(/"/g, "&quot;");
+}
+function xpRenderLeaderboard() {
+    var wrap = d3.select("#xp-leaderboard");
+    if (wrap.empty()) {
+        return;
+    }
+    if (!xpRuns.length) {
+        wrap.html("<div class=\"xp-empty\">No saved runs yet. Click \"Save run\".</div>");
+        return;
+    }
+    var best = xpBestRun();
+    var rows = xpSortedRuns();
+    var html = "<table class=\"xp-table\"><thead><tr>" +
+        "<th>Name</th><th>Config</th><th>Epoch</th>" +
+        "<th>Train loss</th><th>Test loss</th>" +
+        "<th>Train acc</th><th>Test acc</th><th></th></tr></thead><tbody>";
+    rows.forEach(function (r) {
+        var isBest = best && r.id === best.id;
+        html += "<tr class=\"" + (isBest ? "xp-best-row" : "") + "\">" +
+            "<td>" + xpEscape(r.name) + (isBest ? " ★" : "") + "</td>" +
+            "<td>" + xpEscape(r.summary) + "</td>" +
+            "<td>" + r.iter + "</td>" +
+            "<td>" + xpFmtNum(r.lossTrain) + "</td>" +
+            "<td>" + xpFmtNum(r.lossTest) + "</td>" +
+            "<td>" + xpFmtPct(r.accTrain) + "</td>" +
+            "<td>" + xpFmtPct(r.accTest) + "</td>" +
+            "<td class=\"xp-row-actions\">" +
+            "<button data-xp-load=\"" + r.id + "\">Load</button>" +
+            "<button data-xp-del=\"" + r.id + "\">Del</button>" +
+            "</td></tr>";
+    });
+    html += "</tbody></table>";
+    wrap.html(html);
+    wrap.selectAll("button[data-xp-load]").on("click", function () {
+        xpLoadRun(this.getAttribute("data-xp-load"));
+    });
+    wrap.selectAll("button[data-xp-del]").on("click", function () {
+        xpDeleteRun(this.getAttribute("data-xp-del"));
+    });
+}
+function xpRenderBadgeAndDelta() {
+    var best = xpBestRun();
+    var badge = d3.select("#xp-best-badge");
+    if (!badge.empty()) {
+        if (best) {
+            badge.classed("has-best", true)
+                .text("Best run: " + best.name + " (" + xpFmtPct(best.accTest) + ")");
+        }
+        else {
+            badge.classed("has-best", false).text("Best run: —");
+        }
+    }
+    var deltaEl = d3.select("#xp-current-delta");
+    if (!deltaEl.empty()) {
+        if (best && xpIsClassification() && network) {
+            var cur = xpCurrentAcc(state.testData);
+            var d = cur - best.accTest;
+            var sign = d >= 0 ? "+" : "";
+            deltaEl.text("Current vs best: " + xpFmtPct(cur) +
+                " (" + sign + (d * 100).toFixed(1) + " pts)");
+        }
+        else if (best) {
+            var d = lossTest - best.lossTest;
+            var sign = d >= 0 ? "+" : "";
+            deltaEl.text("Current vs best (test loss): " + xpFmtNum(lossTest) +
+                " (" + sign + d.toFixed(3) + ")");
+        }
+        else {
+            deltaEl.text("Current vs best: —");
+        }
+    }
+}
+function xpRenderOverlay() {
+    var svgSel = d3.select("#xp-overlay-chart");
+    if (svgSel.empty()) {
+        return;
+    }
+    var svg = svgSel;
+    svg.selectAll("*").remove();
+    var legend = d3.select("#xp-overlay-legend");
+    if (!legend.empty()) {
+        legend.html("");
+    }
+    var runs = xpRuns.filter(function (r) { return r.history && r.history.length > 1; });
+    if (!runs.length) {
+        svg.append("text").attr("x", 12).attr("y", 24)
+            .attr("fill", "#999").attr("font-size", "12px")
+            .text("Save runs to compare their curves here.");
+        return;
+    }
+    var W = +svg.attr("width");
+    var H = +svg.attr("height");
+    var m = { top: 12, right: 12, bottom: 26, left: 40 };
+    var iw = W - m.left - m.right;
+    var ih = H - m.top - m.bottom;
+    var useAcc = xpOverlayMetric === "acc";
+    var valueOf = function (h) {
+        return useAcc ? h.accTest : h.lossTest;
+    };
+    var maxIter = 1, maxVal = useAcc ? 1 : 1e-9, minVal = 0;
+    runs.forEach(function (r) {
+        r.history.forEach(function (h) {
+            if (h.iter > maxIter) {
+                maxIter = h.iter;
+            }
+            var v = valueOf(h);
+            if (!isNaN(v) && v > maxVal) {
+                maxVal = v;
+            }
+        });
+    });
+    if (useAcc) {
+        maxVal = 1;
+    }
+    var xScale = d3.scaleLinear().domain([0, maxIter]).range([0, iw]);
+    var yScale = d3.scaleLinear().domain([minVal, maxVal]).range([ih, 0]);
+    var g = svg.append("g")
+        .attr("transform", "translate(" + m.left + "," + m.top + ")");
+    g.append("line").attr("x1", 0).attr("y1", ih).attr("x2", iw).attr("y2", ih)
+        .attr("stroke", "#ccc");
+    g.append("line").attr("x1", 0).attr("y1", 0).attr("x2", 0).attr("y2", ih)
+        .attr("stroke", "#ccc");
+    g.append("text").attr("x", -4).attr("y", 0).attr("text-anchor", "end")
+        .attr("font-size", "9px").attr("fill", "#999").text(maxVal.toFixed(2));
+    g.append("text").attr("x", -4).attr("y", ih).attr("text-anchor", "end")
+        .attr("font-size", "9px").attr("fill", "#999").text(minVal.toFixed(2));
+    var line = d3.line()
+        .defined(function (h) { return !isNaN(valueOf(h)); })
+        .x(function (h) { return xScale(h.iter); })
+        .y(function (h) { return yScale(valueOf(h)); });
+    runs.forEach(function (r, i) {
+        var color = XP_PALETTE[i % XP_PALETTE.length];
+        g.append("path").datum(r.history)
+            .attr("fill", "none").attr("stroke", color).attr("stroke-width", 1.5)
+            .attr("d", line);
+        if (!legend.empty()) {
+            var item = legend.append("div").attr("class", "xp-legend-item");
+            item.append("span").attr("class", "xp-swatch")
+                .style("background", color);
+            item.append("span").text(r.name);
+        }
+    });
+}
+function xpPopulateComparePickers() {
+    var a = d3.select("#xp-compare-a");
+    var b = d3.select("#xp-compare-b");
+    if (a.empty() || b.empty()) {
+        return;
+    }
+    var prevA = a.property("value");
+    var prevB = b.property("value");
+    var opts = "<option value=\"\">—</option>" + xpRuns.map(function (r) {
+        return "<option value=\"" + r.id + "\">" + xpEscape(r.name) + "</option>";
+    }).join("");
+    a.html(opts);
+    b.html(opts);
+    a.property("value", prevA);
+    b.property("value", prevB);
+}
+function xpRunConfigMap(run) {
+    var map = {};
+    (run.hash || "").split("&").forEach(function (kv) {
+        var idx = kv.indexOf("=");
+        if (idx > 0) {
+            map[kv.slice(0, idx)] = kv.slice(idx + 1);
+        }
+    });
+    return map;
+}
+function xpRenderCompare() {
+    var wrap = d3.select("#xp-compare-table");
+    if (wrap.empty()) {
+        return;
+    }
+    var aId = d3.select("#xp-compare-a").property("value");
+    var bId = d3.select("#xp-compare-b").property("value");
+    var a = xpRuns.filter(function (r) { return r.id === aId; })[0];
+    var b = xpRuns.filter(function (r) { return r.id === bId; })[0];
+    if (!a || !b) {
+        wrap.html("<div class=\"xp-empty\">Pick two runs to compare.</div>");
+        return;
+    }
+    var ma = xpRunConfigMap(a);
+    var mb = xpRunConfigMap(b);
+    var keys = [];
+    var seen = {};
+    Object.keys(ma).concat(Object.keys(mb)).forEach(function (k) {
+        if (!seen[k]) {
+            seen[k] = true;
+            keys.push(k);
+        }
+    });
+    keys.sort();
+    var html = "<table class=\"xp-table\"><thead><tr><th>Hyperparameter</th>" +
+        "<th>" + xpEscape(a.name) + "</th><th>" + xpEscape(b.name) +
+        "</th></tr></thead><tbody>";
+    keys.forEach(function (k) {
+        var va = ma[k] == null ? "—" : ma[k];
+        var vb = mb[k] == null ? "—" : mb[k];
+        var diff = va !== vb;
+        var cls = diff ? " class=\"xp-diff\"" : "";
+        html += "<tr><td>" + xpEscape(k) + "</td><td" + cls + ">" +
+            xpEscape(va) + "</td><td" + cls + ">" + xpEscape(vb) + "</td></tr>";
+    });
+    var metricRow = function (label, fa, fb) {
+        return "<tr><td><b>" + label + "</b></td><td>" + fa + "</td><td>" + fb + "</td></tr>";
+    };
+    html += metricRow("epoch", String(a.iter), String(b.iter));
+    html += metricRow("test loss", xpFmtNum(a.lossTest), xpFmtNum(b.lossTest));
+    html += metricRow("test acc", xpFmtPct(a.accTest), xpFmtPct(b.accTest));
+    html += "</tbody></table>";
+    wrap.html(html);
+}
+function xpExportRuns() {
+    var json = JSON.stringify(xpRuns, null, 2);
+    var ta = d3.select("#xp-io-text");
+    if (!ta.empty()) {
+        ta.property("value", json);
+    }
+    downloadText("nn-playground-runs.json", json, "application/json");
+}
+function xpImportRuns() {
+    var ta = d3.select("#xp-io-text");
+    if (ta.empty()) {
+        return;
+    }
+    var text = ta.property("value");
+    try {
+        var parsed = JSON.parse(text);
+        if (!Array.isArray(parsed)) {
+            throw new Error("not an array");
+        }
+        var byId_1 = {};
+        xpRuns.forEach(function (r) { byId_1[r.id] = r; });
+        parsed.forEach(function (r) { if (r && r.id) {
+            byId_1[r.id] = r;
+        } });
+        xpRuns = Object.keys(byId_1).map(function (k) { return byId_1[k]; });
+        xpPersist();
+        xpRenderAll();
+    }
+    catch (e) {
+        if (!ta.empty()) {
+            d3.select("#xp-io-text").property("value", "Import failed: invalid JSON.\n\n" + text);
+        }
+    }
+}
+function xpExportLiveHistoryCsv() {
+    var src = xpLiveHistory.length ? xpLiveHistory : trainingHistory;
+    var rows = ["iter,lossTrain,lossTest,accTrain,accTest"];
+    src.forEach(function (h) {
+        rows.push(h.iter + "," + h.lossTrain + "," + h.lossTest + "," +
+            (isNaN(h.accTrain) ? "" : h.accTrain) + "," +
+            (isNaN(h.accTest) ? "" : h.accTest));
+    });
+    downloadText("run-history.csv", rows.join("\n"), "text/csv");
+}
+function xpGridSearch() {
+    var resWrap = d3.select("#xp-grid-results");
+    if (resWrap.empty()) {
+        return;
+    }
+    if (!xpIsClassification() || state.threeD) {
+        resWrap.html("<div class=\"xp-empty\">Grid search requires 2D " +
+            "classification mode.</div>");
+        return;
+    }
+    var lrs = [0.01, 0.03, 0.1];
+    var sizes = [2, 4, 8];
+    var steps = 30;
+    var inputIds = constructInputIds();
+    var numInputs = constructInput(0, 0).length;
+    var errFunc = currentErrorFunc();
+    var train = state.trainData;
+    var test = state.testData;
+    var results = [];
+    var bestAcc = -1, bestCell = "";
+    sizes.forEach(function (size, si) {
+        results[si] = [];
+        lrs.forEach(function (lr, li) {
+            var shape = [numInputs, size, 1];
+            var net = nn.buildNetwork(shape, state.activation, nn.Activations.TANH, inputIds, false);
+            nn.applyWeightInit(net, state_1.weightInits[state.weightInit]);
+            var optType = state_1.optimizers[state.optimizer] || nn.OptimizerType.SGD;
+            for (var s = 0; s < steps; s++) {
+                train.forEach(function (point, i) {
+                    nn.forwardProp(net, constructInput(point.x, point.y), null, false);
+                    nn.backProp(net, point.label, errFunc);
+                    if ((i + 1) % state.batchSize === 0) {
+                        nn.updateWeights(net, lr, state.regularization, state.regularizationRate, optType, 0, 0);
+                    }
+                });
+            }
+            var correct = 0;
+            test.forEach(function (p) {
+                var o = nn.forwardProp(net, constructInput(p.x, p.y), null, false);
+                if (Math.sign(o) === Math.sign(p.label)) {
+                    correct++;
+                }
+            });
+            var acc = test.length ? correct / test.length : 0;
+            results[si][li] = acc;
+            if (acc > bestAcc) {
+                bestAcc = acc;
+                bestCell = "size " + size + ", lr " + lr;
+            }
+        });
+    });
+    var heat = function (v) {
+        var t = Math.max(0, Math.min(1, v));
+        var r = Math.round(255 + (39 - 255) * t);
+        var g = Math.round(255 + (174 - 255) * t);
+        var b = Math.round(255 + (96 - 255) * t);
+        return "rgb(" + r + "," + g + "," + b + ")";
+    };
+    var html = "<div class=\"xp-grid-caption\">Best: " + xpEscape(bestCell) +
+        " → " + xpFmtPct(bestAcc) + "</div>";
+    html += "<table class=\"xp-table\"><thead><tr><th>hidden \\ lr</th>";
+    lrs.forEach(function (lr) { html += "<th>" + lr + "</th>"; });
+    html += "</tr></thead><tbody>";
+    sizes.forEach(function (size, si) {
+        html += "<tr><th>" + size + "</th>";
+        lrs.forEach(function (lr, li) {
+            var acc = results[si][li];
+            html += "<td class=\"xp-heat\" style=\"background:" + heat(acc) + "\">" +
+                xpFmtPct(acc) + "</td>";
+        });
+        html += "</tr>";
+    });
+    html += "</tbody></table>";
+    resWrap.html(html);
+}
+function xpRenderAll() {
+    xpRenderLeaderboard();
+    xpRenderBadgeAndDelta();
+    xpRenderOverlay();
+    xpPopulateComparePickers();
+    xpRenderCompare();
+}
+function initExperimentsGUI() {
+    xpLoadFromStorage();
+    d3.select("#experiments-toggle").on("click", function () {
+        var sec = document.getElementById("experiments-section");
+        if (sec) {
+            sec.classList.toggle("collapsed");
+        }
+    });
+    d3.select("#xp-save-run").on("click", function () { return xpSaveRun(); });
+    d3.select("#xp-clear-runs").on("click", function () { return xpClearRuns(); });
+    d3.select("#xp-export-runs").on("click", function () { return xpExportRuns(); });
+    d3.select("#xp-import-runs").on("click", function () { return xpImportRuns(); });
+    d3.select("#xp-export-history-csv").on("click", function () { return xpExportLiveHistoryCsv(); });
+    d3.select("#xp-grid-search").on("click", function () { return xpGridSearch(); });
+    d3.select("#xp-sort-by").on("change", function () {
+        xpSortBy = this.value;
+        xpRenderLeaderboard();
+    });
+    d3.selectAll("input[name='xp-overlay-metric']").on("change", function () {
+        xpOverlayMetric = this.value;
+        xpRenderOverlay();
+    });
+    d3.select("#xp-compare-a").on("change", function () { return xpRenderCompare(); });
+    d3.select("#xp-compare-b").on("change", function () { return xpRenderCompare(); });
+    xpRenderAll();
+}
 drawDatasetThumbnails();
 initTutorial();
 makeGUI();
@@ -94364,6 +94932,7 @@ function initA11yFeatures() {
 initTrainingMethodologyGUI();
 initUXFeatures();
 initA11yFeatures();
+initExperimentsGUI();
 
 },{"./adversarial":1030,"./customdataset":1031,"./dataset":1032,"./dataset3d":1033,"./heatmap":1034,"./linechart":1035,"./nn":1036,"./state":1038,"./threeview":1039,"./unlearning":1040,"d3":9,"mathjs":937}],1038:[function(require,module,exports){
 "use strict";

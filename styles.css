@@ -1523,3 +1523,116 @@ body.ux-compact #ux-onboard {
     page-break-inside: avoid;
   }
 }
+
+/* ===== Experiments section ===== */
+.experiments-section {
+  margin: 20px auto;
+  max-width: 1100px;
+  padding: 0 20px;
+}
+.experiments-section.collapsed #experiments-body {
+  display: none;
+}
+.experiments-section.collapsed #experiments-arrow {
+  transform: rotate(-90deg);
+}
+.experiments-section #experiments-arrow {
+  transition: transform 0.2s ease;
+  vertical-align: middle;
+}
+.xp-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-bottom: 12px;
+}
+.xp-delta-bar {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 16px;
+  margin-bottom: 14px;
+  font-size: 13px;
+}
+.xp-badge {
+  background: #f5f5f5;
+  border-radius: 4px;
+  padding: 4px 10px;
+  font-weight: 500;
+}
+.xp-badge.has-best {
+  background: #e8f5e9;
+  color: #1b5e20;
+}
+.xp-delta {
+  color: #555;
+}
+.xp-block {
+  margin-bottom: 18px;
+}
+.xp-block-title {
+  font-weight: 500;
+  font-size: 14px;
+  margin-bottom: 6px;
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+.xp-sort, .xp-metric-toggle, .xp-ab-pickers {
+  font-size: 12px;
+  font-weight: 400;
+  color: #666;
+}
+.xp-metric-toggle label, .xp-ab-pickers select {
+  margin-right: 10px;
+}
+.xp-table-wrap {
+  overflow-x: auto;
+}
+table.xp-table {
+  border-collapse: collapse;
+  font-size: 12px;
+  width: 100%;
+}
+table.xp-table th, table.xp-table td {
+  border: 1px solid #e0e0e0;
+  padding: 4px 8px;
+  text-align: left;
+  white-space: nowrap;
+}
+table.xp-table th {
+  background: #fafafa;
+}
+table.xp-table tr.xp-best-row {
+  background: #e8f5e9;
+}
+table.xp-table td.xp-diff {
+  background: #fff3e0;
+  font-weight: 500;
+}
+table.xp-table td.xp-heat {
+  text-align: center;
+  color: #222;
+}
+.xp-row-actions button {
+  font-size: 11px;
+  padding: 1px 6px;
+  margin-right: 4px;
+  cursor: pointer;
+}
+.xp-legend {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 12px;
+  font-size: 12px;
+  margin-top: 6px;
+}
+.xp-legend .xp-legend-item {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+}
+.xp-legend .xp-swatch {
+  width: 14px;
+  height: 4px;
+  display: inline-block;
+}
