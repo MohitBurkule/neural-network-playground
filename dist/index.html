@@ -707,11 +707,11 @@ Modified by David Cato
                 <div class="callout weights">
                     <svg viewBox="0 0 30 30">
                         <defs>
-                            <marker id="arrow" markerWidth="5" markerHeight="5" refx="5" refy="2.5" orient="auto" markerUnits="userSpaceOnUse">
+                            <marker id="arrow2" markerWidth="5" markerHeight="5" refx="5" refy="2.5" orient="auto" markerUnits="userSpaceOnUse">
                                 <path d="M0,0 L5,2.5 L0,5 z" />
                             </marker>
                         </defs>
-                        <path d="M12,30C5,20 2,15 12,0" marker-end="url(#arrow)">
+                        <path d="M12,30C5,20 2,15 12,0" marker-end="url(#arrow2)">
                     </svg>
                     <div class="label">
                         The outputs are mixed with varying <b>weights</b>, shown by the thickness of the lines.
@@ -1037,7 +1037,7 @@ Modified by David Cato
 
     <!-- Advanced features -->
     <div class="l--page advanced-labs">
-        <div class="adv-panel">
+        <div class="adv-panel classification-only" id="adv-panel">
             <h4>Adversarial</h4>
             <p class="adv-help">Perturb the test set against the current model (feature-agnostic finite-difference attack).</p>
             <label for="adv-epsilon">Epsilon:&nbsp;<span class="value" id="adv-epsilon-val">0.5</span></label>
@@ -1064,7 +1064,7 @@ Modified by David Cato
             <svg id="adv-robustness-plot" width="240" height="140" style="display:none;margin-top:8px;"></svg>
         </div>
 
-        <div class="adv-panel">
+        <div class="adv-panel classification-only" id="unlearn-panel">
             <h4>Machine Unlearning</h4>
             <p class="adv-help">Forget data from the trained model via gradient ascent, then watch the boundary change.</p>
             <label for="unlearn-steps">Steps:&nbsp;<span class="value" id="unlearn-steps-val">100</span></label>

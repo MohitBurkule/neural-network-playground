@@ -1501,6 +1501,7 @@ function reset3D(): void {
 function enterThreeD(): void {
   d3.select("#heatmap").style("display", "none");
   let container = document.getElementById("threeview");
+  if (!container) { return; }
   container.style.display = "block";
   if (!threeView) {
     threeView = new ThreeView(container, 300, 300);
@@ -1637,7 +1638,7 @@ function oneStep(): void {
           state.dropout, true, state.batchNorm);
       nn.backProp(network, mTarget, errFunc);
     }
-    if (state.adversarialTraining) {
+    if (state.adversarialTraining && state.problem === Problem.CLASSIFICATION) {
       // Train also on an on-the-fly adversarial perturbation of this point.
       let adv = perturb(point);
       nn.forwardProp(network, constructInput(adv.x, adv.y),

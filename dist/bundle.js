@@ -90886,6 +90886,9 @@ function reset3D() {
 function enterThreeD() {
     d3.select("#heatmap").style("display", "none");
     var container = document.getElementById("threeview");
+    if (!container) {
+        return;
+    }
     container.style.display = "block";
     if (!threeView) {
         threeView = new threeview_1.ThreeView(container, 300, 300);
@@ -91003,7 +91006,7 @@ function oneStep() {
             nn.forwardProp(network, constructInput(mx, my), state.weightQuantization, state.layerNorm, state.dropout, true, state.batchNorm);
             nn.backProp(network, mTarget, errFunc);
         }
-        if (state.adversarialTraining) {
+        if (state.adversarialTraining && state.problem === state_1.Problem.CLASSIFICATION) {
             var adv = perturb(point);
             nn.forwardProp(network, constructInput(adv.x, adv.y), state.weightQuantization, state.layerNorm, state.dropout, true, state.batchNorm);
             nn.backProp(network, point.label, errFunc);
