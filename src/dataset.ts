@@ -1965,6 +1965,369 @@ export function regressCrossRidge(numSamples: number, noise: number): Example2D[
   return points;
 }
 
+/** Eight-petal flower: angular petals labelled inside/outside. */
+export function classifyPetal8(numSamples: number, noise: number): Example2D[] {
+  let points: Example2D[] = [];
+  for (let i = 0; i < numSamples; i++) {
+    let x = randUniform(-6, 6);
+    let y = randUniform(-6, 6);
+    let nx = randUniform(-1, 1) * noise;
+    let ny = randUniform(-1, 1) * noise;
+    let r = Math.sqrt((x + nx) * (x + nx) + (y + ny) * (y + ny));
+    let a = Math.atan2(y + ny, x + nx);
+    let bound = 4.5 * Math.abs(Math.cos(4 * a));
+    points.push({x, y, label: r < bound ? 1 : -1});
+  }
+  return points;
+}
+
+/** Sun rays: alternating angular wedges radiating from center. */
+export function classifySunRays(numSamples: number, noise: number): Example2D[] {
+  let points: Example2D[] = [];
+  let rays = 12;
+  for (let i = 0; i < numSamples; i++) {
+    let x = randUniform(-6, 6);
+    let y = randUniform(-6, 6);
+    let nx = randUniform(-1, 1) * noise;
+    let ny = randUniform(-1, 1) * noise;
+    let a = Math.atan2(y + ny, x + nx) + Math.PI;
+    let wedge = Math.floor(a / (2 * Math.PI) * rays);
+    points.push({x, y, label: wedge % 2 === 0 ? 1 : -1});
+  }
+  return points;
+}
+
+/** Brick wall: offset rows of rectangular bricks. */
+export function classifyBrickWall(numSamples: number, noise: number): Example2D[] {
+  let points: Example2D[] = [];
+  let rowH = 2;
+  let brickW = 3;
+  for (let i = 0; i < numSamples; i++) {
+    let x = randUniform(-6, 6);
+    let y = randUniform(-6, 6);
+    let nx = randUniform(-1, 1) * noise;
+    let ny = randUniform(-1, 1) * noise;
+    let row = Math.floor((y + 6 + ny) / rowH);
+    let offset = (row % 2) * (brickW / 2);
+    let col = Math.floor((x + 6 + nx + offset) / brickW);
+    points.push({x, y, label: (row + col) % 2 === 0 ? 1 : -1});
+  }
+  return points;
+}
+
+/** Polka dots: grid of circular dots vs background. */
+export function classifyPolkaDots(numSamples: number, noise: number): Example2D[] {
+  let points: Example2D[] = [];
+  let spacing = 3;
+  for (let i = 0; i < numSamples; i++) {
+    let x = randUniform(-6, 6);
+    let y = randUniform(-6, 6);
+    let nx = randUniform(-1, 1) * noise;
+    let ny = randUniform(-1, 1) * noise;
+    let dx = ((x + nx + 1.5) % spacing + spacing) % spacing - 1.5;
+    let dy = ((y + ny + 1.5) % spacing + spacing) % spacing - 1.5;
+    points.push({x, y, label: (dx * dx + dy * dy) < 1 ? 1 : -1});
+  }
+  return points;
+}
+
+/** Swirl pair: two offset swirls. */
+export function classifySwirlPair(numSamples: number, noise: number): Example2D[] {
+  let points: Example2D[] = [];
+  let half = numSamples / 2;
+  function genSwirl(cx: number, dir: number, label: number) {
+    for (let i = 0; i < half; i++) {
+      let r = i / half * 3;
+      let t = dir * 2.5 * r;
+      points.push({
+        x: cx + r * Math.cos(t) + randUniform(-1, 1) * noise,
+        y: r * Math.sin(t) + randUniform(-1, 1) * noise,
+        label
+      });
+    }
+  }
+  genSwirl(-2.5, 1, 1);
+  genSwirl(2.5, -1, -1);
+  return points;
+}
+
+/** Archipelago: scattered island clusters with regional labels. */
+export function classifyArchipelago(numSamples: number, noise: number): Example2D[] {
+  let points: Example2D[] = [];
+  let islands = [
+    [-4.5, 3, 1], [-2, 4.5, 1], [0, 2, -1], [3.5, 4, -1],
+    [4.5, 0, 1], [2, -2, -1], [-3, -3, 1], [-4.5, -1, -1],
+    [0.5, -4.5, 1], [4, -4, -1]
+  ];
+  let variance = 0.35 + noise * 0.5;
+  let per = numSamples / islands.length;
+  islands.forEach(([cx, cy, label]) => {
+    for (let i = 0; i < per; i++) {
+      points.push({x: normalRandom(cx, variance), y: normalRandom(cy, variance), label});
+    }
+  });
+  return points;
+}
+
+/** Ripple rings: many fine concentric rings via radial sine. */
+export function classifyRippleRings(numSamples: number, noise: number): Example2D[] {
+  let points: Example2D[] = [];
+  for (let i = 0; i < numSamples; i++) {
+    let x = randUniform(-6, 6);
+    let y = randUniform(-6, 6);
+    let nx = randUniform(-1, 1) * noise;
+    let ny = randUniform(-1, 1) * noise;
+    let r = Math.sqrt((x + nx) * (x + nx) + (y + ny) * (y + ny));
+    points.push({x, y, label: Math.sin(r * 2.2) >= 0 ? 1 : -1});
+  }
+  return points;
+}
+
+/** Lemniscate: inside a figure-eight (Bernoulli) curve vs outside. */
+export function classifyLemniscate(numSamples: number, noise: number): Example2D[] {
+  let points: Example2D[] = [];
+  let a = 4;
+  for (let i = 0; i < numSamples; i++) {
+    let x = randUniform(-6, 6);
+    let y = randUniform(-6, 6);
+    let nx = randUniform(-1, 1) * noise;
+    let ny = randUniform(-1, 1) * noise;
+    let xs = x + nx;
+    let ys = y + ny;
+    let lhs = Math.pow(xs * xs + ys * ys, 2);
+    let rhs = a * a * (xs * xs - ys * ys);
+    points.push({x, y, label: lhs < rhs ? 1 : -1});
+  }
+  return points;
+}
+
+/** Clover: four-leaf rose curve interior. */
+export function classifyClover(numSamples: number, noise: number): Example2D[] {
+  let points: Example2D[] = [];
+  for (let i = 0; i < numSamples; i++) {
+    let x = randUniform(-6, 6);
+    let y = randUniform(-6, 6);
+    let nx = randUniform(-1, 1) * noise;
+    let ny = randUniform(-1, 1) * noise;
+    let r = Math.sqrt((x + nx) * (x + nx) + (y + ny) * (y + ny));
+    let a = Math.atan2(y + ny, x + nx);
+    let bound = 4.5 * Math.abs(Math.sin(2 * a));
+    points.push({x, y, label: r < bound ? 1 : -1});
+  }
+  return points;
+}
+
+/** Hex grid: hexagonal lattice cells labelled by parity. */
+export function classifyHexGrid(numSamples: number, noise: number): Example2D[] {
+  let points: Example2D[] = [];
+  let size = 1.8;
+  for (let i = 0; i < numSamples; i++) {
+    let x = randUniform(-6, 6);
+    let y = randUniform(-6, 6);
+    let nx = randUniform(-1, 1) * noise;
+    let ny = randUniform(-1, 1) * noise;
+    let row = Math.round((y + ny) / (size * 1.5));
+    let offset = (row % 2) * (size * Math.sqrt(3) / 2);
+    let col = Math.round((x + nx - offset) / (size * Math.sqrt(3)));
+    points.push({x, y, label: (row + col) % 2 === 0 ? 1 : -1});
+  }
+  return points;
+}
+
+/** Noisy sine band: band of width around a sine curve. */
+export function classifyNoisySineBand(numSamples: number, noise: number): Example2D[] {
+  let points: Example2D[] = [];
+  for (let i = 0; i < numSamples; i++) {
+    let x = randUniform(-6, 6);
+    let y = randUniform(-6, 6);
+    let ny = randUniform(-1, 1) * (noise + 0.3);
+    let center = 3 * Math.sin(x);
+    points.push({x, y, label: Math.abs((y + ny) - center) < 1.5 ? 1 : -1});
+  }
+  return points;
+}
+
+/** Blobs in corners: a gaussian blob in each of the four corners. */
+export function classifyBlobsInCorners(numSamples: number, noise: number): Example2D[] {
+  let points: Example2D[] = [];
+  let corners = [[-4.5, -4.5, 1], [4.5, 4.5, 1], [-4.5, 4.5, -1], [4.5, -4.5, -1]];
+  let variance = 0.5 + noise;
+  let per = numSamples / corners.length;
+  corners.forEach(([cx, cy, label]) => {
+    for (let i = 0; i < per; i++) {
+      points.push({x: normalRandom(cx, variance), y: normalRandom(cy, variance), label});
+    }
+  });
+  return points;
+}
+
+/** Dual crescents: two large facing crescents (distinct from crescent-pair). */
+export function classifyDualCrescents(numSamples: number, noise: number): Example2D[] {
+  let points: Example2D[] = [];
+  let n = numSamples / 2;
+  for (let i = 0; i < n; i++) {
+    let angle = Math.PI * (i / n);
+    let x = 4 * Math.cos(angle) + randUniform(-1, 1) * noise;
+    let y = 4 * Math.sin(angle) - 1 + randUniform(-1, 1) * noise;
+    points.push({x, y, label: 1});
+  }
+  for (let i = 0; i < n; i++) {
+    let angle = Math.PI * (i / n);
+    let x = -4 * Math.cos(angle) + randUniform(-1, 1) * noise;
+    let y = -4 * Math.sin(angle) + 1 + randUniform(-1, 1) * noise;
+    points.push({x, y, label: -1});
+  }
+  return points;
+}
+
+/** Dartboard 5: 5 concentric rings sliced into sectors. */
+export function classifyDartboard5(numSamples: number, noise: number): Example2D[] {
+  let points: Example2D[] = [];
+  let sectors = 10;
+  for (let i = 0; i < numSamples; i++) {
+    let angle = randUniform(0, 2 * Math.PI);
+    let r = Math.sqrt(Math.random()) * 5.5;
+    let x = r * Math.cos(angle) + randUniform(-1, 1) * noise;
+    let y = r * Math.sin(angle) + randUniform(-1, 1) * noise;
+    let ang = Math.atan2(y, x) + Math.PI;
+    let sector = Math.floor(ang / (2 * Math.PI) * sectors);
+    let ring = Math.floor(dist({x, y}, {x: 0, y: 0}) / (5.5 / 5));
+    points.push({x, y, label: (sector + ring) % 2 === 0 ? 1 : -1});
+  }
+  return points;
+}
+
+/** Radial checker: polar checkerboard over radius and angle. */
+export function classifyRadialChecker(numSamples: number, noise: number): Example2D[] {
+  let points: Example2D[] = [];
+  let rings = 5;
+  let sectors = 8;
+  for (let i = 0; i < numSamples; i++) {
+    let x = randUniform(-6, 6);
+    let y = randUniform(-6, 6);
+    let nx = randUniform(-1, 1) * noise;
+    let ny = randUniform(-1, 1) * noise;
+    let r = Math.sqrt((x + nx) * (x + nx) + (y + ny) * (y + ny));
+    let a = Math.atan2(y + ny, x + nx) + Math.PI;
+    let ri = Math.floor(r / (6 / rings));
+    let si = Math.floor(a / (2 * Math.PI) * sectors);
+    points.push({x, y, label: (ri + si) % 2 === 0 ? 1 : -1});
+  }
+  return points;
+}
+
+/** Maze stripes: long horizontal stripes broken by phase shift. */
+export function classifyMazeStripes(numSamples: number, noise: number): Example2D[] {
+  let points: Example2D[] = [];
+  for (let i = 0; i < numSamples; i++) {
+    let x = randUniform(-6, 6);
+    let y = randUniform(-6, 6);
+    let nx = randUniform(-1, 1) * noise;
+    let ny = randUniform(-1, 1) * noise;
+    let band = Math.floor((y + 6 + ny) / 1.5);
+    let phase = (band % 2 === 0) ? 0 : 1.5;
+    let cell = Math.floor((x + 6 + nx + phase) / 3);
+    points.push({x, y, label: (band + cell) % 2 === 0 ? 1 : -1});
+  }
+  return points;
+}
+
+/** Concentric spiral squares: square-norm rings. */
+export function classifySpiralSquares(numSamples: number, noise: number): Example2D[] {
+  let points: Example2D[] = [];
+  for (let i = 0; i < numSamples; i++) {
+    let x = randUniform(-6, 6);
+    let y = randUniform(-6, 6);
+    let nx = randUniform(-1, 1) * noise;
+    let ny = randUniform(-1, 1) * noise;
+    let m = Math.abs(x + nx) + Math.abs(y + ny);
+    points.push({x, y, label: Math.floor(m / 1.7) % 2 === 0 ? 1 : -1});
+  }
+  return points;
+}
+
+/** Regression: product of two sinc functions. */
+export function regressSincProduct(numSamples: number, noise: number): Example2D[] {
+  let points: Example2D[] = [];
+  function sinc(v: number) { return v === 0 ? 1 : Math.sin(v) / v; }
+  for (let i = 0; i < numSamples; i++) {
+    let x = randUniform(-6, 6);
+    let y = randUniform(-6, 6);
+    let label = sinc(x) * sinc(y) + randUniform(-1, 1) * noise;
+    points.push({x, y, label});
+  }
+  return points;
+}
+
+/** Regression: volcano (ring-shaped ridge). */
+export function regressVolcano(numSamples: number, noise: number): Example2D[] {
+  let points: Example2D[] = [];
+  for (let i = 0; i < numSamples; i++) {
+    let x = randUniform(-6, 6);
+    let y = randUniform(-6, 6);
+    let r = Math.sqrt(x * x + y * y);
+    let label = Math.exp(-Math.pow(r - 3, 2) / 2) - 0.3 + randUniform(-1, 1) * noise;
+    points.push({x, y, label});
+  }
+  return points;
+}
+
+/** Regression: stepped terraces. */
+export function regressTerraces(numSamples: number, noise: number): Example2D[] {
+  let points: Example2D[] = [];
+  for (let i = 0; i < numSamples; i++) {
+    let x = randUniform(-6, 6);
+    let y = randUniform(-6, 6);
+    let r = Math.sqrt(x * x + y * y);
+    let label = Math.floor(r) * 0.3 - 1 + randUniform(-1, 1) * noise;
+    points.push({x, y, label});
+  }
+  return points;
+}
+
+/** Regression: monkey saddle (third-order saddle). */
+export function regressSaddle3(numSamples: number, noise: number): Example2D[] {
+  let points: Example2D[] = [];
+  for (let i = 0; i < numSamples; i++) {
+    let x = randUniform(-6, 6);
+    let y = randUniform(-6, 6);
+    let label = (x * x * x - 3 * x * y * y) / 80 + randUniform(-1, 1) * noise;
+    points.push({x, y, label});
+  }
+  return points;
+}
+
+/** Regression: multiple gaussian bumps. */
+export function regressBumps(numSamples: number, noise: number): Example2D[] {
+  let points: Example2D[] = [];
+  let centers = [[-3, -3], [3, 3], [-3, 3], [3, -3], [0, 0]];
+  for (let i = 0; i < numSamples; i++) {
+    let x = randUniform(-6, 6);
+    let y = randUniform(-6, 6);
+    let v = 0;
+    centers.forEach(([cx, cy]) => {
+      v += Math.exp(-((x - cx) * (x - cx) + (y - cy) * (y - cy)) / 3);
+    });
+    let label = v - 0.5 + randUniform(-1, 1) * noise;
+    points.push({x, y, label});
+  }
+  return points;
+}
+
+/** Regression: spiral height (value follows a spiral phase). */
+export function regressSpiralHeight(numSamples: number, noise: number): Example2D[] {
+  let points: Example2D[] = [];
+  for (let i = 0; i < numSamples; i++) {
+    let x = randUniform(-6, 6);
+    let y = randUniform(-6, 6);
+    let r = Math.sqrt(x * x + y * y);
+    let a = Math.atan2(y, x);
+    let label = Math.sin(a + r) + randUniform(-1, 1) * noise;
+    points.push({x, y, label});
+  }
+  return points;
+}
+
 /**
  * Returns a sample from a uniform [a, b] distribution.
  * Uses the seedrandom library as the random generator.

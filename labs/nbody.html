@@ -1,0 +1,63 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>N-Body Gravity — NN Playground Labs</title>
+  <style>
+    :root { --bg:#0a0c12; --panel:#1a1d27; --fg:#e6e6e6; --muted:#8a93a6; }
+    * { box-sizing: border-box; }
+    body { margin:0; background:var(--bg); color:var(--fg); font-family:-apple-system,Segoe UI,Roboto,sans-serif; }
+    header { padding:14px 18px; border-bottom:1px solid #262a36; display:flex; align-items:center; gap:14px; flex-wrap:wrap; }
+    header h1 { font-size:17px; margin:0; font-weight:600; }
+    header a { color:var(--muted); text-decoration:none; font-size:13px; }
+    header a:hover { color:var(--fg); }
+    .wrap { display:flex; gap:18px; padding:18px; flex-wrap:wrap; }
+    .panel { background:var(--panel); border:1px solid #262a36; border-radius:10px; padding:16px; width:240px; }
+    .panel h2 { font-size:13px; text-transform:uppercase; letter-spacing:.05em; color:var(--muted); margin:0 0 12px; }
+    label { display:block; font-size:13px; margin:10px 0 4px; color:#c7cedb; }
+    input[type=range], select { width:100%; }
+    select { background:#262a36; color:var(--fg); border:1px solid #353b4a; border-radius:6px; padding:6px; }
+    .row { display:flex; gap:8px; margin-top:8px; }
+    button { background:#262a36; color:var(--fg); border:1px solid #353b4a; border-radius:7px; padding:8px 12px; cursor:pointer; font-size:13px; }
+    button:hover { background:#30364a; }
+    .chk { display:flex; align-items:center; gap:8px; margin-top:10px; font-size:13px; }
+    .hint { color:var(--muted); font-size:12px; margin-top:12px; }
+    canvas { background:#0a0c12; border:1px solid #262a36; border-radius:10px; max-width:100%; }
+  </style>
+</head>
+<body>
+  <header>
+    <h1>🪐 N-Body Gravity</h1>
+    <a href="labs.html">← All labs</a>
+    <a href="index.html">Main playground</a>
+  </header>
+  <div class="wrap">
+    <div class="panel">
+      <h2>Controls</h2>
+      <label>Preset</label>
+      <select id="nb-preset">
+        <option value="binary">Binary star + planets</option>
+        <option value="random">Random cloud</option>
+        <option value="solar">Solar system</option>
+        <option value="three">Three-body (chaos)</option>
+        <option value="galaxy">Galaxy disk</option>
+      </select>
+      <div class="row">
+        <button id="nb-play">Pause</button>
+        <button id="nb-reset">Reset</button>
+      </div>
+      <label>Gravity G</label>
+      <input type="range" id="nb-g" min="0.1" max="3" step="0.1" value="1">
+      <label>Softening</label>
+      <input type="range" id="nb-soft" min="1" max="20" step="1" value="4">
+      <label>Speed</label>
+      <input type="range" id="nb-speed" min="0.1" max="3" step="0.1" value="1">
+      <label class="chk"><input type="checkbox" id="nb-trails" checked> Show trails</label>
+      <div class="hint">Click the canvas to drop a new mass.</div>
+    </div>
+    <canvas id="nbody-canvas" width="760" height="640"></canvas>
+  </div>
+  <script src="bundlenbody.js"></script>
+</body>
+</html>

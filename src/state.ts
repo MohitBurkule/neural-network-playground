@@ -222,6 +222,23 @@ export let datasets: {[key: string]: dataset.DataGenerator} = {
   "diamond-grid": dataset.classifyDiamondGrid,
   "wavy-stripes": dataset.classifyWavyStripes,
   "plus-minus-grid": dataset.classifyPlusMinusGrid,
+  "petal-8": dataset.classifyPetal8,
+  "sun-rays": dataset.classifySunRays,
+  "brick-wall": dataset.classifyBrickWall,
+  "polka-dots": dataset.classifyPolkaDots,
+  "swirl-pair": dataset.classifySwirlPair,
+  "archipelago": dataset.classifyArchipelago,
+  "ripple-rings": dataset.classifyRippleRings,
+  "lemniscate": dataset.classifyLemniscate,
+  "clover": dataset.classifyClover,
+  "hex-grid": dataset.classifyHexGrid,
+  "noisy-sine-band": dataset.classifyNoisySineBand,
+  "blobs-in-corners": dataset.classifyBlobsInCorners,
+  "dual-crescents": dataset.classifyDualCrescents,
+  "dartboard-5": dataset.classifyDartboard5,
+  "radial-checker": dataset.classifyRadialChecker,
+  "maze-stripes": dataset.classifyMazeStripes,
+  "spiral-squares": dataset.classifySpiralSquares,
 };
 
 /** A map between dataset names and functions that generate regression data. */
@@ -257,7 +274,13 @@ export let regDatasets: {[key: string]: dataset.DataGenerator} = {
   "reg-abs-diff": dataset.regressAbsDiff,
   "reg-log": dataset.regressLog,
   "reg-tanh-wave": dataset.regressTanhWave,
-  "reg-cross-ridge": dataset.regressCrossRidge
+  "reg-cross-ridge": dataset.regressCrossRidge,
+  "reg-sinc-product": dataset.regressSincProduct,
+  "reg-volcano": dataset.regressVolcano,
+  "reg-terraces": dataset.regressTerraces,
+  "reg-saddle3": dataset.regressSaddle3,
+  "reg-bumps": dataset.regressBumps,
+  "reg-spiral-height": dataset.regressSpiralHeight
 };
 
 export function getKeyFromValue(obj: any, value: any): string {

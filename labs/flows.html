@@ -1,0 +1,236 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Normalizing Flows Lab</title>
+  <style>
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    body {
+      font-family: 'Segoe UI', Arial, sans-serif;
+      background: #111827;
+      color: #e0e0f0;
+      min-height: 100vh;
+      padding: 16px;
+    }
+    h1 {
+      font-size: 1.6rem;
+      font-weight: 700;
+      color: #a78bfa;
+      margin-bottom: 4px;
+    }
+    .subtitle {
+      font-size: 0.85rem;
+      color: #6b7280;
+      margin-bottom: 16px;
+    }
+    .main-grid {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 14px;
+    }
+    .panel {
+      background: #1f2937;
+      border: 1px solid #374151;
+      border-radius: 8px;
+      padding: 12px;
+    }
+    .panel-title {
+      font-size: 0.78rem;
+      font-weight: 600;
+      text-transform: uppercase;
+      letter-spacing: 0.8px;
+      color: #9ca3af;
+      margin-bottom: 10px;
+    }
+    .controls { grid-column: 1 / -1; }
+    .ctrl-row {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 12px;
+      align-items: center;
+    }
+    .ctrl-group {
+      display: flex;
+      flex-direction: column;
+      gap: 3px;
+      min-width: 120px;
+    }
+    .ctrl-label {
+      font-size: 0.72rem;
+      color: #9ca3af;
+    }
+    .ctrl-val {
+      font-size: 0.78rem;
+      color: #c4b5fd;
+      font-weight: 600;
+    }
+    input[type=range] {
+      width: 120px;
+      accent-color: #7c3aed;
+    }
+    select {
+      background: #374151;
+      color: #e5e7eb;
+      border: 1px solid #4b5563;
+      border-radius: 4px;
+      padding: 4px 8px;
+      font-size: 0.82rem;
+      cursor: pointer;
+    }
+    .btn-row {
+      display: flex;
+      gap: 8px;
+      align-items: center;
+      flex-wrap: wrap;
+    }
+    button {
+      padding: 6px 14px;
+      border-radius: 6px;
+      border: none;
+      cursor: pointer;
+      font-size: 0.82rem;
+      font-weight: 600;
+      transition: opacity 0.15s;
+    }
+    button:hover { opacity: 0.85; }
+    .btn-play   { background: #7c3aed; color: #fff; }
+    .btn-pause  { background: #374151; color: #e5e7eb; }
+    .btn-step   { background: #1d4ed8; color: #fff; }
+    .btn-reset  { background: #991b1b; color: #fff; }
+    .btn-sample { background: #065f46; color: #d1fae5; }
+    .stats-row {
+      display: flex;
+      gap: 20px;
+      flex-wrap: wrap;
+      margin-top: 10px;
+    }
+    .stat-item { display: flex; flex-direction: column; align-items: center; }
+    .stat-val  { font-size: 1.1rem; font-weight: 700; color: #a78bfa; }
+    .stat-lbl  { font-size: 0.68rem; color: #6b7280; margin-top: 2px; }
+    canvas {
+      display: block;
+      border-radius: 4px;
+      width: 100%;
+      height: auto;
+    }
+    #canv-density { border: 1px solid #374151; }
+    #canv-warp    { border: 1px solid #374151; }
+    .loss-panel { grid-column: 1 / -1; }
+    #svg-loss { width: 100%; height: 140px; display: block; }
+    .legend {
+      display: flex;
+      gap: 16px;
+      margin-top: 8px;
+      font-size: 0.72rem;
+      color: #9ca3af;
+    }
+    .legend-dot {
+      display: inline-block;
+      width: 10px; height: 10px;
+      border-radius: 50%;
+      margin-right: 4px;
+      vertical-align: middle;
+    }
+    .tick text { fill: #6b7280 !important; font-size: 10px; }
+    .tick line, .domain { stroke: #374151 !important; }
+    label.tog {
+      display: flex;
+      align-items: center;
+      gap: 6px;
+      font-size: 0.78rem;
+      color: #9ca3af;
+      cursor: pointer;
+    }
+    input[type=checkbox] { accent-color: #7c3aed; }
+  </style>
+</head>
+<body>
+
+<h1>Normalizing Flows</h1>
+<p class="subtitle">
+  RealNVP-style affine coupling layers · 2D · maximum-likelihood training · live density + grid warp
+</p>
+
+<div class="main-grid">
+
+  <!-- Controls -->
+  <div class="panel controls">
+    <div class="panel-title">Controls</div>
+    <div class="ctrl-row">
+      <div class="btn-row">
+        <button class="btn-play"   id="btn-play">&#9654; Play</button>
+        <button class="btn-pause"  id="btn-pause">&#9646;&#9646; Pause</button>
+        <button class="btn-step"   id="btn-step">&#9197; Step</button>
+        <button class="btn-reset"  id="btn-reset">&#x21BA; Reset</button>
+        <button class="btn-sample" id="btn-sample">&#9861; Resample</button>
+      </div>
+      <div class="ctrl-group">
+        <span class="ctrl-label">Target Distribution</span>
+        <select id="sel-dist">
+          <option value="two-moons">Two Moons</option>
+          <option value="circles">Circles / Ring</option>
+          <option value="spiral">Spiral</option>
+          <option value="8gaussians">8 Gaussians</option>
+          <option value="checkerboard">Checkerboard</option>
+        </select>
+      </div>
+      <div class="ctrl-group">
+        <span class="ctrl-label">Coupling Layers</span>
+        <select id="sel-layers">
+          <option value="2">2</option>
+          <option value="4" selected>4</option>
+          <option value="6">6</option>
+          <option value="8">8</option>
+        </select>
+      </div>
+      <div class="ctrl-group">
+        <span class="ctrl-label">Hidden Size</span>
+        <select id="sel-hidden">
+          <option value="16">16</option>
+          <option value="32" selected>32</option>
+          <option value="64">64</option>
+        </select>
+      </div>
+      <div class="ctrl-group">
+        <span class="ctrl-label">Learning Rate: <span id="lbl-lr" class="ctrl-val">0.0030</span></span>
+        <input type="range" id="ctrl-lr" min="0.0001" max="0.01" step="0.0001" value="0.003">
+      </div>
+      <label class="tog">
+        <input type="checkbox" id="tog-grid" checked>
+        Show Grid Warp
+      </label>
+    </div>
+    <div class="stats-row">
+      <div class="stat-item"><span class="stat-val" id="stat-step">0</span><span class="stat-lbl">Step</span></div>
+      <div class="stat-item"><span class="stat-val" id="stat-loss">—</span><span class="stat-lbl">NLL Loss</span></div>
+    </div>
+  </div>
+
+  <!-- Density + samples -->
+  <div class="panel">
+    <div class="panel-title">Learned Density &amp; Samples</div>
+    <canvas id="canv-density" width="400" height="400"></canvas>
+    <div class="legend">
+      <span><span class="legend-dot" style="background:#fbbf24"></span>Flow samples</span>
+      <span><span class="legend-dot" style="background:#63b3ed"></span>Target samples</span>
+    </div>
+  </div>
+
+  <!-- Grid warp -->
+  <div class="panel">
+    <div class="panel-title">Grid Warp (latent &#8594; data space)</div>
+    <canvas id="canv-warp" width="400" height="400"></canvas>
+  </div>
+
+  <!-- Loss curve -->
+  <div class="panel loss-panel">
+    <div class="panel-title">NLL Loss Curve</div>
+    <svg id="svg-loss"></svg>
+  </div>
+
+</div>
+
+<script src="bundleflows.js"></script>
+</body>
+</html>

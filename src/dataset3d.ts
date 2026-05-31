@@ -748,3 +748,135 @@ export function classifyGridXor3D(numSamples: number, noise: number): Example3D[
   }
   return points;
 }
+
+/** Triple helix: three interleaved helices, label by helix parity. */
+export function classifyHelixTriple(numSamples: number, noise: number): Example3D[] {
+  const points: Example3D[] = [];
+  const per = Math.floor(numSamples / 3);
+  for (let h = 0; h < 3; h++) {
+    const phase = (h / 3) * 2 * Math.PI;
+    const label = h % 2 === 0 ? 1 : -1;
+    const n = h === 2 ? numSamples - 2 * per : per;
+    for (let i = 0; i < n; i++) {
+      const t = (i / n) * 5 * Math.PI;
+      points.push({
+        x: 3 * Math.cos(t + phase) + randNormal(0, noise),
+        y: (t / (5 * Math.PI)) * 8 - 4 + randNormal(0, noise),
+        z: 3 * Math.sin(t + phase) + randNormal(0, noise),
+        label
+      });
+    }
+  }
+  return points;
+}
+
+/** Cube edges: points along the 12 edges of a cube, labelled by edge axis. */
+export function classifyCubeEdges(numSamples: number, noise: number): Example3D[] {
+  const points: Example3D[] = [];
+  const c = 4;
+  const corners = [-c, c];
+  const edges: number[][] = [];
+  // Edges along x.
+  for (const y of corners) for (const z of corners) edges.push([0, y, z]);
+  // Edges along y.
+  for (const x of corners) for (const z of corners) edges.push([1, x, z]);
+  // Edges along z.
+  for (const x of corners) for (const y of corners) edges.push([2, x, y]);
+  for (let i = 0; i < numSamples; i++) {
+    const e = edges[i % edges.length];
+    const axis = e[0];
+    const t = randUniform(-c, c);
+    let x: number, y: number, z: number;
+    if (axis === 0) { x = t; y = e[1]; z = e[2]; }
+    else if (axis === 1) { y = t; x = e[1]; z = e[2]; }
+    else { z = t; x = e[1]; y = e[2]; }
+    points.push({
+      x: x + randNormal(0, noise),
+      y: y + randNormal(0, noise),
+      z: z + randNormal(0, noise),
+      label: axis === 0 ? 1 : -1
+    });
+  }
+  return points;
+}
+
+/** Sphere clusters: gaussian blobs placed on a sphere, alternating labels. */
+export function classifySphereClusters(numSamples: number, noise: number): Example3D[] {
+  const points: Example3D[] = [];
+  const centers: number[][] = [];
+  const k = 8;
+  for (let j = 0; j < k; j++) {
+    const theta = (j / k) * 2 * Math.PI;
+    const phi = Math.acos(1 - 2 * ((j + 0.5) / k));
+    const r = 4;
+    centers.push([
+      r * Math.sin(phi) * Math.cos(theta),
+      r * Math.sin(phi) * Math.sin(theta),
+      r * Math.cos(phi),
+      j % 2 === 0 ? 1 : -1
+    ]);
+  }
+  const per = Math.max(1, Math.floor(numSamples / centers.length));
+  centers.forEach(([cx, cy, cz, label]) => {
+    for (let i = 0; i < per; i++) {
+      points.push({
+        x: cx + randNormal(0, 0.5 + noise),
+        y: cy + randNormal(0, 0.5 + noise),
+        z: cz + randNormal(0, 0.5 + noise),
+        label
+      });
+    }
+  });
+  return points;
+}
+
+/** Twisted torus: torus with a twist in the tube, labelled by twist side. */
+export function classifyTwistedTorus(numSamples: number, noise: number): Example3D[] {
+  const points: Example3D[] = [];
+  const R = 3, r = 1.2;
+  for (let i = 0; i < numSamples; i++) {
+    const u = randUniform(0, 2 * Math.PI);
+    const v = randUniform(0, 2 * Math.PI);
+    const tw = v + 2 * u;
+    points.push({
+      x: (R + r * Math.cos(v)) * Math.cos(u) + randNormal(0, noise),
+      y: (R + r * Math.cos(v)) * Math.sin(u) + randNormal(0, noise),
+      z: r * Math.sin(v) + randNormal(0, noise),
+      label: Math.sin(tw) >= 0 ? 1 : -1
+    });
+  }
+  return points;
+}
+
+/** 3D checker (8 cells): 2x2x2 voxel checkerboard. */
+export function classifyChecker3D8(numSamples: number, noise: number): Example3D[] {
+  const points: Example3D[] = [];
+  for (let i = 0; i < numSamples; i++) {
+    const x = randUniform(-4, 4);
+    const y = randUniform(-4, 4);
+    const z = randUniform(-4, 4);
+    const cx = (x + randNormal(0, noise)) >= 0 ? 1 : 0;
+    const cy = (y + randNormal(0, noise)) >= 0 ? 1 : 0;
+    const cz = (z + randNormal(0, noise)) >= 0 ? 1 : 0;
+    points.push({x, y, z, label: (cx + cy + cz) % 2 === 0 ? 1 : -1});
+  }
+  return points;
+}
+
+/** Paraboloid shell: nested paraboloids labelled by which one. */
+export function classifyParaboloidShell(numSamples: number, noise: number): Example3D[] {
+  const points: Example3D[] = [];
+  for (let i = 0; i < numSamples; i++) {
+    const label = i % 2 === 0 ? 1 : -1;
+    const theta = randUniform(0, 2 * Math.PI);
+    const rho = randUniform(0, 3);
+    const k = label === 1 ? 0.4 : 0.7;
+    points.push({
+      x: rho * Math.cos(theta) + randNormal(0, noise),
+      y: k * rho * rho - 3 + randNormal(0, noise),
+      z: rho * Math.sin(theta) + randNormal(0, noise),
+      label
+    });
+  }
+  return points;
+}

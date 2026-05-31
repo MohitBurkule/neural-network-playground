@@ -21,7 +21,9 @@ const LABS = [
   'rl', 'hopfield', 'genetic', 'bandit', 'optviz', 'markov', 'mcmc',
   'ca', 'fourier', 'kalman', 'rbm', 'vae', 'pso', 'snn', 'rd',
   'boids', 'aco', 'nca', 'knn', 'pathfind', 'attractor', 'fractal', 'actfn',
-  'perceptron', 'conv', 'esn', 'mdn'
+  'perceptron', 'conv', 'esn', 'mdn',
+  'hmm', 'flows', 'minimax', 'linalg', 'pendulum', 'nbody', 'wave',
+  'perlin', 'lsystem'
 ];
 
 function makeCtx() {
