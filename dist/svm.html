@@ -1,0 +1,266 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Support Vector Machine Lab</title>
+  <style>
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+
+    body {
+      font-family: 'Segoe UI', Arial, sans-serif;
+      background: #1a1a2e;
+      color: #e0e0f0;
+      min-height: 100vh;
+      padding: 16px;
+    }
+
+    h1 {
+      font-size: 1.6rem;
+      font-weight: 700;
+      color: #a78bfa;
+      margin-bottom: 4px;
+      letter-spacing: 0.5px;
+    }
+
+    .subtitle {
+      font-size: 0.85rem;
+      color: #8888aa;
+      margin-bottom: 16px;
+    }
+
+    .layout {
+      display: flex;
+      gap: 20px;
+      align-items: flex-start;
+      flex-wrap: wrap;
+    }
+
+    canvas {
+      border: 1px solid #2e2e50;
+      border-radius: 8px;
+      display: block;
+      background: #1a1a2e;
+      flex-shrink: 0;
+    }
+
+    .panel {
+      background: #16213e;
+      border: 1px solid #2e2e50;
+      border-radius: 10px;
+      padding: 16px;
+      min-width: 220px;
+      max-width: 260px;
+      display: flex;
+      flex-direction: column;
+      gap: 12px;
+    }
+
+    .section-label {
+      font-size: 0.7rem;
+      text-transform: uppercase;
+      letter-spacing: 1px;
+      color: #6666aa;
+      margin-bottom: 2px;
+    }
+
+    .control-row {
+      display: flex;
+      flex-direction: column;
+      gap: 4px;
+    }
+
+    .control-row label {
+      font-size: 0.8rem;
+      color: #b0b0cc;
+      display: flex;
+      justify-content: space-between;
+    }
+
+    .control-row label span {
+      color: #a78bfa;
+      font-weight: 600;
+    }
+
+    input[type=range] {
+      width: 100%;
+      accent-color: #a78bfa;
+      cursor: pointer;
+    }
+
+    select {
+      width: 100%;
+      background: #1a1a2e;
+      color: #e0e0f0;
+      border: 1px solid #3e3e70;
+      border-radius: 6px;
+      padding: 6px 8px;
+      font-size: 0.85rem;
+      cursor: pointer;
+      outline: none;
+    }
+
+    select:focus { border-color: #a78bfa; }
+
+    .btn-row {
+      display: flex;
+      gap: 8px;
+    }
+
+    button {
+      flex: 1;
+      padding: 8px 0;
+      border: none;
+      border-radius: 6px;
+      font-size: 0.85rem;
+      font-weight: 600;
+      cursor: pointer;
+      transition: opacity 0.15s;
+    }
+
+    button:disabled { opacity: 0.5; cursor: not-allowed; }
+
+    #btnTrain {
+      background: #7c3aed;
+      color: #fff;
+    }
+    #btnTrain:hover:not(:disabled) { background: #6d28d9; }
+
+    #btnReset {
+      background: #2e2e50;
+      color: #c0c0e0;
+    }
+    #btnReset:hover { background: #3a3a60; }
+
+    .stats-row {
+      background: #0f0f22;
+      border: 1px solid #2e2e50;
+      border-radius: 6px;
+      padding: 8px 12px;
+      font-size: 0.82rem;
+      color: #a0d8cc;
+      min-height: 32px;
+    }
+
+    .status-row {
+      font-size: 0.78rem;
+      color: #facc15;
+      min-height: 18px;
+    }
+
+    .legend {
+      display: flex;
+      gap: 12px;
+      align-items: center;
+      font-size: 0.75rem;
+      color: #9090b0;
+      flex-wrap: wrap;
+    }
+
+    .legend-item {
+      display: flex;
+      align-items: center;
+      gap: 4px;
+    }
+
+    .dot { width: 10px; height: 10px; border-radius: 50%; display: inline-block; }
+    .sv-ring {
+      width: 14px; height: 14px; border-radius: 50%;
+      border: 2px solid #facc15; display: inline-block;
+    }
+    .line-solid { width: 18px; height: 2px; background: #fff; display: inline-block; border-radius: 1px; }
+    .line-dashed {
+      width: 18px; height: 2px; display: inline-block;
+      background: repeating-linear-gradient(90deg, #64d8cb 0 4px, transparent 4px 8px);
+    }
+    .line-dashed-o {
+      width: 18px; height: 2px; display: inline-block;
+      background: repeating-linear-gradient(90deg, #f4a261 0 4px, transparent 4px 8px);
+    }
+
+    .divider {
+      height: 1px;
+      background: #2e2e50;
+    }
+  </style>
+</head>
+<body>
+  <h1>Support Vector Machine Lab</h1>
+  <p class="subtitle">Kernel SVM with SMO solver — explore decision boundaries, margins, and support vectors</p>
+
+  <div class="layout">
+    <div>
+      <canvas id="svmCanvas" width="520" height="520"></canvas>
+      <div class="legend" style="margin-top:8px; padding: 0 4px;">
+        <div class="legend-item"><span class="dot" style="background:#60a5fa"></span>Class +1</div>
+        <div class="legend-item"><span class="dot" style="background:#f87171"></span>Class −1</div>
+        <div class="legend-item"><span class="sv-ring"></span>Support Vector</div>
+        <div class="legend-item"><span class="line-solid"></span>Boundary (f=0)</div>
+        <div class="legend-item"><span class="line-dashed"></span>Margin +1</div>
+        <div class="legend-item"><span class="line-dashed-o"></span>Margin −1</div>
+      </div>
+    </div>
+
+    <div class="panel">
+      <div>
+        <div class="section-label">Dataset</div>
+        <select id="selDataset">
+          <option value="blobs">Linear Blobs</option>
+          <option value="moons">Two Moons</option>
+          <option value="circles">Circles</option>
+          <option value="xor">XOR</option>
+          <option value="overlapping">Overlapping Blobs</option>
+        </select>
+      </div>
+
+      <div class="control-row">
+        <label># Points <span id="lblN">150</span></label>
+        <input type="range" id="inpN" min="40" max="400" step="10" value="150">
+      </div>
+
+      <div class="control-row">
+        <label>Noise <span id="lblNoise">0.20</span></label>
+        <input type="range" id="inpNoise" min="0" max="1" step="0.05" value="0.20">
+      </div>
+
+      <div class="divider"></div>
+
+      <div>
+        <div class="section-label">Kernel</div>
+        <select id="selKernel">
+          <option value="rbf">RBF (Gaussian)</option>
+          <option value="linear">Linear</option>
+          <option value="poly">Polynomial</option>
+        </select>
+      </div>
+
+      <div class="control-row">
+        <label>C (soft-margin) <span id="lblC">1.00</span></label>
+        <input type="range" id="inpC" min="0.01" max="20" step="0.01" value="1.0">
+      </div>
+
+      <div class="control-row" id="rowGamma">
+        <label>Gamma (RBF) <span id="lblGamma">0.50</span></label>
+        <input type="range" id="inpGamma" min="0.05" max="5" step="0.05" value="0.5">
+      </div>
+
+      <div class="control-row" id="rowDegree" style="display:none">
+        <label>Degree (poly) <span id="lblDegree">3</span></label>
+        <input type="range" id="inpDegree" min="2" max="6" step="1" value="3">
+      </div>
+
+      <div class="divider"></div>
+
+      <div class="btn-row">
+        <button id="btnTrain">&#9654; Train</button>
+        <button id="btnReset">&#8635; Reset</button>
+      </div>
+
+      <div class="status-row" id="status"></div>
+      <div class="stats-row" id="stats"></div>
+    </div>
+  </div>
+
+  <script src="bundlesvm.js"></script>
+</body>
+</html>

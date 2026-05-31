@@ -1,0 +1,260 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Dimensionality Reduction Lab</title>
+  <style>
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+
+    body {
+      font-family: 'Segoe UI', Arial, sans-serif;
+      background: #1a1a2e;
+      color: #e0e0f0;
+      min-height: 100vh;
+      padding: 16px;
+    }
+
+    h1 {
+      font-size: 1.6rem;
+      font-weight: 700;
+      color: #a78bfa;
+      margin-bottom: 4px;
+      letter-spacing: 0.5px;
+    }
+
+    .subtitle {
+      font-size: 0.85rem;
+      color: #8888aa;
+      margin-bottom: 16px;
+    }
+
+    .layout {
+      display: grid;
+      grid-template-columns: 240px 1fr;
+      gap: 12px;
+      align-items: start;
+    }
+
+    /* Controls panel */
+    .controls {
+      background: #16213e;
+      border: 1px solid #2a2a5a;
+      border-radius: 10px;
+      padding: 14px;
+      display: flex;
+      flex-direction: column;
+      gap: 14px;
+    }
+
+    .controls h2 {
+      font-size: 0.78rem;
+      text-transform: uppercase;
+      letter-spacing: 1px;
+      color: #7777aa;
+    }
+
+    .param-row {
+      display: flex;
+      flex-direction: column;
+      gap: 4px;
+    }
+
+    label {
+      font-size: 0.8rem;
+      color: #aaa;
+      display: block;
+      margin-bottom: 2px;
+    }
+
+    select {
+      width: 100%;
+      background: #0f3460;
+      color: #e0e0f0;
+      border: 1px solid #3a3a6a;
+      border-radius: 6px;
+      padding: 6px 8px;
+      font-size: 0.82rem;
+    }
+
+    input[type=range] {
+      width: 100%;
+      accent-color: #a78bfa;
+    }
+
+    .slider-row {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+    }
+
+    .slider-val {
+      font-size: 0.82rem;
+      color: #a78bfa;
+      min-width: 36px;
+      text-align: right;
+    }
+
+    .btn-row {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 6px;
+    }
+
+    button {
+      padding: 7px 12px;
+      border: none;
+      border-radius: 6px;
+      font-size: 0.82rem;
+      font-weight: 600;
+      cursor: pointer;
+      transition: opacity 0.15s;
+    }
+    button:hover { opacity: 0.85; }
+
+    #btn-play  { background: #27ae60; color: #fff; }
+    #btn-pause { background: #e67e22; color: #fff; }
+    #btn-step  { background: #3498db; color: #fff; }
+    #btn-reset { background: #e74c3c; color: #fff; }
+
+    /* Canvas panel */
+    .canvas-panel {
+      background: #12122a;
+      border: 1px solid #2a2a5a;
+      border-radius: 10px;
+      padding: 12px;
+      display: flex;
+      flex-direction: column;
+      gap: 8px;
+    }
+
+    canvas {
+      border-radius: 6px;
+      background: #0d0d1f;
+      display: block;
+      width: 100%;
+    }
+
+    .info-bar {
+      font-size: 0.82rem;
+      color: #a78bfa;
+      min-height: 18px;
+      letter-spacing: 0.3px;
+    }
+
+    .legend {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 8px;
+      margin-top: 2px;
+    }
+
+    .section-title {
+      font-size: 0.78rem;
+      text-transform: uppercase;
+      letter-spacing: 1px;
+      color: #7777aa;
+      margin-bottom: 4px;
+    }
+
+    .tsne-note {
+      font-size: 0.73rem;
+      color: #666688;
+      line-height: 1.4;
+      margin-top: 2px;
+    }
+
+    @media (max-width: 680px) {
+      .layout { grid-template-columns: 1fr; }
+    }
+  </style>
+</head>
+<body>
+
+<h1>Dimensionality Reduction Lab</h1>
+<p class="subtitle">PCA &amp; t-SNE — visualize high-dimensional data in 2D</p>
+
+<div class="layout">
+  <!-- Controls -->
+  <div class="controls">
+    <div>
+      <div class="section-title">Method &amp; Data</div>
+      <div class="param-row">
+        <label for="sel-method">Algorithm</label>
+        <select id="sel-method">
+          <option value="pca">PCA</option>
+          <option value="tsne">t-SNE</option>
+        </select>
+      </div>
+      <div class="param-row" style="margin-top:10px;">
+        <label for="sel-dataset">Dataset</label>
+        <select id="sel-dataset">
+          <option value="clusters">Gaussian Clusters (8-D)</option>
+          <option value="swissroll">Swiss Roll (8-D)</option>
+          <option value="spheres">Concentric Spheres (8-D)</option>
+          <option value="digits">Digit Shapes (64-D)</option>
+        </select>
+      </div>
+    </div>
+
+    <div>
+      <div class="section-title">Parameters</div>
+      <div class="param-row">
+        <label>Points (<span id="val-n">150</span>)</label>
+        <div class="slider-row">
+          <input type="range" id="slider-n" min="30" max="200" value="150" step="10">
+        </div>
+        <div class="tsne-note">Max 200 for t-SNE (browser perf)</div>
+      </div>
+
+      <div id="tsne-controls" style="display:none;flex-direction:column;gap:10px;margin-top:10px;">
+        <div class="param-row">
+          <label>Perplexity (<span id="val-perp">20</span>)</label>
+          <div class="slider-row">
+            <input type="range" id="slider-perp" min="5" max="50" value="20" step="1">
+          </div>
+        </div>
+        <div class="param-row">
+          <label>Learning Rate (<span id="val-lr">100</span>)</label>
+          <div class="slider-row">
+            <input type="range" id="slider-lr" min="10" max="500" value="100" step="10">
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <div id="tsne-controls-btns" style="display:none;">
+      <!-- shown via JS via tsne-controls parent -->
+    </div>
+
+    <div>
+      <div class="section-title">t-SNE Controls</div>
+      <div class="btn-row" id="tsne-buttons">
+        <button id="btn-play">&#9654; Play</button>
+        <button id="btn-pause">&#9646;&#9646; Pause</button>
+        <button id="btn-step">&#8594; Step</button>
+        <button id="btn-reset">&#8635; Reset</button>
+      </div>
+    </div>
+
+    <div>
+      <div class="section-title">Legend</div>
+      <div id="legend" class="legend"></div>
+    </div>
+
+    <div style="font-size:0.72rem;color:#555577;line-height:1.5;">
+      PCA: power-iteration eigenvectors of covariance matrix.<br>
+      t-SNE: perplexity-tuned Gaussian affinities + t-distributed kernel gradient descent.
+    </div>
+  </div>
+
+  <!-- Canvas -->
+  <div class="canvas-panel">
+    <canvas id="main-canvas" height="480"></canvas>
+    <div id="info-bar" class="info-bar"></div>
+  </div>
+</div>
+
+<script src="bundledimred.js"></script>
+</body>
+</html>

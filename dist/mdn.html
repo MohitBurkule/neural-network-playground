@@ -1,0 +1,243 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Mixture Density Network Lab</title>
+  <style>
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    body {
+      font-family: 'Segoe UI', Arial, sans-serif;
+      background: #111827;
+      color: #e0e0f0;
+      min-height: 100vh;
+      padding: 16px;
+    }
+    h1 {
+      font-size: 1.6rem;
+      font-weight: 700;
+      color: #34d399;
+      margin-bottom: 4px;
+    }
+    .subtitle {
+      font-size: 0.85rem;
+      color: #6b7280;
+      margin-bottom: 14px;
+    }
+    .main-grid {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      grid-template-rows: auto auto auto;
+      gap: 12px;
+      max-width: 1100px;
+    }
+    .panel {
+      background: #1f2937;
+      border: 1px solid #374151;
+      border-radius: 8px;
+      padding: 12px;
+    }
+    .panel-title {
+      font-size: 0.75rem;
+      font-weight: 600;
+      text-transform: uppercase;
+      letter-spacing: 0.8px;
+      color: #9ca3af;
+      margin-bottom: 10px;
+    }
+    .controls {
+      grid-column: 1 / -1;
+    }
+    .ctrl-row {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 12px;
+      align-items: flex-end;
+    }
+    .ctrl-group {
+      display: flex;
+      flex-direction: column;
+      gap: 3px;
+    }
+    .ctrl-group label {
+      font-size: 0.72rem;
+      color: #9ca3af;
+      text-transform: uppercase;
+      letter-spacing: 0.5px;
+    }
+    select {
+      background: #111827;
+      color: #e0e0f0;
+      border: 1px solid #4b5563;
+      border-radius: 4px;
+      padding: 4px 8px;
+      font-size: 0.82rem;
+      cursor: pointer;
+    }
+    select:focus { outline: none; border-color: #34d399; }
+    .btn-row {
+      display: flex;
+      gap: 8px;
+      align-items: center;
+      flex-wrap: wrap;
+    }
+    button {
+      background: #374151;
+      color: #e0e0f0;
+      border: 1px solid #4b5563;
+      border-radius: 6px;
+      padding: 6px 16px;
+      font-size: 0.85rem;
+      cursor: pointer;
+      transition: background 0.15s;
+    }
+    button:hover { background: #4b5563; }
+    #btn-play {
+      background: #065f46;
+      border-color: #34d399;
+      color: #d1fae5;
+      font-weight: 600;
+    }
+    #btn-play:hover { background: #047857; }
+    .sample-label {
+      display: flex;
+      align-items: center;
+      gap: 6px;
+      font-size: 0.82rem;
+      color: #9ca3af;
+      cursor: pointer;
+      user-select: none;
+    }
+    input[type=checkbox] { accent-color: #34d399; width: 14px; height: 14px; }
+    canvas {
+      display: block;
+      border-radius: 4px;
+    }
+    .legend {
+      display: flex;
+      gap: 16px;
+      flex-wrap: wrap;
+      margin-top: 8px;
+      font-size: 0.75rem;
+      color: #9ca3af;
+    }
+    .legend-dot {
+      display: inline-block;
+      width: 10px;
+      height: 10px;
+      border-radius: 50%;
+      margin-right: 4px;
+      vertical-align: middle;
+    }
+    .info-box {
+      grid-column: 1 / -1;
+      background: #1a2535;
+      border: 1px solid #2d4163;
+      border-radius: 8px;
+      padding: 12px 16px;
+      font-size: 0.8rem;
+      color: #94a3b8;
+      line-height: 1.6;
+    }
+    .info-box strong { color: #34d399; }
+    @media (max-width: 720px) {
+      .main-grid { grid-template-columns: 1fr; }
+      .controls { grid-column: 1; }
+    }
+  </style>
+</head>
+<body>
+  <h1>Mixture Density Network</h1>
+  <p class="subtitle">An MLP that outputs a mixture of Gaussians — learning multi-modal conditional distributions p(y|x).</p>
+
+  <div class="main-grid">
+    <!-- Controls -->
+    <div class="panel controls">
+      <div class="ctrl-row">
+        <div class="ctrl-group">
+          <label>Dataset</label>
+          <select id="sel-dataset">
+            <option value="inverse-sine" selected>Inverse Sine (classic)</option>
+            <option value="multi-branch">Multi-Branch</option>
+            <option value="heteroscedastic">Heteroscedastic</option>
+          </select>
+        </div>
+        <div class="ctrl-group">
+          <label>Components K</label>
+          <select id="sel-k">
+            <option value="1">K = 1 (Gaussian)</option>
+            <option value="3">K = 3</option>
+            <option value="5" selected>K = 5</option>
+            <option value="8">K = 8</option>
+          </select>
+        </div>
+        <div class="ctrl-group">
+          <label>Learning Rate</label>
+          <select id="sel-lr">
+            <option value="0.001">0.001</option>
+            <option value="0.003">0.003</option>
+            <option value="0.005" selected>0.005</option>
+            <option value="0.01">0.01</option>
+          </select>
+        </div>
+        <div class="ctrl-group">
+          <label>Hidden Size</label>
+          <select id="sel-hidden">
+            <option value="16">16</option>
+            <option value="32" selected>32</option>
+            <option value="64">64</option>
+          </select>
+        </div>
+        <div class="btn-row">
+          <button id="btn-play">Play</button>
+          <button id="btn-step">Step</button>
+          <button id="btn-reset">Reset</button>
+          <label class="sample-label">
+            <input type="checkbox" id="chk-samples" checked>
+            Show Samples
+          </label>
+        </div>
+      </div>
+    </div>
+
+    <!-- Density plot -->
+    <div class="panel">
+      <div class="panel-title">Conditional Density p(y|x) — Density Heatmap</div>
+      <canvas id="density-canvas" width="500" height="500"></canvas>
+      <div class="legend">
+        <span><span class="legend-dot" style="background:#fcd34d"></span>Training data</span>
+        <span><span class="legend-dot" style="background:#ffffff; opacity:0.5"></span>Predicted samples</span>
+        <span><span style="display:inline-block;width:24px;height:3px;background:#f87171;vertical-align:middle;margin-right:4px"></span>Component means (colored by K)</span>
+      </div>
+    </div>
+
+    <!-- Loss curve -->
+    <div class="panel">
+      <div class="panel-title">Training Loss (NLL) — MDN vs K=1 Baseline</div>
+      <canvas id="loss-canvas" width="500" height="220"></canvas>
+      <div class="legend" style="margin-top:12px">
+        <span><span style="display:inline-block;width:24px;height:3px;background:#34d399;vertical-align:middle;margin-right:4px"></span>MDN (K components)</span>
+        <span><span style="display:inline-block;width:24px;height:3px;background:#f87171;vertical-align:middle;margin-right:4px"></span>Single Gaussian (K=1)</span>
+      </div>
+      <div style="margin-top:16px; font-size:0.78rem; color:#6b7280; line-height:1.7">
+        <p><strong style="color:#34d399">How it works:</strong> The MLP maps x → (π, μ, σ) for K Gaussians.</p>
+        <p>Loss = −log Σ<sub>k</sub> π<sub>k</sub> 𝒩(y | μ<sub>k</sub>, σ<sub>k</sub>²)</p>
+        <p>Adam optimizer. The inverse-sine dataset is multi-valued in y — K=1 cannot fit it.</p>
+      </div>
+    </div>
+
+    <!-- Info -->
+    <div class="info-box">
+      <strong>Dataset:</strong> The <em>inverse-sine</em> dataset maps y→x via x = y + 0.3·sin(2πy) + noise, then swaps axes.
+      For a given x, there are <em>multiple valid y</em> values — a standard regressor predicts a blurry average, but an MDN
+      captures each branch as a separate mixture component.
+      <strong>Multi-branch</strong> has three distinct linear clusters.
+      <strong>Heteroscedastic</strong> has variance growing with |x|.
+      The <strong>darker teal/blue heatmap</strong> shows higher predicted density; <strong>colored lines</strong> trace each component's mean,
+      with opacity proportional to its mixing weight π<sub>k</sub>.
+    </div>
+  </div>
+
+  <script src="bundlemdn.js"></script>
+</body>
+</html>

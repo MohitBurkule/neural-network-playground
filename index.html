@@ -20,7 +20,7 @@ Modified by David Cato
 <head lang="en">
     <link rel="icon" type="image/png" href="favicon.png">
     <meta charset="utf-8">
-    <meta name="viewport" content="width=1024">
+    <meta name="viewport" content="width=device-width, initial-scale=1, minimum-scale=0.25, maximum-scale=5">
     <meta name="keywords" content="neural networks,machine learning,javascript,deep learning,explorable explanation">
 
     <meta property="og:type" content="article" />
@@ -40,10 +40,13 @@ Modified by David Cato
     <meta name="author" content="David Cato">
     <title>A Neural Network Playground</title>
     <link rel="stylesheet" href="bundle.css" type="text/css">
-    <link href="https://fonts.googleapis.com/css?family=Roboto:300,400,500|Material+Icons" rel="stylesheet" type="text/css">
-    <link rel="stylesheet" href="styles.css" id="light-style">
+    <!-- <link href="https://fonts.googleapis.com/css?family=Roboto:300,400,500|Material+Icons" rel="stylesheet" type="text/css"> -->
+    <link rel="stylesheet" href="styles.css" id="light-style"> 
     <link rel="stylesheet" href="styles_dark.css" id="dark-style" disabled>
-    <script src="lib.js"></script>
+    <!-- <script src="lib.js"></script> -->
+    <link rel="stylesheet" href="https://fonts.googleapis.com/icon?family=Material+Icons">
+<link rel="stylesheet" href="https://code.getmdl.io/1.3.0/material.indigo-pink.min.css">
+
 </head>
 
 <body>
@@ -64,27 +67,192 @@ Modified by David Cato
         <p class="l--page" style="display: flex;justify-content: center;">Made with ❤️ by Google, improved by Mohit Burkule</p>
     </header>
 
+    <!-- UX onboarding hint banner (feature 17) -->
+    <div id="ux-onboard" class="l--page">
+        <span>Tip: press <b>Space</b> to play/pause, <b>S</b> to step, <b>R</b> to reset, <b>D</b> to regenerate data, and <b>?</b> for all shortcuts. Pick a preset below to get started.</span>
+        <button id="ux-onboard-dismiss" type="button">Got it</button>
+    </div>
+
+    <!-- UX toolbar (features 1, 3, 5, 10, 4-help) -->
+    <div id="ux-toolbar" class="l--page">
+        <button id="ux-copy-link" type="button" title="Copy a shareable link with the current configuration">Copy share link</button>
+        <label class="ux-inline" title="Apply a curated configuration and reset">Preset:
+            <select id="ux-preset-select"><option value="">— Model zoo —</option></select>
+        </label>
+        <label class="ux-inline" title="How many training steps to run per animation frame">Speed:
+            <input type="range" id="ux-speed" min="1" max="50" step="1" value="1">
+            <span id="ux-speed-value">1</span>
+        </label>
+        <label class="ux-inline" title="Run exactly this many steps, then pause">Run
+            <input type="number" id="ux-run-n" min="1" value="100" style="width:60px">
+            <button id="ux-run-n-btn" type="button">epochs</button>
+        </label>
+        <label class="ux-inline" title="Pause automatically when training loss stops changing">
+            <input type="checkbox" id="ux-conv-enable"> Auto-stop
+            <input type="number" id="ux-conv-threshold" step="0.0001" min="0" value="0.0005" style="width:70px" title="Loss-change threshold over the last 20 steps">
+        </label>
+        <button id="ux-randomize-weights" type="button" title="Re-initialize weights without changing architecture or data">Randomize weights</button>
+        <button id="ux-snapshot" type="button" title="Save current weights & biases in memory">Snapshot</button>
+        <button id="ux-restore" type="button" title="Restore the last in-memory snapshot">Restore</button>
+        <button id="ux-clear-storage" type="button" title="Clear saved preferences and reload cleanly">Reset view</button>
+        <button id="ux-help-btn" type="button" title="Keyboard shortcuts (?)">?</button>
+    </div>
+
+    <!-- Accessibility / i18n / performance toolbar -->
+    <div id="a11y-toolbar" class="l--page" role="region" aria-label="Accessibility, language and performance settings">
+        <label class="ux-inline" title="Interface language">
+            <span data-i18n="lang">Language</span>:
+            <select id="a11y-language" aria-label="Interface language">
+                <option value="en">English</option>
+                <option value="es">Español</option>
+                <option value="fr">Français</option>
+                <option value="hi">हिन्दी</option>
+                <option value="zh">中文</option>
+            </select>
+        </label>
+        <label class="ux-inline" title="High-contrast color theme">
+            <input type="checkbox" id="a11y-high-contrast"> <span data-i18n="highContrast">High contrast</span>
+        </label>
+        <label class="ux-inline" title="Disable nonessential animations and transitions">
+            <input type="checkbox" id="a11y-reduced-motion"> <span data-i18n="reducedMotion">Reduce motion</span>
+        </label>
+        <label class="ux-inline" title="Hide advanced panels for a cleaner view">
+            <input type="checkbox" id="a11y-compact"> <span data-i18n="compactMode">Compact mode</span>
+        </label>
+        <label class="ux-inline" title="Interface scale / font size">
+            <span data-i18n="uiScale">UI scale</span>:
+            <input type="range" id="a11y-ui-scale" min="80" max="150" step="5" value="100" aria-label="UI scale percent">
+            <span id="a11y-ui-scale-val">100</span>%
+        </label>
+        <label class="ux-inline" title="Run training off the main render path; only repaint every K steps at high speed">
+            <input type="checkbox" id="perf-worker"> <span data-i18n="fastTraining">Fast training</span>
+        </label>
+        <label class="ux-inline" title="Only redraw the heavy network/heatmap every K training steps">
+            <span data-i18n="redrawEvery">Redraw every</span>
+            <input type="number" id="perf-redraw-k" min="1" value="1" style="width:54px"> <span data-i18n="steps">steps</span>
+        </label>
+        <span class="ux-inline" id="perf-meter" title="Training step rate and frame budget" aria-live="polite">
+            <b id="perf-sps">0</b> <span data-i18n="stepsPerSec">steps/s</span> ·
+            <b id="perf-fps">0</b> fps · <span id="perf-budget">●</span>
+        </span>
+    </div>
+
+    <!-- Training / methodology features -->
+    <details id="tm-panel" class="l--page" style="margin:8px auto">
+        <summary style="cursor:pointer;font-weight:600">Training methodology &amp; experiments</summary>
+        <div class="tm-grid" style="display:flex;flex-wrap:wrap;gap:16px;margin-top:8px">
+            <div class="tm-group">
+                <label class="ux-inline" title="Loss function used for training and reported loss">Loss:
+                    <select id="loss-function">
+                        <option value="square">Square (MSE)</option>
+                        <option value="hinge">Hinge</option>
+                        <option value="logloss">Log loss / Cross-entropy</option>
+                        <option value="huber">Huber</option>
+                        <option value="absolute">Absolute (L1)</option>
+                        <option value="logcosh">Log-cosh</option>
+                        <option value="quantile">Quantile (tau=0.9)</option>
+                        <option value="epsilon-insensitive">Epsilon-insensitive (SVR)</option>
+                        <option value="cauchy">Cauchy / Lorentzian</option>
+                    </select>
+                </label>
+                <label class="ux-inline" title="Weight loss/gradient by inverse class frequency">
+                    <input type="checkbox" id="tm-class-weighting"> Class weighting
+                </label>
+                <label class="ux-inline" title="Shuffle training data each epoch">
+                    <input type="checkbox" id="tm-epoch-shuffle"> Epoch shuffle
+                </label>
+            </div>
+            <div class="tm-group">
+                <label class="ux-inline" title="Randomly flip this fraction of training labels">Label noise:
+                    <input type="range" id="tm-label-noise" min="0" max="50" step="1" value="0">
+                    <span id="tm-label-noise-val">0</span>%
+                </label>
+                <label class="ux-inline" title="Gaussian noise added to inputs during training">Input jitter:
+                    <input type="range" id="tm-input-jitter" min="0" max="0.5" step="0.01" value="0">
+                    <span id="tm-input-jitter-val">0</span>
+                </label>
+                <label class="ux-inline" title="Annealed Gaussian noise added to gradients">Grad noise:
+                    <input type="range" id="tm-grad-noise" min="0" max="1" step="0.01" value="0">
+                    <span id="tm-grad-noise-val">0</span>
+                </label>
+                <label class="ux-inline" title="Mixup-style convex combination augmentation">
+                    <input type="checkbox" id="tm-mixup"> Mixup
+                </label>
+            </div>
+            <div class="tm-group">
+                <label class="ux-inline" title="Pause when test loss stops improving">
+                    <input type="checkbox" id="tm-earlystop-enable"> Early stopping
+                    patience <input type="number" id="tm-earlystop-patience" min="1" value="10" style="width:54px">
+                    <span id="tm-earlystop-badge" style="display:none;color:#c00;font-weight:600"> stopped early</span>
+                </label>
+                <button id="tm-reshuffle-split" type="button" title="New train/test split without regenerating data">Re-shuffle split</button>
+            </div>
+            <div class="tm-group">
+                <button id="tm-cv-btn" type="button">Run k-fold CV</button>
+                k=<input type="number" id="tm-cv-k" min="2" value="5" style="width:48px">
+                <div id="tm-cv-readout" class="tm-readout"></div>
+            </div>
+            <div class="tm-group">
+                <button id="tm-lrf-btn" type="button">LR finder</button>
+                <svg id="tm-lrf-plot" width="260" height="140"></svg>
+                <div id="tm-lrf-readout" class="tm-readout"></div>
+            </div>
+            <div class="tm-group">
+                <button id="tm-ensemble-btn" type="button">Train ensemble of</button>
+                <input type="number" id="tm-ensemble-n" min="2" value="5" style="width:48px">
+                <label class="ux-inline"><input type="checkbox" id="tm-ensemble-bagging"> Bagging</label>
+                <div id="tm-ensemble-readout" class="tm-readout"></div>
+            </div>
+            <div class="tm-group">
+                <button id="tm-weightnoise-btn" type="button">Perturb weights</button>
+                σ=<input type="number" id="tm-weightnoise-sigma" min="0" step="0.01" value="0.1" style="width:54px">
+                <button id="tm-weightnoise-restore" type="button">Restore</button>
+                <div id="tm-weightnoise-readout" class="tm-readout"></div>
+            </div>
+            <div class="tm-group">
+                <div style="font-weight:600">Training config</div>
+                <div id="tm-config-summary" class="tm-readout"></div>
+            </div>
+        </div>
+    </details>
+
+    <!-- UX keyboard help overlay (feature 4) -->
+    <div id="ux-help-overlay" style="display:none">
+        <div class="ux-help-card">
+            <h3>Keyboard shortcuts</h3>
+            <ul>
+                <li><b>Space</b> — play / pause</li>
+                <li><b>S</b> — single step</li>
+                <li><b>R</b> — reset network</li>
+                <li><b>D</b> — regenerate data</li>
+                <li><b>?</b> — toggle this help</li>
+                <li><b>Esc</b> — close this help</li>
+            </ul>
+            <button id="ux-help-close" type="button">Close</button>
+        </div>
+    </div>
+
     <!-- Top Controls -->
     <div id="top-controls">
         <div class="container l--page">
             <div class="timeline-controls">
-                <button class="mdl-button mdl-js-button mdl-button--icon ui-resetButton" id="reset-button" title="Reset the network">
-                    <i class="material-icons">replay</i>
+                <button class="mdl-button mdl-js-button mdl-button--icon ui-resetButton" id="reset-button" title="Reset the network" aria-label="Reset the network">
+                    <i class="material-icons" aria-hidden="true">replay</i>
                 </button>
-                <button class="mdl-button mdl-js-button mdl-button--fab mdl-button--colored ui-playButton" id="play-pause-button" title="Run/Pause">
-                    <i class="material-icons">play_arrow</i>
-                    <i class="material-icons">pause</i>
+                <button class="mdl-button mdl-js-button mdl-button--fab mdl-button--colored ui-playButton" id="play-pause-button" title="Run/Pause" aria-label="Run or pause training" aria-pressed="false">
+                    <i class="material-icons" aria-hidden="true">play_arrow</i>
+                    <i class="material-icons" aria-hidden="true">pause</i>
                 </button>
-                <button class="mdl-button mdl-js-button mdl-button--icon ui-stepButton" id="next-step-button" title="Step">
-                    <i class="material-icons">skip_next</i>
+                <button class="mdl-button mdl-js-button mdl-button--icon ui-stepButton" id="next-step-button" title="Step" aria-label="Run a single training step">
+                    <i class="material-icons" aria-hidden="true">skip_next</i>
                 </button>
             </div>
             <div class="control">
-                <span class="label">Epoch</span>
+                <span class="label" data-i18n="epoch">Epoch</span>
                 <span class="value" id="iter-number"></span>
             </div>
             <div class="control ui-learningRate">
-                <label for="learningRate">Learning rate</label>
+                <label for="learningRate" data-i18n="learningRate">Learning rate</label>
                 <div class="select">
                     <select id="learningRate">
                         <option value="0.00001">0.00001</option>
@@ -100,13 +268,14 @@ Modified by David Cato
                         <option value="10">10</option>
                     </select>
                 </div>
+                <input type="number" id="ux-lr-num" step="0.0001" min="0" value="0.03" style="width:80px;margin-top:4px" title="Set an arbitrary learning rate">
             </div>
             <div class="control ui-seed">
         <label for="seed">Random Seed</label>
         <input type="text" id="seed" value="0.12345" />
       </div>
       <div class="control ui-activation">
-                <label for="activations">Activation</label>
+                <label for="activations" data-i18n="activation" title="Nonlinearity applied at each neuron. ReLU/tanh are common defaults.">Activation</label>
                 <div class="select">
                     <select id="activations">
                         <option value="relu">ReLU</option>
@@ -117,23 +286,131 @@ Modified by David Cato
                         <option value="leaky-relu">Leaky ReLU</option>
                         <option value="prelu">PReLU</option>
                         <option value="sine">Sine</option>
-                        <option value="sine">Sinc</option>
+                        <option value="sinc">Sinc</option>
                         <option value="mish">Mish</option>
+                        <option value="elu">ELU</option>
+                        <option value="selu">SELU</option>
+                        <option value="swish">Swish / SiLU</option>
+                        <option value="softplus">Softplus</option>
+                        <option value="softsign">Softsign</option>
+                        <option value="hard-sigmoid">Hard Sigmoid</option>
+                        <option value="hard-tanh">Hard Tanh</option>
+                        <option value="hard-swish">Hard Swish</option>
+                        <option value="relu6">ReLU6</option>
+                        <option value="bent-identity">Bent Identity</option>
+                        <option value="gaussian">Gaussian</option>
+                        <option value="snake">Snake</option>
+                        <option value="arctan">ArcTan</option>
+                        <option value="isru">ISRU</option>
+                        <option value="exp-linear">Exponential Linear</option>
+                        <option value="celu">CELU</option>
+                        <option value="gelu-exact">GELU (exact/erf)</option>
+                        <option value="swish-beta">Swish-beta (1.5)</option>
+                        <option value="tanh-shrink">Tanh-shrink</option>
+                        <option value="log-sigmoid">Log-Sigmoid</option>
+                        <option value="softclip">Softclip</option>
+                        <option value="sin-residual">Sinusoid Residual (x+sin x)</option>
+                        <option value="triangular">Triangular</option>
+                        <option value="square-nonlin">Square (x^2)</option>
+                        <option value="absolute">Absolute</option>
+                        <option value="cube">Cube (x^3)</option>
+                        <option value="reciprocal-smooth">Reciprocal Smooth</option>
+                        <option value="softplus-beta">Softplus-beta (2)</option>
+                        <option value="isrlu">ISRLU</option>
+                        <option value="maxout2">Maxout-2 (approx)</option>
+                        <option value="bipolar-sigmoid">Bipolar Sigmoid</option>
+                        <option value="hard-sigmoid2">Hard Sigmoid (1/6)</option>
+                        <option value="gaussian-narrow">Gaussian (narrow)</option>
                     </select>
                 </div>
             </div>
+            <div class="control ui-optimizer">
+                <label for="optimizer" data-i18n="optimizer" title="Algorithm used to update weights from gradients (SGD, Adam, ...).">Optimizer</label>
+                <div class="select">
+                    <select id="optimizer">
+                        <option value="sgd">SGD</option>
+                        <option value="momentum">Momentum</option>
+                        <option value="rmsprop">RMSProp</option>
+                        <option value="adam">Adam</option>
+                        <option value="nesterov">Nesterov Momentum</option>
+                        <option value="adagrad">Adagrad</option>
+                        <option value="adadelta">Adadelta</option>
+                        <option value="amsgrad">AMSGrad</option>
+                        <option value="nadam">Nadam</option>
+                        <option value="adamw">AdamW</option>
+                    </select>
+                </div>
+            </div>
+            <div class="control ui-weight-init">
+                <label for="weight-init">Weight init</label>
+                <div class="select">
+                    <select id="weight-init">
+                        <option value="random-uniform">Random uniform</option>
+                        <option value="xavier">Xavier / Glorot</option>
+                        <option value="he">He / Kaiming</option>
+                        <option value="lecun">LeCun</option>
+                        <option value="zeros">Zeros</option>
+                        <option value="orthogonal">Orthogonal-lite</option>
+                    </select>
+                </div>
+            </div>
+            <div class="control ui-lr-schedule">
+                <label for="lr-schedule">LR schedule</label>
+                <div class="select">
+                    <select id="lr-schedule">
+                        <option value="constant">Constant</option>
+                        <option value="step">Step decay</option>
+                        <option value="exponential">Exponential decay</option>
+                        <option value="cosine">Cosine annealing</option>
+                        <option value="warmup-decay">Warmup + decay</option>
+                        <option value="onecycle">1cycle-lite</option>
+                    </select>
+                </div>
+            </div>
+            <div class="control ui-effective-lr">
+                <span class="label">Effective LR</span>
+                <span class="value" id="effective-lr"></span>
+            </div>
+            <div class="control ui-dropout">
+                <label for="dropout">Dropout:&nbsp;&nbsp;<span class="value">0</span></label>
+                <p class="slider">
+                    <input class="mdl-slider mdl-js-slider" type="range" id="dropout" min="0" max="0.9" step="0.05" value="0">
+                </p>
+            </div>
+            <div class="control ui-grad-clip">
+                <label for="grad-clip">Grad clip:&nbsp;&nbsp;<span class="value">0</span></label>
+                <p class="slider">
+                    <input class="mdl-slider mdl-js-slider" type="range" id="grad-clip" min="0" max="5" step="0.1" value="0">
+                </p>
+            </div>
+            <div class="control ui-weight-decay">
+                <label for="weight-decay">Weight decay:&nbsp;&nbsp;<span class="value">0</span></label>
+                <p class="slider">
+                    <input class="mdl-slider mdl-js-slider" type="range" id="weight-decay" min="0" max="0.1" step="0.001" value="0">
+                </p>
+            </div>
+            <div class="control ui-batchNorm">
+                <label for="batch-norm">Batch Norm</label>
+                <input type="checkbox" id="batch-norm">
+            </div>
+            <div class="control ui-layerNorm">
+                <label for="layer-norm">Layer Norm</label>
+                <input type="checkbox" id="layer-norm">
+            </div>
             <div class="control ui-regularization">
-                <label for="regularizations">Regularization</label>
+                <label for="regularizations" data-i18n="regularization" title="Penalty on weights to reduce overfitting (L1 sparsity, L2 weight decay).">Regularization</label>
                 <div class="select">
                     <select id="regularizations">
                         <option value="none">None</option>
                         <option value="L1">L1</option>
                         <option value="L2">L2</option>
+                        <option value="elastic-net">Elastic-net (L1+L2)</option>
+                        <option value="L-half">L0.5</option>
                     </select>
                 </div>
             </div>
             <div class="control ui-regularizationRate">
-                <label for="regularRate">Regularization rate</label>
+                <label for="regularRate" title="Strength of the regularization penalty.">Regularization rate</label>
                 <div class="select">
                     <select id="regularRate">
                         <option value="0">0</option>
@@ -162,7 +439,7 @@ Modified by David Cato
                 </div>
             </div>
             <div class="control ui-problem">
-                <label for="problem">Problem type</label>
+                <label for="problem" data-i18n="problemType">Problem type</label>
                 <div class="select">
                     <select id="problem">
                         <option value="classification">Classification</option>
@@ -179,7 +456,7 @@ Modified by David Cato
         <!--  Data Column-->
         <div class="column data">
             <h4>
-                <span>Data</span>
+                <span data-i18n="data">Data</span>
             </h4>
             <div class="ui-dataset">
                 <p>Which dataset do you want to use?</p>
@@ -235,6 +512,384 @@ Modified by David Cato
                     <div class="dataset" title="Multi gaussian">
                         <canvas class="data-thumbnail" data-regDataset="reg-gauss"></canvas>
                     </div>
+                    <div class="dataset" title="Checkerboard">
+                        <canvas class="data-thumbnail" data-dataset="checkerboard"></canvas>
+                    </div>
+                    <div class="dataset" title="Quadrant XOR Blobs">
+                        <canvas class="data-thumbnail" data-dataset="quadrant-blobs"></canvas>
+                    </div>
+                    <div class="dataset" title="Concentric Rings">
+                        <canvas class="data-thumbnail" data-dataset="concentric-rings"></canvas>
+                    </div>
+                    <div class="dataset" title="Three-Arm Spiral">
+                        <canvas class="data-thumbnail" data-dataset="spiral3"></canvas>
+                    </div>
+                    <div class="dataset" title="Four-Arm Spiral">
+                        <canvas class="data-thumbnail" data-dataset="spiral4"></canvas>
+                    </div>
+                    <div class="dataset" title="Tight Two Spirals">
+                        <canvas class="data-thumbnail" data-dataset="tight-spiral"></canvas>
+                    </div>
+                    <div class="dataset" title="Clean Moons">
+                        <canvas class="data-thumbnail" data-dataset="clean-moons"></canvas>
+                    </div>
+                    <div class="dataset" title="Nested U Shapes">
+                        <canvas class="data-thumbnail" data-dataset="nested-u"></canvas>
+                    </div>
+                    <div class="dataset" title="Gaussian Mixture">
+                        <canvas class="data-thumbnail" data-dataset="gaussian-mixture"></canvas>
+                    </div>
+                    <div class="dataset" title="Diagonal Stripes">
+                        <canvas class="data-thumbnail" data-dataset="diagonal-stripes"></canvas>
+                    </div>
+                    <div class="dataset" title="Sine Boundary">
+                        <canvas class="data-thumbnail" data-dataset="sine-boundary"></canvas>
+                    </div>
+                    <div class="dataset" title="Circle in Square">
+                        <canvas class="data-thumbnail" data-dataset="circle-in-square"></canvas>
+                    </div>
+                    <div class="dataset" title="Cross / Plus">
+                        <canvas class="data-thumbnail" data-dataset="cross"></canvas>
+                    </div>
+                    <div class="dataset" title="S-Curve Boundary">
+                        <canvas class="data-thumbnail" data-dataset="s-curve"></canvas>
+                    </div>
+                    <div class="dataset" title="Pinwheel">
+                        <canvas class="data-thumbnail" data-dataset="pinwheel"></canvas>
+                    </div>
+                    <div class="dataset" title="Island Clusters">
+                        <canvas class="data-thumbnail" data-dataset="islands"></canvas>
+                    </div>
+                    <div class="dataset" title="Ring vs Center">
+                        <canvas class="data-thumbnail" data-dataset="ring-vs-center"></canvas>
+                    </div>
+                    <div class="dataset" title="Gaussian Quantiles">
+                        <canvas class="data-thumbnail" data-dataset="gaussian-quantiles"></canvas>
+                    </div>
+                    <div class="dataset" title="Anisotropic Blobs">
+                        <canvas class="data-thumbnail" data-dataset="anisotropic"></canvas>
+                    </div>
+                    <div class="dataset" title="Random-Label Blobs">
+                        <canvas class="data-thumbnail" data-dataset="random-blobs"></canvas>
+                    </div>
+                    <div class="dataset" title="Ripple Surface">
+                        <canvas class="data-thumbnail" data-regDataset="reg-ripple"></canvas>
+                    </div>
+                    <div class="dataset" title="Saddle">
+                        <canvas class="data-thumbnail" data-regDataset="reg-saddle"></canvas>
+                    </div>
+                    <div class="dataset" title="Gaussian Bump">
+                        <canvas class="data-thumbnail" data-regDataset="reg-gauss-bump"></canvas>
+                    </div>
+                    <div class="dataset" title="Staircase">
+                        <canvas class="data-thumbnail" data-regDataset="reg-staircase"></canvas>
+                    </div>
+                    <div class="dataset" title="Target Rings">
+                        <canvas class="data-thumbnail" data-dataset="target-rings"></canvas>
+                    </div>
+                    <div class="dataset" title="Spiral Galaxy">
+                        <canvas class="data-thumbnail" data-dataset="spiral-galaxy"></canvas>
+                    </div>
+                    <div class="dataset" title="Yin-Yang">
+                        <canvas class="data-thumbnail" data-dataset="yin-yang"></canvas>
+                    </div>
+                    <div class="dataset" title="Smiley">
+                        <canvas class="data-thumbnail" data-dataset="smiley"></canvas>
+                    </div>
+                    <div class="dataset" title="Grid of Blobs">
+                        <canvas class="data-thumbnail" data-dataset="grid-blobs"></canvas>
+                    </div>
+                    <div class="dataset" title="Interleaving Waves">
+                        <canvas class="data-thumbnail" data-dataset="interleaving-waves"></canvas>
+                    </div>
+                    <div class="dataset" title="Blob in Ring">
+                        <canvas class="data-thumbnail" data-dataset="blob-in-ring"></canvas>
+                    </div>
+                    <div class="dataset" title="Triangle vs Circle">
+                        <canvas class="data-thumbnail" data-dataset="triangle-vs-circle"></canvas>
+                    </div>
+                    <div class="dataset" title="Gaussian Cross">
+                        <canvas class="data-thumbnail" data-dataset="gaussian-cross"></canvas>
+                    </div>
+                    <div class="dataset" title="Noisy XOR (4-quadrant)">
+                        <canvas class="data-thumbnail" data-dataset="noisy-xor4"></canvas>
+                    </div>
+                    <div class="dataset" title="Crescent Pair">
+                        <canvas class="data-thumbnail" data-dataset="crescent-pair"></canvas>
+                    </div>
+                    <div class="dataset" title="Dartboard">
+                        <canvas class="data-thumbnail" data-dataset="dartboard"></canvas>
+                    </div>
+                    <div class="dataset" title="Comb (vertical stripes)">
+                        <canvas class="data-thumbnail" data-dataset="comb"></canvas>
+                    </div>
+                    <div class="dataset" title="Diagonal Checker">
+                        <canvas class="data-thumbnail" data-dataset="diagonal-checker"></canvas>
+                    </div>
+                    <div class="dataset" title="Cluster Chain">
+                        <canvas class="data-thumbnail" data-dataset="cluster-chain"></canvas>
+                    </div>
+                    <div class="dataset" title="Regression: sin(x)cos(y)">
+                        <canvas class="data-thumbnail" data-regDataset="reg-sincos"></canvas>
+                    </div>
+                    <div class="dataset" title="Regression: radial">
+                        <canvas class="data-thumbnail" data-regDataset="reg-radial"></canvas>
+                    </div>
+                    <div class="dataset" title="Regression: |x|+|y|">
+                        <canvas class="data-thumbnail" data-regDataset="reg-abs"></canvas>
+                    </div>
+                    <div class="dataset" title="Regression: step circle">
+                        <canvas class="data-thumbnail" data-regDataset="reg-step-circle"></canvas>
+                    </div>
+                    <div class="dataset" title="Regression: waves">
+                        <canvas class="data-thumbnail" data-regDataset="reg-waves"></canvas>
+                    </div>
+                    <div class="dataset" title="Nested squares">
+                        <canvas class="data-thumbnail" data-dataset="nested-squares"></canvas>
+                    </div>
+                    <div class="dataset" title="Polygon boundary">
+                        <canvas class="data-thumbnail" data-dataset="polygon-boundary"></canvas>
+                    </div>
+                    <div class="dataset" title="Voronoi regions">
+                        <canvas class="data-thumbnail" data-dataset="voronoi-regions"></canvas>
+                    </div>
+                    <div class="dataset" title="Gaussian grid 9">
+                        <canvas class="data-thumbnail" data-dataset="gaussian-grid-9"></canvas>
+                    </div>
+                    <div class="dataset" title="Two rings XOR">
+                        <canvas class="data-thumbnail" data-dataset="two-rings-xor"></canvas>
+                    </div>
+                    <div class="dataset" title="Checker 4">
+                        <canvas class="data-thumbnail" data-dataset="checker4"></canvas>
+                    </div>
+                    <div class="dataset" title="Radial petals">
+                        <canvas class="data-thumbnail" data-dataset="radial-petals"></canvas>
+                    </div>
+                    <div class="dataset" title="Heart shape">
+                        <canvas class="data-thumbnail" data-dataset="heart-shape"></canvas>
+                    </div>
+                    <div class="dataset" title="Wave interference">
+                        <canvas class="data-thumbnail" data-dataset="wave-interference"></canvas>
+                    </div>
+                    <div class="dataset" title="Gradient blobs">
+                        <canvas class="data-thumbnail" data-dataset="gradient-blobs"></canvas>
+                    </div>
+                    <div class="dataset" title="Three classes (binary)">
+                        <canvas class="data-thumbnail" data-dataset="three-class-binary"></canvas>
+                    </div>
+                    <div class="dataset" title="Noisy concentric 3">
+                        <canvas class="data-thumbnail" data-dataset="noisy-concentric-3"></canvas>
+                    </div>
+                    <div class="dataset" title="Diagonal bands 5">
+                        <canvas class="data-thumbnail" data-dataset="diagonal-bands-5"></canvas>
+                    </div>
+                    <div class="dataset" title="Blob constellation">
+                        <canvas class="data-thumbnail" data-dataset="blob-constellation"></canvas>
+                    </div>
+                    <div class="dataset" title="Sparse vs dense">
+                        <canvas class="data-thumbnail" data-dataset="sparse-vs-dense"></canvas>
+                    </div>
+                    <div class="dataset" title="Half plane noisy">
+                        <canvas class="data-thumbnail" data-dataset="half-plane-noisy"></canvas>
+                    </div>
+                    <div class="dataset" title="Lens">
+                        <canvas class="data-thumbnail" data-dataset="lens"></canvas>
+                    </div>
+                    <div class="dataset" title="Hourglass">
+                        <canvas class="data-thumbnail" data-dataset="hourglass"></canvas>
+                    </div>
+                    <div class="dataset" title="Zigzag boundary">
+                        <canvas class="data-thumbnail" data-dataset="zigzag-boundary"></canvas>
+                    </div>
+                    <div class="dataset" title="Comb teeth">
+                        <canvas class="data-thumbnail" data-dataset="comb-teeth"></canvas>
+                    </div>
+                    <div class="dataset" title="Target 3 rings">
+                        <canvas class="data-thumbnail" data-dataset="target-3rings"></canvas>
+                    </div>
+                    <div class="dataset" title="Double spiral tight">
+                        <canvas class="data-thumbnail" data-dataset="double-spiral-tight"></canvas>
+                    </div>
+                    <div class="dataset" title="Quadrant stripes">
+                        <canvas class="data-thumbnail" data-dataset="quadrant-stripes"></canvas>
+                    </div>
+                    <div class="dataset" title="Gaussian ring">
+                        <canvas class="data-thumbnail" data-dataset="gaussian-ring"></canvas>
+                    </div>
+                    <div class="dataset" title="Regression: sin 2D">
+                        <canvas class="data-thumbnail" data-regDataset="reg-sin2d"></canvas>
+                    </div>
+                    <div class="dataset" title="Regression: product">
+                        <canvas class="data-thumbnail" data-regDataset="reg-product"></canvas>
+                    </div>
+                    <div class="dataset" title="Regression: distance">
+                        <canvas class="data-thumbnail" data-regDataset="reg-distance"></canvas>
+                    </div>
+                    <div class="dataset" title="Regression: Rosenbrock slice">
+                        <canvas class="data-thumbnail" data-regDataset="reg-rosenbrock-slice"></canvas>
+                    </div>
+                    <div class="dataset" title="Regression: checkerboard smooth">
+                        <canvas class="data-thumbnail" data-regDataset="reg-checkerboard-smooth"></canvas>
+                    </div>
+                    <div class="dataset" title="Regression: peaks">
+                        <canvas class="data-thumbnail" data-regDataset="reg-peaks"></canvas>
+                    </div>
+                    <div class="dataset" title="Regression: Mexican hat">
+                        <canvas class="data-thumbnail" data-regDataset="reg-mexican-hat"></canvas>
+                    </div>
+                    <div class="dataset" title="Trefoil 2D">
+                        <canvas class="data-thumbnail" data-dataset="trefoil-2d"></canvas>
+                    </div>
+                    <div class="dataset" title="Gear">
+                        <canvas class="data-thumbnail" data-dataset="gear"></canvas>
+                    </div>
+                    <div class="dataset" title="Star (6)">
+                        <canvas class="data-thumbnail" data-dataset="star6"></canvas>
+                    </div>
+                    <div class="dataset" title="Crescent Moons (3)">
+                        <canvas class="data-thumbnail" data-dataset="crescent-moons-3"></canvas>
+                    </div>
+                    <div class="dataset" title="Blob Lattice (16)">
+                        <canvas class="data-thumbnail" data-dataset="blob-lattice-16"></canvas>
+                    </div>
+                    <div class="dataset" title="Noisy Checker (6)">
+                        <canvas class="data-thumbnail" data-dataset="noisy-checker-6"></canvas>
+                    </div>
+                    <div class="dataset" title="Spiral 3-Arm Tight">
+                        <canvas class="data-thumbnail" data-dataset="spiral-3arm-tight"></canvas>
+                    </div>
+                    <div class="dataset" title="Ring Segments">
+                        <canvas class="data-thumbnail" data-dataset="ring-segments"></canvas>
+                    </div>
+                    <div class="dataset" title="Pie Slices">
+                        <canvas class="data-thumbnail" data-dataset="pie-slices"></canvas>
+                    </div>
+                    <div class="dataset" title="Droplet">
+                        <canvas class="data-thumbnail" data-dataset="droplet"></canvas>
+                    </div>
+                    <div class="dataset" title="Infinity Symbol">
+                        <canvas class="data-thumbnail" data-dataset="infinity-symbol"></canvas>
+                    </div>
+                    <div class="dataset" title="Bowtie">
+                        <canvas class="data-thumbnail" data-dataset="bowtie"></canvas>
+                    </div>
+                    <div class="dataset" title="Parallel Sines">
+                        <canvas class="data-thumbnail" data-dataset="parallel-sines"></canvas>
+                    </div>
+                    <div class="dataset" title="Radial Gradient Class">
+                        <canvas class="data-thumbnail" data-dataset="radial-gradient-class"></canvas>
+                    </div>
+                    <div class="dataset" title="Concentric Arcs">
+                        <canvas class="data-thumbnail" data-dataset="concentric-arcs"></canvas>
+                    </div>
+                    <div class="dataset" title="Clustered Outliers">
+                        <canvas class="data-thumbnail" data-dataset="clustered-outliers"></canvas>
+                    </div>
+                    <div class="dataset" title="Two Blobs Overlap">
+                        <canvas class="data-thumbnail" data-dataset="two-blobs-overlap"></canvas>
+                    </div>
+                    <div class="dataset" title="Diamond Grid">
+                        <canvas class="data-thumbnail" data-dataset="diamond-grid"></canvas>
+                    </div>
+                    <div class="dataset" title="Wavy Stripes">
+                        <canvas class="data-thumbnail" data-dataset="wavy-stripes"></canvas>
+                    </div>
+                    <div class="dataset" title="Plus-Minus Grid">
+                        <canvas class="data-thumbnail" data-dataset="plus-minus-grid"></canvas>
+                    </div>
+                    <div class="dataset" title="Regression: ripple 2">
+                        <canvas class="data-thumbnail" data-regDataset="reg-ripple2"></canvas>
+                    </div>
+                    <div class="dataset" title="Regression: saddle 2">
+                        <canvas class="data-thumbnail" data-regDataset="reg-saddle2"></canvas>
+                    </div>
+                    <div class="dataset" title="Regression: Gaussian hill">
+                        <canvas class="data-thumbnail" data-regDataset="reg-gaussian-hill"></canvas>
+                    </div>
+                    <div class="dataset" title="Regression: sin product">
+                        <canvas class="data-thumbnail" data-regDataset="reg-sin-product"></canvas>
+                    </div>
+                    <div class="dataset" title="Regression: abs diff">
+                        <canvas class="data-thumbnail" data-regDataset="reg-abs-diff"></canvas>
+                    </div>
+                    <div class="dataset" title="Regression: log">
+                        <canvas class="data-thumbnail" data-regDataset="reg-log"></canvas>
+                    </div>
+                    <div class="dataset" title="Regression: tanh wave">
+                        <canvas class="data-thumbnail" data-regDataset="reg-tanh-wave"></canvas>
+                    </div>
+                    <div class="dataset" title="Regression: cross ridge">
+                        <canvas class="data-thumbnail" data-regDataset="reg-cross-ridge"></canvas>
+                    </div>
+                    <div class="dataset" title="Petal 8">
+                        <canvas class="data-thumbnail" data-dataset="petal-8"></canvas>
+                    </div>
+                    <div class="dataset" title="Sun Rays">
+                        <canvas class="data-thumbnail" data-dataset="sun-rays"></canvas>
+                    </div>
+                    <div class="dataset" title="Brick Wall">
+                        <canvas class="data-thumbnail" data-dataset="brick-wall"></canvas>
+                    </div>
+                    <div class="dataset" title="Polka Dots">
+                        <canvas class="data-thumbnail" data-dataset="polka-dots"></canvas>
+                    </div>
+                    <div class="dataset" title="Swirl Pair">
+                        <canvas class="data-thumbnail" data-dataset="swirl-pair"></canvas>
+                    </div>
+                    <div class="dataset" title="Archipelago">
+                        <canvas class="data-thumbnail" data-dataset="archipelago"></canvas>
+                    </div>
+                    <div class="dataset" title="Ripple Rings">
+                        <canvas class="data-thumbnail" data-dataset="ripple-rings"></canvas>
+                    </div>
+                    <div class="dataset" title="Lemniscate">
+                        <canvas class="data-thumbnail" data-dataset="lemniscate"></canvas>
+                    </div>
+                    <div class="dataset" title="Clover">
+                        <canvas class="data-thumbnail" data-dataset="clover"></canvas>
+                    </div>
+                    <div class="dataset" title="Hex Grid">
+                        <canvas class="data-thumbnail" data-dataset="hex-grid"></canvas>
+                    </div>
+                    <div class="dataset" title="Noisy Sine Band">
+                        <canvas class="data-thumbnail" data-dataset="noisy-sine-band"></canvas>
+                    </div>
+                    <div class="dataset" title="Blobs in Corners">
+                        <canvas class="data-thumbnail" data-dataset="blobs-in-corners"></canvas>
+                    </div>
+                    <div class="dataset" title="Dual Crescents">
+                        <canvas class="data-thumbnail" data-dataset="dual-crescents"></canvas>
+                    </div>
+                    <div class="dataset" title="Dartboard 5">
+                        <canvas class="data-thumbnail" data-dataset="dartboard-5"></canvas>
+                    </div>
+                    <div class="dataset" title="Radial Checker">
+                        <canvas class="data-thumbnail" data-dataset="radial-checker"></canvas>
+                    </div>
+                    <div class="dataset" title="Maze Stripes">
+                        <canvas class="data-thumbnail" data-dataset="maze-stripes"></canvas>
+                    </div>
+                    <div class="dataset" title="Spiral Squares">
+                        <canvas class="data-thumbnail" data-dataset="spiral-squares"></canvas>
+                    </div>
+                    <div class="dataset" title="Regression: sinc product">
+                        <canvas class="data-thumbnail" data-regDataset="reg-sinc-product"></canvas>
+                    </div>
+                    <div class="dataset" title="Regression: volcano">
+                        <canvas class="data-thumbnail" data-regDataset="reg-volcano"></canvas>
+                    </div>
+                    <div class="dataset" title="Regression: terraces">
+                        <canvas class="data-thumbnail" data-regDataset="reg-terraces"></canvas>
+                    </div>
+                    <div class="dataset" title="Regression: monkey saddle">
+                        <canvas class="data-thumbnail" data-regDataset="reg-saddle3"></canvas>
+                    </div>
+                    <div class="dataset" title="Regression: bumps">
+                        <canvas class="data-thumbnail" data-regDataset="reg-bumps"></canvas>
+                    </div>
+                    <div class="dataset" title="Regression: spiral height">
+                        <canvas class="data-thumbnail" data-regDataset="reg-spiral-height"></canvas>
+                    </div>
                 </div>
             </div>
             <div>
@@ -245,13 +900,13 @@ Modified by David Cato
                     </p>
                 </div>
                 <div class="ui-noise">
-                    <label for="noise">Noise:&nbsp;&nbsp;<span class="value">XX</span></label>
+                    <label for="noise" title="Amount of random jitter added to the generated data.">Noise:&nbsp;&nbsp;<span class="value">XX</span></label>
                     <p class="slider">
                         <input class="mdl-slider mdl-js-slider" type="range" id="noise" min="0" max="50" step="5">
                     </p>
                 </div>
                 <div class="ui-batchSize">
-                    <label for="batchSize">Batch size:&nbsp;&nbsp;<span class="value">XX</span></label>
+                    <label for="batchSize" title="Number of examples accumulated before each weight update.">Batch size:&nbsp;&nbsp;<span class="value">XX</span></label>
                     <p class="slider">
                         <input class="mdl-slider mdl-js-slider" type="range" id="batchSize" min="1" max="30" step="1">
                     </p>
@@ -260,11 +915,62 @@ Modified by David Cato
                     Regenerate
                 </button>
             </div>
+            <div class="threed-controls" style="margin-top:14px;">
+                <label class="mdl-checkbox mdl-js-checkbox mdl-js-ripple-effect" for="threeD-toggle">
+                    <input type="checkbox" id="threeD-toggle" class="mdl-checkbox__input">
+                    <span class="mdl-checkbox__label label">3D dataset mode</span>
+                </label>
+                <div class="select" style="margin-top:6px;">
+                    <select id="threeD-dataset">
+                        <option value="blobs">Two Gaussian Blobs</option>
+                        <option value="spheres">Concentric Spheres</option>
+                        <option value="helix">Helix</option>
+                        <option value="swiss-roll">Swiss Roll</option>
+                        <option value="linked-rings">Linked Rings</option>
+                        <option value="checkerboard-cube">3D Checkerboard Cube</option>
+                        <option value="double-helix">Double Helix</option>
+                        <option value="xor3d">3D XOR (Octants)</option>
+                        <option value="shell-vs-core">Shell vs Core</option>
+                        <option value="s-curve-3d">3D S-Curve</option>
+                        <option value="trefoil-knot">Trefoil Knot</option>
+                        <option value="mobius-band">Mobius Band</option>
+                        <option value="stacked-planes">Stacked Planes</option>
+                        <option value="spiral-tower">3D Spiral Tower</option>
+                        <option value="octant-checker">Octant Checker</option>
+                        <option value="sphere-grid">Sphere Grid</option>
+                        <option value="nested-cubes">Nested Cubes</option>
+                        <option value="cube-shell">Cube Shell</option>
+                        <option value="double-torus">Double Torus</option>
+                        <option value="spiral-cone">Spiral Cone</option>
+                        <option value="lattice-points">Lattice Points</option>
+                        <option value="3d-moons">3D Moons</option>
+                        <option value="octahedron-vs-sphere">Octahedron vs Sphere</option>
+                        <option value="helix-pair">Helix Pair</option>
+                        <option value="plane-stack-5">Plane Stack (5)</option>
+                        <option value="sphere-spiral">Sphere Spiral</option>
+                        <option value="cube-lattice">Cube Lattice</option>
+                        <option value="two-helices">Two Helices</option>
+                        <option value="cone-stack">Cone Stack</option>
+                        <option value="torus-knot-2">Torus Knot 2</option>
+                        <option value="plane-vs-blob">Plane vs Blob</option>
+                        <option value="octant-spheres">Octant Spheres</option>
+                        <option value="swiss-roll-3class">Swiss Roll (3-class)</option>
+                        <option value="spherical-shell-2">Spherical Shell 2</option>
+                        <option value="3d-grid-xor">3D Grid XOR</option>
+                        <option value="helix-triple">Helix Triple</option>
+                        <option value="cube-edges">Cube Edges</option>
+                        <option value="sphere-clusters">Sphere Clusters</option>
+                        <option value="twisted-torus">Twisted Torus</option>
+                        <option value="3d-checker-8">3D Checker 8</option>
+                        <option value="paraboloid-shell">Paraboloid Shell</option>
+                    </select>
+                </div>
+            </div>
         </div>
 
         <!-- Features Column -->
         <div class="column features">
-            <h4>Features</h4>
+            <h4 data-i18n="features">Features</h4>
             <p>Which properties do you want to feed in?</p>
             
             <div id="network">
@@ -296,17 +1002,18 @@ Modified by David Cato
                 <div class="callout weights">
                     <svg viewBox="0 0 30 30">
                         <defs>
-                            <marker id="arrow" markerWidth="5" markerHeight="5" refx="5" refy="2.5" orient="auto" markerUnits="userSpaceOnUse">
+                            <marker id="arrow2" markerWidth="5" markerHeight="5" refx="5" refy="2.5" orient="auto" markerUnits="userSpaceOnUse">
                                 <path d="M0,0 L5,2.5 L0,5 z" />
                             </marker>
                         </defs>
-                        <path d="M12,30C5,20 2,15 12,0" marker-end="url(#arrow)">
+                        <path d="M12,30C5,20 2,15 12,0" marker-end="url(#arrow2)">
                     </svg>
                     <div class="label">
                         The outputs are mixed with varying <b>weights</b>, shown by the thickness of the lines.
                     </div>
                 </div>
                 <button id="addinput" class="basic-button">Custom feature</button>
+                <button id="add-activation" class="basic-button">Add custom activation</button>
             </div>
 
         
@@ -331,29 +1038,48 @@ Modified by David Cato
 
         <!-- Output Column -->
         <div class="column output">
-            <h4>Output</h4>
+            <h4 data-i18n="output">Output
+                <button id="ux-fullscreen" type="button" title="Toggle fullscreen for the output area" style="float:right">⛶</button>
+            </h4>
+            <!-- Compact status bar (feature 12) -->
+            <div id="ux-status-bar">
+                <span>epoch <b id="ux-status-epoch">0</b></span>
+                <span>loss <b id="ux-status-losstrain">—</b>/<b id="ux-status-losstest">—</b></span>
+                <span>acc <b id="ux-status-acctrain">—</b>/<b id="ux-status-acctest">—</b></span>
+                <span><b id="ux-status-sps">0</b> steps/s</span>
+            </div>
             <div class="metrics">
                 <div class="output-stats ui-percTrainData">
-                    <span>Test loss</span>
-                    <div class="value" id="loss-test"></div>
+                    <span data-i18n="testLoss">Test loss</span>
+                    <div class="value" id="loss-test" aria-live="polite" role="status"></div>
                 </div>
                 <div class="output-stats train">
-                    <span>Training loss</span>
-                    <div class="value" id="loss-train"></div>
+                    <span data-i18n="trainingLoss">Training loss</span>
+                    <div class="value" id="loss-train" aria-live="polite" role="status"></div>
+                </div>
+                <div class="output-stats acc-stat">
+                    <span data-i18n="trainAcc">Train acc</span>
+                    <div class="value" id="acc-train" aria-live="polite"></div>
+                </div>
+                <div class="output-stats acc-stat">
+                    <span data-i18n="testAcc">Test acc</span>
+                    <div class="value" id="acc-test" aria-live="polite"></div>
                 </div>
                 <div id="linechart"></div>
+                <div id="confusion-matrix"></div>
             </div>
             <div id="heatmap"></div>
+            <div id="threeview" style="display:none;width:300px;height:300px;"></div>
             <div id="select-platform" class="ui-paintPlatform">
                 <div class="label">
                     Select color that you would like to paint with.
                 </div>
                 <label class="mdl-checkbox mdl-js-checkbox mdl-js-ripple-effect">
-                    <input type="radio" name="color-choose" id="select-orange" value="1" checked>
+                    <input type="radio" name="color-choose" id="select-orange" value="1" checked class="mdl-checkbox__input">
                     <span class="mdl-checkbox__label label">Orange</span>
                 </label>
                 <label class="mdl-checkbox mdl-js-checkbox mdl-js-ripple-effect">
-                    <input type="radio" name="color-choose" id="select-blue" value="-1">
+                    <input type="radio" name="color-choose" id="select-blue" value="-1" class="mdl-checkbox__input">
                     <span class="mdl-checkbox__label label">Blue</span>
                 </label>
             </div>
@@ -387,8 +1113,371 @@ Modified by David Cato
                         <span class="mdl-checkbox__label label">Discretize output</span>
                     </label>
                 </div>
+                <div class="adv-labs-link" style="margin-top:10px;font-size:12px;opacity:.8;">
+                    🧪 <b>49 interactive labs</b> — CNN, Transformer, RNN, Autoencoder, VAE, GAN, Diffusion, Word2Vec, Bayesian NN, MDN, Normalizing Flows, Perceptron, Decision Tree, SVM, GLM, k-NN, Gaussian Process, HMM, Clustering, PCA/t-SNE, SOM, RBM, ESN, RL, Hopfield, Genetic Algorithm, PSO, Multi-Armed Bandit, Minimax Game AI, Optimizer Visualizer, Markov Chains, MCMC, Cellular Automata, Neural CA, Reaction-Diffusion, Fourier, Kalman Filter, Spiking NN, Boids, Ant Colony, Convolution Kernels, Pathfinding, Strange Attractors, Fractals, Double Pendulum, N-Body Gravity, Wave Equation, Linear Algebra, Activation Explorer &nbsp;→&nbsp; <a href="labs.html"><b>Browse the lab gallery</b></a>
+                </div>
             </div>
         </div>
+    </div>
+
+    <!-- Analysis: evaluation & visualization -->
+    <div class="l--page analysis-section" id="analysis-section">
+      <h4 class="analysis-header" id="analysis-toggle">
+        <i class="material-icons" id="analysis-arrow">keyboard_arrow_down</i>
+        Analysis &mdash; evaluation &amp; visualization
+      </h4>
+      <div id="analysis-body">
+        <div class="analysis-options" id="analysis-options">
+          <span class="ao-title">Show panels:</span>
+          <label><input type="checkbox" id="ao-curves" checked> ROC / PR / calibration</label>
+          <label><input type="checkbox" id="ao-hist" checked> Weight / bias / activation / confidence histograms</label>
+          <label><input type="checkbox" id="ao-grad" checked> Gradient flow &amp; weight-magnitude</label>
+          <label><input type="checkbox" id="ao-landscape" checked> Loss landscape slice</label>
+        </div>
+
+        <div class="analysis-readouts">
+          <div class="ar-card">
+            <div class="ar-label">Parameters</div>
+            <div class="ar-value" id="an-params">&mdash;</div>
+          </div>
+          <div class="ar-card">
+            <div class="ar-label">Steps / sec</div>
+            <div class="ar-value" id="an-sps">&mdash;</div>
+          </div>
+          <div class="ar-card classification-only">
+            <div class="ar-label">Precision / Recall</div>
+            <div class="ar-value" id="an-prec-rec">&mdash;</div>
+          </div>
+          <div class="ar-card classification-only">
+            <div class="ar-label">F1 / Specificity</div>
+            <div class="ar-value" id="an-f1-spec">&mdash;</div>
+          </div>
+          <div class="ar-card classification-only">
+            <div class="ar-label">AUC (ROC)</div>
+            <div class="ar-value" id="an-auc">&mdash;</div>
+          </div>
+          <div class="ar-card classification-only">
+            <div class="ar-label">Avg precision (PR)</div>
+            <div class="ar-value" id="an-ap">&mdash;</div>
+          </div>
+          <div class="ar-card">
+            <div class="ar-label">Decision margin (mean |out|)</div>
+            <div class="ar-value" id="an-margin">&mdash;</div>
+          </div>
+          <div class="ar-card classification-only">
+            <div class="ar-label">Class balance (+1 / -1)</div>
+            <div class="ar-value" id="an-balance">&mdash;</div>
+          </div>
+        </div>
+
+        <div class="analysis-actions">
+          <button class="basic-button" id="an-export-png">Export decision boundary (PNG)</button>
+          <button class="basic-button" id="an-export-csv">Export training history (CSV)</button>
+          <button class="basic-button" id="an-export-json">Export metrics snapshot (JSON)</button>
+          <button class="basic-button" id="an-landscape-btn">Compute loss landscape</button>
+        </div>
+
+        <div class="analysis-grid">
+          <div class="an-panel classification-only" id="an-panel-roc">
+            <div class="an-panel-title">ROC curve (test)</div>
+            <svg id="an-roc" width="220" height="180"></svg>
+          </div>
+          <div class="an-panel classification-only" id="an-panel-pr">
+            <div class="an-panel-title">Precision-Recall (test)</div>
+            <svg id="an-pr" width="220" height="180"></svg>
+          </div>
+          <div class="an-panel classification-only" id="an-panel-calib">
+            <div class="an-panel-title">Calibration / reliability</div>
+            <svg id="an-calib" width="220" height="180"></svg>
+          </div>
+          <div class="an-panel" id="an-panel-whist">
+            <div class="an-panel-title">Weight histogram</div>
+            <svg id="an-whist" width="220" height="160"></svg>
+          </div>
+          <div class="an-panel" id="an-panel-bhist">
+            <div class="an-panel-title">Bias histogram</div>
+            <svg id="an-bhist" width="220" height="160"></svg>
+          </div>
+          <div class="an-panel" id="an-panel-ahist">
+            <div class="an-panel-title">Activation histogram (test)</div>
+            <svg id="an-ahist" width="220" height="160"></svg>
+          </div>
+          <div class="an-panel" id="an-panel-chist">
+            <div class="an-panel-title">Confidence histogram |out| (test)</div>
+            <svg id="an-chist" width="220" height="160"></svg>
+          </div>
+          <div class="an-panel" id="an-panel-grad">
+            <div class="an-panel-title">Gradient flow (mean |grad| / layer)</div>
+            <svg id="an-grad" width="220" height="160"></svg>
+          </div>
+          <div class="an-panel" id="an-panel-wmag">
+            <div class="an-panel-title">Per-layer mean |weight| over time</div>
+            <svg id="an-wmag" width="220" height="160"></svg>
+          </div>
+          <div class="an-panel" id="an-panel-landscape">
+            <div class="an-panel-title">Loss landscape 1D slice</div>
+            <svg id="an-landscape" width="220" height="160"></svg>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Interpretability -->
+    <div class="l--page interp-section" id="interp-section">
+      <h4 class="analysis-header" id="interp-toggle">
+        <i class="material-icons" id="interp-arrow">keyboard_arrow_down</i>
+        Interpretability
+      </h4>
+      <div id="interp-body">
+        <p class="interp-note" id="interp-nonclass-note" style="display:none;">
+          Interpretability tools require 2D classification mode.
+        </p>
+        <div class="interp-grid">
+
+          <div class="interp-panel">
+            <div class="interp-panel-title">Input saliency field</div>
+            <button class="basic-button" id="ip-saliency">Compute saliency field</button>
+            <div class="interp-readout" id="ip-saliency-out"></div>
+          </div>
+
+          <div class="interp-panel">
+            <div class="interp-panel-title">Occlusion sensitivity (per feature)</div>
+            <button class="basic-button" id="ip-occlusion">Compute occlusion</button>
+            <svg id="ip-occlusion-chart" width="240" height="150"></svg>
+          </div>
+
+          <div class="interp-panel">
+            <div class="interp-panel-title">Drop-feature importance</div>
+            <button class="basic-button" id="ip-dropfeat">Compute importance</button>
+            <svg id="ip-dropfeat-chart" width="240" height="150"></svg>
+          </div>
+
+          <div class="interp-panel">
+            <div class="interp-panel-title">Partial dependence (x, y)</div>
+            <button class="basic-button" id="ip-pdp">Compute PDP</button>
+            <svg id="ip-pdp-x" width="240" height="120"></svg>
+            <svg id="ip-pdp-y" width="240" height="120"></svg>
+          </div>
+
+          <div class="interp-panel">
+            <div class="interp-panel-title">Neuron ablation</div>
+            <div class="select">
+              <select id="ip-ablate-neuron"></select>
+            </div>
+            <label class="mdl-checkbox mdl-js-checkbox" for="ip-ablate-toggle" style="display:block;margin-top:6px;">
+              <input type="checkbox" id="ip-ablate-toggle" class="mdl-checkbox__input">
+              <span class="mdl-checkbox__label label">Ablate selected neuron</span>
+            </label>
+            <div class="interp-readout" id="ip-ablate-out"></div>
+          </div>
+
+          <div class="interp-panel">
+            <div class="interp-panel-title">Activation maximization</div>
+            <div class="select">
+              <select id="ip-actmax-neuron"></select>
+            </div>
+            <button class="basic-button" id="ip-actmax">Find max-activating input</button>
+            <div class="interp-readout" id="ip-actmax-out"></div>
+          </div>
+
+          <div class="interp-panel">
+            <div class="interp-panel-title">Counterfactual (clicked point)</div>
+            <button class="basic-button" id="ip-counterfactual">Find counterfactual</button>
+            <div class="interp-readout" id="ip-counterfactual-out"></div>
+          </div>
+
+          <div class="interp-panel">
+            <div class="interp-panel-title">Hidden-activation PCA (2D)</div>
+            <button class="basic-button" id="ip-pca">Compute PCA</button>
+            <svg id="ip-pca-chart" width="240" height="200"></svg>
+          </div>
+
+          <div class="interp-panel">
+            <div class="interp-panel-title">Decision-tree surrogate</div>
+            <button class="basic-button" id="ip-surrogate">Fit surrogate tree</button>
+            <div class="interp-readout" id="ip-surrogate-out"></div>
+          </div>
+
+          <div class="interp-panel">
+            <div class="interp-panel-title">Confidence contours / entropy</div>
+            <label class="mdl-checkbox mdl-js-checkbox" for="ip-contour-toggle" style="display:block;">
+              <input type="checkbox" id="ip-contour-toggle" class="mdl-checkbox__input">
+              <span class="mdl-checkbox__label label">Show iso-confidence contours</span>
+            </label>
+            <button class="basic-button" id="ip-entropy">Compute grid entropy</button>
+            <div class="interp-readout" id="ip-entropy-out"></div>
+          </div>
+
+          <div class="interp-panel">
+            <div class="interp-panel-title">What-if point inspector</div>
+            <button class="basic-button" id="ip-whatif">Inspect last clicked point</button>
+            <div class="interp-readout" id="ip-whatif-out"></div>
+          </div>
+
+          <div class="interp-panel">
+            <div class="interp-panel-title">k-NN baseline</div>
+            <button class="basic-button" id="ip-knn">Compute k-NN accuracy</button>
+            <div class="interp-readout" id="ip-knn-out"></div>
+          </div>
+
+          <div class="interp-panel">
+            <div class="interp-panel-title">Per-feature contribution (clicked point)</div>
+            <button class="basic-button" id="ip-contrib">Compute contributions</button>
+            <svg id="ip-contrib-chart" width="240" height="150"></svg>
+          </div>
+
+        </div>
+      </div>
+    </div>
+
+    <!-- Advanced features -->
+    <div class="l--page advanced-labs">
+        <div class="adv-panel classification-only" id="adv-panel">
+            <h4>Adversarial</h4>
+            <p class="adv-help">Perturb the test set against the current model (feature-agnostic finite-difference attack).</p>
+            <label for="adv-epsilon">Epsilon:&nbsp;<span class="value" id="adv-epsilon-val">0.5</span></label>
+            <p class="slider">
+                <input class="mdl-slider mdl-js-slider" type="range" id="adv-epsilon" min="0" max="3" step="0.1">
+            </p>
+            <div class="select">
+                <select id="adv-method">
+                    <option value="fgsm">FGSM</option>
+                    <option value="pgd">PGD</option>
+                    <option value="random">Random-noise baseline</option>
+                    <option value="targeted">Targeted (least-likely)</option>
+                    <option value="deepfool">DeepFool-lite</option>
+                </select>
+            </div>
+            <button class="basic-button" id="adv-generate">Generate adversarial examples</button>
+            <button class="basic-button" id="adv-robustness">Robustness curve (sweep &epsilon;)</button>
+            <button class="basic-button" id="adv-saliency">Saliency at last point</button>
+            <label class="mdl-checkbox mdl-js-checkbox" for="adv-training" style="display:block;margin-top:8px;">
+                <input type="checkbox" id="adv-training" class="mdl-checkbox__input">
+                <span class="mdl-checkbox__label label">Adversarial training</span>
+            </label>
+            <div class="adv-readout" id="adv-readout"></div>
+            <svg id="adv-robustness-plot" width="240" height="140" style="display:none;margin-top:8px;"></svg>
+        </div>
+
+        <div class="adv-panel classification-only" id="unlearn-panel">
+            <h4>Machine Unlearning</h4>
+            <p class="adv-help">Forget data from the trained model via gradient ascent, then watch the boundary change.</p>
+            <label for="unlearn-steps">Steps:&nbsp;<span class="value" id="unlearn-steps-val">100</span></label>
+            <p class="slider">
+                <input class="mdl-slider mdl-js-slider" type="range" id="unlearn-steps" min="10" max="500" step="10">
+            </p>
+            <div class="select">
+                <select id="unlearn-method">
+                    <option value="ascent">Gradient ascent</option>
+                    <option value="finetune">Fine-tune on retain</option>
+                </select>
+            </div>
+            <button class="basic-button" id="forget-orange">Forget Orange</button>
+            <button class="basic-button" id="forget-blue">Forget Blue</button>
+            <button class="basic-button" id="forget-misclassified">Forget misclassified</button>
+            <button class="basic-button" id="retrain-without">Retrain without forgotten</button>
+            <p class="adv-help" style="margin-top:8px;">Selection: drag a rectangle on the plot (brush) to pick points, or forget the N nearest to the last-clicked point.</p>
+            <button class="basic-button" id="unlearn-brush-toggle">Brush-select: off</button>
+            <button class="basic-button" id="forget-selected">Forget selected</button>
+            <label for="forget-nearest-n">Nearest N:&nbsp;<span class="value" id="forget-nearest-n-val">10</span></label>
+            <p class="slider">
+                <input class="mdl-slider mdl-js-slider" type="range" id="forget-nearest-n" min="1" max="50" step="1">
+            </p>
+            <button class="basic-button" id="forget-nearest">Forget nearest N to last click</button>
+            <button class="basic-button" id="unlearn-relearn">Relearn-time probe</button>
+            <div class="adv-readout" id="unlearn-readout"></div>
+        </div>
+
+        <div class="adv-panel">
+            <h4>Custom data</h4>
+            <p class="adv-help">CSV: one "x,y,label" per line. Label 1 (blue) or -1 (orange).</p>
+            <textarea id="custom-data-text" rows="6" style="width:100%;box-sizing:border-box;" placeholder="0.5,1.2,1&#10;-2.0,3.1,-1"></textarea>
+            <button class="basic-button" id="custom-data-load">Load custom dataset</button>
+            <div class="adv-readout" id="custom-data-readout"></div>
+        </div>
+
+        <div class="adv-panel">
+            <h4>Fine-tuning: freeze layers</h4>
+            <p class="adv-help">Freeze hidden layers so their weights &amp; biases stay fixed during training. Classic fine-tuning: freeze all but the last layer, then keep training to adapt only the head.</p>
+            <div id="freeze-layers-list" style="margin-bottom:8px;"></div>
+            <button class="basic-button" id="freeze-all-but-last">Freeze all but last layer</button>
+            <button class="basic-button" id="unfreeze-all">Unfreeze all</button>
+        </div>
+
+        <div class="adv-panel">
+            <h4>Save / Load model</h4>
+            <p class="adv-help">Export the trained network (shape, weights, biases, activation, inputs, problem) to JSON, or import it back to continue fine-tuning.</p>
+            <button class="basic-button" id="export-model">Export model</button>
+            <button class="basic-button" id="import-model">Import model</button>
+            <a id="model-download-link" class="basic-button" style="display:none;text-decoration:none;" href="#">Download JSON</a>
+            <textarea id="model-io-text" rows="6" style="width:100%;box-sizing:border-box;margin-top:8px;" placeholder="Model JSON appears here on export; paste JSON here then click Import model."></textarea>
+            <div class="adv-readout" id="model-io-readout"></div>
+        </div>
+    </div>
+
+    <!-- Experiments: run tracking & comparison -->
+    <div class="l--page experiments-section collapsed" id="experiments-section">
+      <h4 class="analysis-header" id="experiments-toggle">
+        <i class="material-icons" id="experiments-arrow">keyboard_arrow_down</i>
+        Experiments &mdash; run tracking &amp; comparison
+      </h4>
+      <div id="experiments-body">
+        <div class="xp-actions">
+          <button class="basic-button" id="xp-save-run">Save run</button>
+          <button class="basic-button" id="xp-clear-runs">Clear all runs</button>
+          <button class="basic-button" id="xp-export-runs">Export runs (JSON)</button>
+          <button class="basic-button" id="xp-import-runs">Import runs (JSON)</button>
+          <button class="basic-button" id="xp-export-history-csv">Export this run history (CSV)</button>
+          <button class="basic-button" id="xp-grid-search">Run mini grid search</button>
+        </div>
+
+        <div class="xp-delta-bar">
+          <span class="xp-badge" id="xp-best-badge">Best run: &mdash;</span>
+          <span class="xp-delta" id="xp-current-delta">Current vs best: &mdash;</span>
+        </div>
+
+        <div class="xp-block">
+          <div class="xp-block-title">
+            Leaderboard
+            <span class="xp-sort">sort:
+              <select id="xp-sort-by">
+                <option value="accTest">test accuracy</option>
+                <option value="lossTest">test loss</option>
+                <option value="accTrain">train accuracy</option>
+                <option value="iter">epoch</option>
+              </select>
+            </span>
+          </div>
+          <div id="xp-leaderboard" class="xp-table-wrap"></div>
+        </div>
+
+        <div class="xp-block">
+          <div class="xp-block-title">Overlay comparison</div>
+          <div class="xp-metric-toggle">
+            metric:
+            <label><input type="radio" name="xp-overlay-metric" value="loss" checked> loss</label>
+            <label><input type="radio" name="xp-overlay-metric" value="acc"> accuracy</label>
+          </div>
+          <svg id="xp-overlay-chart" width="440" height="220"></svg>
+          <div id="xp-overlay-legend" class="xp-legend"></div>
+        </div>
+
+        <div class="xp-block">
+          <div class="xp-block-title">Compare A / B</div>
+          <div class="xp-ab-pickers">
+            A: <select id="xp-compare-a"></select>
+            B: <select id="xp-compare-b"></select>
+          </div>
+          <div id="xp-compare-table" class="xp-table-wrap"></div>
+        </div>
+
+        <div class="xp-block">
+          <div class="xp-block-title">Mini grid search (test accuracy)</div>
+          <div id="xp-grid-results" class="xp-table-wrap"></div>
+        </div>
+
+        <textarea id="xp-io-text" rows="5" style="width:100%;box-sizing:border-box;margin-top:8px;" placeholder="Runs JSON appears here on export; paste JSON here then click Import runs."></textarea>
+      </div>
     </div>
 
     <div class="l--page">
@@ -487,31 +1576,34 @@ Modified by David Cato
     </footer>
     <script>
         // Check stored preference on page load
-        window.addEventListener('DOMContentLoaded', (event) => {
-            const darkModeToggle = document.getElementById('dark-mode-toggle');
-            const lightStyle = document.getElementById('light-style');
-            const darkStyle = document.getElementById('dark-style');
-            const darkModeEnabled = localStorage.getItem('dark-mode-enabled') === 'true';
+    //     window.addEventListener('DOMContentLoaded', (event) => {
+    //         const darkModeToggle = document.getElementById('dark-mode-toggle');
+    //         const lightStyle = document.getElementById('light-style');
+    //         const darkStyle = document.getElementById('dark-style');
+    //         const darkModeEnabled = localStorage.getItem('dark-mode-enabled') === 'true';
 
-            darkModeToggle.checked = darkModeEnabled;
-            lightStyle.disabled = darkModeEnabled;
-            darkStyle.disabled = !darkModeEnabled;
-        });
+    //         darkModeToggle.checked = darkModeEnabled;
+    //         lightStyle.disabled = darkModeEnabled;
+    //         darkStyle.disabled = !darkModeEnabled;
+        
 
-        // Update stored preference on toggle change
-        document.getElementById('dark-mode-toggle').addEventListener('change', function() {
-            const lightStyle = document.getElementById('light-style');
-            const darkStyle = document.getElementById('dark-style');
-            const darkModeEnabled = this.checked;
+    //     // Update stored preference on toggle change
+    //     document.getElementById('dark-mode-toggle').addEventListener('change', function() {
+    //         const lightStyle = document.getElementById('light-style');
+    //         const darkStyle = document.getElementById('dark-style');
+    //         const darkModeEnabled = this.checked;
 
-            lightStyle.disabled = darkModeEnabled;
-            darkStyle.disabled = !darkModeEnabled;
-            localStorage.setItem('dark-mode-enabled', darkModeEnabled);
-        });
+    //         lightStyle.disabled = darkModeEnabled;
+    //         darkStyle.disabled = !darkModeEnabled;
+    //         localStorage.setItem('dark-mode-enabled', darkModeEnabled);
+    //     });
+    // });
     </script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r134/three.min.js"></script>
     <script src="bundle.js"></script>
     <!-- Google analytics -->
     <script src="analytics.js"></script>
+    <script defer src="https://code.getmdl.io/1.3.0/material.min.js"></script>
 </body>
 
 </html>

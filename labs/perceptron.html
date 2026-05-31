@@ -1,0 +1,341 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Perceptron Lab</title>
+  <style>
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+    body {
+      font-family: 'Segoe UI', Arial, sans-serif;
+      background: #0f0f1a;
+      color: #d4d4e8;
+      min-height: 100vh;
+      padding: 16px;
+      font-size: 13px;
+    }
+
+    /* ── Header ── */
+    .header {
+      margin-bottom: 16px;
+    }
+
+    .header h1 {
+      font-size: 1.65rem;
+      font-weight: 700;
+      color: #a78bfa;
+      letter-spacing: 0.4px;
+      margin-bottom: 4px;
+    }
+
+    .header .subtitle {
+      font-size: 0.82rem;
+      color: #7777a0;
+    }
+
+    /* ── Layout ── */
+    .main-layout {
+      display: flex;
+      gap: 18px;
+      align-items: flex-start;
+    }
+
+    .sidebar {
+      width: 230px;
+      flex-shrink: 0;
+      background: #15152a;
+      border: 1px solid #2a2a4a;
+      border-radius: 10px;
+      padding: 12px 10px;
+      max-height: 94vh;
+      overflow-y: auto;
+      scrollbar-width: thin;
+      scrollbar-color: #3a3a6a #15152a;
+    }
+
+    .content {
+      flex: 1;
+      min-width: 0;
+      display: flex;
+      flex-direction: column;
+      gap: 14px;
+    }
+
+    /* ── Controls ── */
+    .ctrl-section {
+      margin-bottom: 12px;
+    }
+
+    .ctrl-label {
+      font-size: 0.70rem;
+      font-weight: 700;
+      text-transform: uppercase;
+      letter-spacing: 0.8px;
+      color: #8888bb;
+      margin-bottom: 6px;
+    }
+
+    .ctrl-row {
+      display: flex;
+      align-items: center;
+      gap: 6px;
+      margin-bottom: 5px;
+    }
+
+    .ctrl-row label {
+      font-size: 0.75rem;
+      color: #9999bb;
+      min-width: 46px;
+    }
+
+    .ctrl-row input[type="range"] {
+      flex: 1;
+      accent-color: #a78bfa;
+      cursor: pointer;
+    }
+
+    .ctrl-row span {
+      font-size: 0.75rem;
+      color: #c4c4e8;
+      min-width: 34px;
+      text-align: right;
+    }
+
+    .toggle-row {
+      display: flex;
+      align-items: center;
+      gap: 7px;
+      margin-bottom: 5px;
+    }
+
+    .toggle-row input[type="checkbox"] {
+      accent-color: #a78bfa;
+      width: 14px; height: 14px;
+      cursor: pointer;
+    }
+
+    .toggle-row label {
+      font-size: 0.78rem;
+      cursor: pointer;
+      color: #c0c0de;
+    }
+
+    .ctrl-select {
+      width: 100%;
+      background: #1e1e38;
+      border: 1px solid #3a3a6a;
+      border-radius: 5px;
+      color: #d4d4e8;
+      font-size: 0.78rem;
+      padding: 5px 8px;
+      cursor: pointer;
+      outline: none;
+    }
+
+    .ctrl-select:focus {
+      border-color: #a78bfa;
+    }
+
+    /* ── Buttons ── */
+    .btn-row {
+      display: flex;
+      gap: 6px;
+      flex-wrap: wrap;
+    }
+
+    .ctrl-btn {
+      background: #1e1e38;
+      border: 1px solid #3a3a6a;
+      border-radius: 6px;
+      color: #c4c4e8;
+      font-size: 0.75rem;
+      padding: 5px 10px;
+      cursor: pointer;
+      transition: background 0.15s, border-color 0.15s;
+    }
+
+    .ctrl-btn:hover {
+      background: #2a2a50;
+      border-color: #a78bfa;
+    }
+
+    .ctrl-btn.primary {
+      background: #312e81;
+      border-color: #6366f1;
+      color: #e0e7ff;
+    }
+
+    .ctrl-btn.primary:hover {
+      background: #3730a3;
+    }
+
+    .ctrl-btn.danger {
+      background: #3b0f0f;
+      border-color: #7f1d1d;
+      color: #fca5a5;
+    }
+
+    .ctrl-btn.danger:hover {
+      background: #4c1515;
+    }
+
+    .class-btn {
+      font-size: 0.73rem;
+      padding: 4px 8px;
+    }
+
+    .class1 { border-color: #38bdf8; color: #38bdf8; }
+    .class1.active-class { background: #0c2d4a; border-color: #38bdf8; }
+    .class-neg1 { border-color: #fb923c; color: #fb923c; }
+    .class-neg1.active-class { background: #3a1a05; border-color: #fb923c; }
+
+    /* ── Stats ── */
+    .stat-grid {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 4px 8px;
+    }
+
+    .stat-item {
+      display: flex;
+      flex-direction: column;
+      background: #1a1a30;
+      border-radius: 5px;
+      padding: 4px 7px;
+    }
+
+    .stat-key {
+      font-size: 0.65rem;
+      color: #6666aa;
+      text-transform: uppercase;
+      letter-spacing: 0.5px;
+    }
+
+    .stat-val {
+      font-size: 0.82rem;
+      color: #d4d4f8;
+      font-weight: 600;
+      margin-top: 1px;
+    }
+
+    .stat-val.mono {
+      font-size: 0.68rem;
+      font-family: monospace;
+      font-weight: 400;
+      word-break: break-all;
+    }
+
+    /* ── Sep note ── */
+    .sep-note {
+      background: #1e1005;
+      border: 1px solid #92400e;
+      border-radius: 6px;
+      color: #fcd34d;
+      font-size: 0.72rem;
+      padding: 7px 9px;
+      line-height: 1.5;
+      margin-bottom: 10px;
+    }
+
+    /* ── Legend ── */
+    .legend-row {
+      display: flex;
+      align-items: center;
+      gap: 6px;
+      font-size: 0.72rem;
+      color: #9090b8;
+      margin-bottom: 3px;
+    }
+
+    .leg-dot {
+      display: inline-block;
+      width: 10px; height: 10px;
+      border-radius: 50%;
+      flex-shrink: 0;
+    }
+
+    .dot-pos  { background: #38bdf8; }
+    .dot-neg  { background: #fb923c; }
+    .dot-mis  { background: #f87171; box-shadow: 0 0 0 2px #f8717155; }
+
+    .leg-line {
+      display: inline-block;
+      width: 20px; height: 3px;
+      flex-shrink: 0;
+      border-radius: 2px;
+    }
+
+    .line-current { background: #38bdf8; }
+    .line-pocket  { background: #a78bfa; }
+    .line-svm     { background: #fbbf24; }
+    .line-w       { background: #34d399; }
+
+    /* ── Algo box ── */
+    .algo-box {
+      background: #0f0f20;
+      border: 1px solid #2a2a4a;
+      border-radius: 7px;
+      padding: 8px 10px;
+      margin-top: 4px;
+    }
+
+    .algo-text {
+      font-size: 0.70rem;
+      font-family: monospace;
+      color: #9090c0;
+      line-height: 1.6;
+    }
+
+    .algo-text b {
+      color: #c4c4e8;
+    }
+
+    /* ── Canvas area ── */
+    .canvas-wrap {
+      background: #15152a;
+      border: 1px solid #2a2a4a;
+      border-radius: 10px;
+      padding: 8px;
+      display: inline-block;
+    }
+
+    .canvas-wrap canvas {
+      display: block;
+      cursor: crosshair;
+      border-radius: 4px;
+      max-width: 100%;
+    }
+
+    /* ── Error panel ── */
+    .err-panel {
+      background: #15152a;
+      border: 1px solid #2a2a4a;
+      border-radius: 10px;
+      padding: 12px 12px 8px;
+    }
+
+    .panel-title {
+      font-size: 0.78rem;
+      font-weight: 700;
+      color: #a78bfa;
+      margin-bottom: 8px;
+      letter-spacing: 0.3px;
+    }
+
+    .err-panel canvas {
+      display: block;
+      max-width: 100%;
+    }
+
+    /* ── Scrollbar ── */
+    ::-webkit-scrollbar { width: 5px; height: 5px; }
+    ::-webkit-scrollbar-track { background: #0f0f1a; }
+    ::-webkit-scrollbar-thumb { background: #3a3a6a; border-radius: 3px; }
+  </style>
+</head>
+<body>
+  <div id="app"></div>
+  <script src="bundleperceptron.js"></script>
+</body>
+</html>

@@ -1,0 +1,261 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>Fractal Explorer</title>
+<style>
+  *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+  body {
+    background: #0a0a12;
+    color: #dde4f0;
+    font-family: 'Segoe UI', system-ui, -apple-system, sans-serif;
+    font-size: 13px;
+    min-height: 100vh;
+    display: flex;
+    flex-direction: column;
+  }
+
+  header {
+    background: #10101e;
+    border-bottom: 1px solid #1c1c38;
+    padding: 10px 20px;
+    display: flex;
+    align-items: center;
+    gap: 14px;
+    flex-wrap: wrap;
+    flex-shrink: 0;
+  }
+
+  header h1 {
+    font-size: 17px;
+    font-weight: 700;
+    color: #a89cf7;
+    letter-spacing: 0.5px;
+    white-space: nowrap;
+  }
+
+  .sep { width: 1px; height: 24px; background: #2a2a4a; flex-shrink: 0; }
+
+  label { color: #9ba4c0; font-size: 12px; }
+
+  select, input[type="range"] {
+    background: #1a1a2e;
+    border: 1px solid #2e2e50;
+    color: #dde4f0;
+    border-radius: 4px;
+    padding: 3px 7px;
+    font-size: 12px;
+    cursor: pointer;
+  }
+
+  select:focus, input[type="range"]:focus { outline: none; border-color: #6c63d4; }
+
+  input[type="range"] {
+    padding: 0;
+    width: 100px;
+    accent-color: #6c63d4;
+    vertical-align: middle;
+  }
+
+  .ctrl-group {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+  }
+
+  button {
+    background: #22224a;
+    border: 1px solid #3a3a60;
+    color: #dde4f0;
+    border-radius: 5px;
+    padding: 4px 12px;
+    font-size: 12px;
+    cursor: pointer;
+    transition: background 0.15s;
+  }
+
+  button:hover { background: #32326a; }
+
+  .val-badge {
+    font-variant-numeric: tabular-nums;
+    color: #8b9fd4;
+    font-size: 11px;
+    min-width: 38px;
+    text-align: right;
+    display: inline-block;
+  }
+
+  #julia-controls {
+    display: none;
+    align-items: center;
+    gap: 8px;
+    flex-wrap: wrap;
+  }
+
+  .hint {
+    font-size: 11px;
+    color: #5a6080;
+    margin-left: 4px;
+  }
+
+  /* Canvas area */
+  .canvas-area {
+    display: flex;
+    flex: 1;
+    gap: 10px;
+    padding: 10px;
+    min-height: 0;
+  }
+
+  .canvas-wrap {
+    position: relative;
+    flex: 1;
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+  }
+
+  .canvas-label {
+    font-size: 11px;
+    color: #5a6890;
+    text-transform: uppercase;
+    letter-spacing: 1px;
+  }
+
+  canvas {
+    display: block;
+    border: 1px solid #1e1e38;
+    border-radius: 4px;
+    cursor: crosshair;
+    width: 100%;
+    flex: 1;
+    min-height: 0;
+  }
+
+  #picker-container {
+    display: none;
+    flex-direction: column;
+    gap: 4px;
+    width: 280px;
+    flex-shrink: 0;
+  }
+
+  #info-bar {
+    background: #10101e;
+    border-top: 1px solid #1c1c38;
+    padding: 5px 20px;
+    display: flex;
+    align-items: center;
+    gap: 20px;
+    flex-shrink: 0;
+  }
+
+  #info {
+    font-size: 11px;
+    font-variant-numeric: tabular-nums;
+    color: #6a7a9a;
+    font-family: 'Consolas', 'Fira Mono', monospace;
+  }
+
+  .kbd-hint {
+    font-size: 10px;
+    color: #404060;
+  }
+
+  kbd {
+    background: #1a1a2e;
+    border: 1px solid #2a2a4a;
+    border-radius: 3px;
+    padding: 1px 4px;
+    font-size: 10px;
+    color: #7080a0;
+    font-family: inherit;
+  }
+</style>
+</head>
+<body>
+
+<header>
+  <h1>Fractal Explorer</h1>
+  <div class="sep"></div>
+
+  <div class="ctrl-group">
+    <label for="mode-select">Set</label>
+    <select id="mode-select">
+      <option value="mandelbrot">Mandelbrot</option>
+      <option value="julia">Julia</option>
+      <option value="linked">Linked (M+J)</option>
+    </select>
+  </div>
+
+  <div class="sep"></div>
+
+  <div class="ctrl-group">
+    <label for="palette-select">Palette</label>
+    <select id="palette-select">
+      <option value="ultra">Ultra</option>
+      <option value="fire">Fire</option>
+      <option value="ice">Ice</option>
+      <option value="gold">Gold</option>
+      <option value="electric">Electric</option>
+    </select>
+  </div>
+
+  <div class="sep"></div>
+
+  <div class="ctrl-group">
+    <label for="max-iter">Iterations</label>
+    <input type="range" id="max-iter" min="50" max="2000" step="10" value="100" />
+    <span class="val-badge" id="max-iter-display">100</span>
+  </div>
+
+  <div class="ctrl-group">
+    <input type="checkbox" id="auto-iter" checked />
+    <label for="auto-iter">Auto</label>
+  </div>
+
+  <div class="sep"></div>
+
+  <div class="ctrl-group" id="julia-controls">
+    <label>c =</label>
+    <input type="range" id="c-real" min="-2" max="2" step="0.001" value="-0.7" style="width:80px" />
+    <span class="val-badge" id="c-real-display">-0.7000</span>
+    <label>+</label>
+    <input type="range" id="c-imag" min="-1.5" max="1.5" step="0.001" value="0.27" style="width:80px" />
+    <span class="val-badge" id="c-imag-display">0.2700</span>
+    <label>i</label>
+  </div>
+
+  <div class="sep"></div>
+  <button id="reset-btn">Reset View</button>
+</header>
+
+<div class="canvas-area">
+  <div class="canvas-wrap">
+    <div class="canvas-label" id="main-label">Mandelbrot Set</div>
+    <canvas id="main-canvas" width="900" height="650"></canvas>
+  </div>
+  <div id="picker-container">
+    <div class="canvas-label">Julia Set (c from cursor)</div>
+    <canvas id="picker-canvas" width="280" height="280"></canvas>
+    <div style="font-size:11px; color:#404060; padding: 4px 2px; line-height:1.5;">
+      Move mouse over Mandelbrot<br>to pick <em>c</em> and explore Julia sets live.
+    </div>
+  </div>
+</div>
+
+<div id="info-bar">
+  <div id="info">center: (-0.500000, 0.000000)  zoom: 200  iters: 100</div>
+  <div class="kbd-hint">
+    <kbd>scroll</kbd> zoom &nbsp;
+    <kbd>drag</kbd> pan &nbsp;
+    <kbd>shift+drag</kbd> box zoom &nbsp;
+    <kbd>dblclick</kbd> zoom to point
+  </div>
+</div>
+
+<script src="bundlefractal.js"></script>
+</body>
+</html>

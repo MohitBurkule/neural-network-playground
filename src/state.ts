@@ -21,6 +21,53 @@ import * as dataset from "./dataset";
 /** Suffix added to the state when storing if a control is hidden or not. */
 const HIDE_STATE_SUFFIX = "_hide";
 
+/** A map between names and optimizer types. */
+export let optimizers: {[key: string]: nn.OptimizerType} = {
+  "sgd": nn.OptimizerType.SGD,
+  "momentum": nn.OptimizerType.MOMENTUM,
+  "rmsprop": nn.OptimizerType.RMSPROP,
+  "adam": nn.OptimizerType.ADAM,
+  "nesterov": nn.OptimizerType.NESTEROV,
+  "adagrad": nn.OptimizerType.ADAGRAD,
+  "adadelta": nn.OptimizerType.ADADELTA,
+  "amsgrad": nn.OptimizerType.AMSGRAD,
+  "nadam": nn.OptimizerType.NADAM,
+  "adamw": nn.OptimizerType.ADAMW,
+};
+
+/** A map between names and loss (error) functions. */
+export let lossFunctions: {[key: string]: nn.ErrorFunction} = {
+  "square": nn.Errors.SQUARE,
+  "hinge": nn.Errors.HINGE,
+  "logloss": nn.Errors.LOGLOSS,
+  "huber": nn.Errors.HUBER,
+  "absolute": nn.Errors.ABSOLUTE,
+  "logcosh": nn.Errors.LOGCOSH,
+  "quantile": nn.Errors.QUANTILE,
+  "epsilon-insensitive": nn.Errors.EPSILON_INSENSITIVE,
+  "cauchy": nn.Errors.CAUCHY,
+};
+
+/** A map between names and weight initialization schemes. */
+export let weightInits: {[key: string]: nn.WeightInit} = {
+  "random-uniform": nn.WeightInit.RANDOM_UNIFORM,
+  "xavier": nn.WeightInit.XAVIER,
+  "he": nn.WeightInit.HE,
+  "lecun": nn.WeightInit.LECUN,
+  "zeros": nn.WeightInit.ZEROS,
+  "orthogonal": nn.WeightInit.ORTHOGONAL,
+};
+
+/** Learning-rate schedule names (applied in playground oneStep). */
+export let lrSchedules: {[key: string]: string} = {
+  "constant": "constant",
+  "step": "step",
+  "exponential": "exponential",
+  "cosine": "cosine",
+  "warmup-decay": "warmup-decay",
+  "onecycle": "onecycle",
+};
+
 /** A map between names and activation functions. */
 export let activations: {[key: string]: nn.ActivationFunction} = {
   "relu": nn.Activations.RELU,
@@ -33,12 +80,47 @@ export let activations: {[key: string]: nn.ActivationFunction} = {
   "gelu": nn.Activations.GELU,
   "leaky-relu": nn.Activations.LEAKY_RELU,
   "prelu": nn.Activations.PReLU(0.2), // Default alpha value for PReLU
+  "elu": nn.Activations.ELU,
+  "selu": nn.Activations.SELU,
+  "swish": nn.Activations.SWISH,
+  "softplus": nn.Activations.SOFTPLUS,
+  "softsign": nn.Activations.SOFTSIGN,
+  "hard-sigmoid": nn.Activations.HARD_SIGMOID,
+  "hard-tanh": nn.Activations.HARD_TANH,
+  "hard-swish": nn.Activations.HARD_SWISH,
+  "relu6": nn.Activations.RELU6,
+  "bent-identity": nn.Activations.BENT_IDENTITY,
+  "gaussian": nn.Activations.GAUSSIAN,
+  "snake": nn.Activations.SNAKE,
+  "arctan": nn.Activations.ARCTAN,
+  "isru": nn.Activations.ISRU,
+  "exp-linear": nn.Activations.EXPONENTIAL_LINEAR,
+  "celu": nn.Activations.CELU,
+  "gelu-exact": nn.Activations.GELU_EXACT,
+  "swish-beta": nn.Activations.SWISH_BETA,
+  "tanh-shrink": nn.Activations.TANH_SHRINK,
+  "log-sigmoid": nn.Activations.LOG_SIGMOID,
+  "softclip": nn.Activations.SOFTCLIP,
+  "sin-residual": nn.Activations.SIN_RESIDUAL,
+  "triangular": nn.Activations.TRIANGULAR,
+  "square-nonlin": nn.Activations.SQUARE_NONLIN,
+  "absolute": nn.Activations.ABSOLUTE,
+  "cube": nn.Activations.CUBE,
+  "reciprocal-smooth": nn.Activations.RECIPROCAL_SMOOTH,
+  "softplus-beta": nn.Activations.SOFTPLUS_BETA,
+  "isrlu": nn.Activations.ISRLU,
+  "maxout2": nn.Activations.MAXOUT2,
+  "bipolar-sigmoid": nn.Activations.BIPOLAR_SIGMOID,
+  "hard-sigmoid2": nn.Activations.HARD_SIGMOID2,
+  "gaussian-narrow": nn.Activations.GAUSSIAN_NARROW,
 };
 /** A map between names and regularization functions. */
 export let regularizations: {[key: string]: nn.RegularizationFunction} = {
   "none": null,
   "L1": nn.RegularizationFunction.L1,
-  "L2": nn.RegularizationFunction.L2
+  "L2": nn.RegularizationFunction.L2,
+  "elastic-net": nn.RegularizationFunction.ELASTIC_NET,
+  "L-half": nn.RegularizationFunction.L_HALF
 };
 
 /** Whether to quantize the weights. */
@@ -61,6 +143,102 @@ export let datasets: {[key: string]: dataset.DataGenerator} = {
   "moons": dataset.classifyMoons,
   "hash": dataset.classifyHashData,
   "three": dataset.classifyMNISTThreeData,
+  "checkerboard": dataset.classifyCheckerboard,
+  "quadrant-blobs": dataset.classifyQuadrantBlobs,
+  "concentric-rings": dataset.classifyConcentricRings,
+  "spiral3": dataset.classifyThreeArmSpiral,
+  "spiral4": dataset.classifyFourArmSpiral,
+  "tight-spiral": dataset.classifyTightSpiral,
+  "clean-moons": dataset.classifyCleanMoons,
+  "nested-u": dataset.classifyNestedU,
+  "gaussian-mixture": dataset.classifyGaussianMixture,
+  "diagonal-stripes": dataset.classifyDiagonalStripes,
+  "sine-boundary": dataset.classifySineBoundary,
+  "circle-in-square": dataset.classifyCircleInSquare,
+  "cross": dataset.classifyCross,
+  "s-curve": dataset.classifySCurve,
+  "pinwheel": dataset.classifyPinwheel,
+  "islands": dataset.classifyIslands,
+  "ring-vs-center": dataset.classifyRingVsCenter,
+  "gaussian-quantiles": dataset.classifyGaussianQuantiles,
+  "anisotropic": dataset.classifyAnisotropicBlobs,
+  "random-blobs": dataset.classifyRandomLabelBlobs,
+  "target-rings": dataset.classifyTargetRings,
+  "spiral-galaxy": dataset.classifySpiralGalaxy,
+  "yin-yang": dataset.classifyYinYang,
+  "smiley": dataset.classifySmiley,
+  "grid-blobs": dataset.classifyGridBlobs,
+  "interleaving-waves": dataset.classifyInterleavingWaves,
+  "blob-in-ring": dataset.classifyBlobInRing,
+  "triangle-vs-circle": dataset.classifyTriangleVsCircle,
+  "gaussian-cross": dataset.classifyGaussianCross,
+  "noisy-xor4": dataset.classifyNoisyXor4,
+  "crescent-pair": dataset.classifyCrescentPair,
+  "dartboard": dataset.classifyDartboard,
+  "comb": dataset.classifyComb,
+  "diagonal-checker": dataset.classifyDiagonalChecker,
+  "cluster-chain": dataset.classifyClusterChain,
+  "nested-squares": dataset.classifyNestedSquares,
+  "polygon-boundary": dataset.classifyPolygonBoundary,
+  "voronoi-regions": dataset.classifyVoronoiRegions,
+  "gaussian-grid-9": dataset.classifyGaussianGrid9,
+  "two-rings-xor": dataset.classifyTwoRingsXor,
+  "checker4": dataset.classifyChecker4,
+  "radial-petals": dataset.classifyRadialPetals,
+  "heart-shape": dataset.classifyHeartShape,
+  "wave-interference": dataset.classifyWaveInterference,
+  "gradient-blobs": dataset.classifyGradientBlobs,
+  "three-class-binary": dataset.classifyThreeClassBinary,
+  "noisy-concentric-3": dataset.classifyNoisyConcentric3,
+  "diagonal-bands-5": dataset.classifyDiagonalBands5,
+  "blob-constellation": dataset.classifyBlobConstellation,
+  "sparse-vs-dense": dataset.classifySparseVsDense,
+  "half-plane-noisy": dataset.classifyHalfPlaneNoisy,
+  "lens": dataset.classifyLens,
+  "hourglass": dataset.classifyHourglass,
+  "zigzag-boundary": dataset.classifyZigzagBoundary,
+  "comb-teeth": dataset.classifyCombTeeth,
+  "target-3rings": dataset.classifyTarget3Rings,
+  "double-spiral-tight": dataset.classifyDoubleSpiralTight,
+  "quadrant-stripes": dataset.classifyQuadrantStripes,
+  "gaussian-ring": dataset.classifyGaussianRing,
+  "trefoil-2d": dataset.classifyTrefoil2D,
+  "gear": dataset.classifyGear,
+  "star6": dataset.classifyStar6,
+  "crescent-moons-3": dataset.classifyCrescentMoons3,
+  "blob-lattice-16": dataset.classifyBlobLattice16,
+  "noisy-checker-6": dataset.classifyNoisyChecker6,
+  "spiral-3arm-tight": dataset.classifySpiral3ArmTight,
+  "ring-segments": dataset.classifyRingSegments,
+  "pie-slices": dataset.classifyPieSlices,
+  "droplet": dataset.classifyDroplet,
+  "infinity-symbol": dataset.classifyInfinitySymbol,
+  "bowtie": dataset.classifyBowtie,
+  "parallel-sines": dataset.classifyParallelSines,
+  "radial-gradient-class": dataset.classifyRadialGradientClass,
+  "concentric-arcs": dataset.classifyConcentricArcs,
+  "clustered-outliers": dataset.classifyClusteredOutliers,
+  "two-blobs-overlap": dataset.classifyTwoBlobsOverlap,
+  "diamond-grid": dataset.classifyDiamondGrid,
+  "wavy-stripes": dataset.classifyWavyStripes,
+  "plus-minus-grid": dataset.classifyPlusMinusGrid,
+  "petal-8": dataset.classifyPetal8,
+  "sun-rays": dataset.classifySunRays,
+  "brick-wall": dataset.classifyBrickWall,
+  "polka-dots": dataset.classifyPolkaDots,
+  "swirl-pair": dataset.classifySwirlPair,
+  "archipelago": dataset.classifyArchipelago,
+  "ripple-rings": dataset.classifyRippleRings,
+  "lemniscate": dataset.classifyLemniscate,
+  "clover": dataset.classifyClover,
+  "hex-grid": dataset.classifyHexGrid,
+  "noisy-sine-band": dataset.classifyNoisySineBand,
+  "blobs-in-corners": dataset.classifyBlobsInCorners,
+  "dual-crescents": dataset.classifyDualCrescents,
+  "dartboard-5": dataset.classifyDartboard5,
+  "radial-checker": dataset.classifyRadialChecker,
+  "maze-stripes": dataset.classifyMazeStripes,
+  "spiral-squares": dataset.classifySpiralSquares,
 };
 
 /** A map between dataset names and functions that generate regression data. */
@@ -72,7 +250,37 @@ export let regDatasets: {[key: string]: dataset.DataGenerator} = {
   "reg-sine-wave": dataset.regressSineWave,
   "reg-friedman1": dataset.regressFriedman1,
   "reg-friedman2": dataset.regressFriedman2,
-  "reg-friedman3": dataset.regressFriedman3
+  "reg-friedman3": dataset.regressFriedman3,
+  "reg-ripple": dataset.regressRipple,
+  "reg-saddle": dataset.regressSaddle,
+  "reg-gauss-bump": dataset.regressGaussianBump,
+  "reg-staircase": dataset.regressStaircase,
+  "reg-sincos": dataset.regressSinCos,
+  "reg-radial": dataset.regressRadial,
+  "reg-abs": dataset.regressAbs,
+  "reg-step-circle": dataset.regressStepCircle,
+  "reg-waves": dataset.regressWaves,
+  "reg-sin2d": dataset.regressSin2D,
+  "reg-product": dataset.regressProduct,
+  "reg-distance": dataset.regressDistance,
+  "reg-rosenbrock-slice": dataset.regressRosenbrockSlice,
+  "reg-checkerboard-smooth": dataset.regressCheckerboardSmooth,
+  "reg-peaks": dataset.regressPeaks,
+  "reg-mexican-hat": dataset.regressMexicanHat,
+  "reg-ripple2": dataset.regressRipple2,
+  "reg-saddle2": dataset.regressSaddle2,
+  "reg-gaussian-hill": dataset.regressGaussianHill,
+  "reg-sin-product": dataset.regressSinProduct,
+  "reg-abs-diff": dataset.regressAbsDiff,
+  "reg-log": dataset.regressLog,
+  "reg-tanh-wave": dataset.regressTanhWave,
+  "reg-cross-ridge": dataset.regressCrossRidge,
+  "reg-sinc-product": dataset.regressSincProduct,
+  "reg-volcano": dataset.regressVolcano,
+  "reg-terraces": dataset.regressTerraces,
+  "reg-saddle3": dataset.regressSaddle3,
+  "reg-bumps": dataset.regressBumps,
+  "reg-spiral-height": dataset.regressSpiralHeight
 };
 
 export function getKeyFromValue(obj: any, value: any): string {
@@ -132,6 +340,14 @@ export class State {
 
   private static PROPS: Property[] = [
     {name: "activation", type: Type.OBJECT, keyMap: activations},
+    {name: "optimizer", type: Type.STRING},
+    {name: "weightInit", type: Type.STRING},
+    {name: "lrSchedule", type: Type.STRING},
+    {name: "dropout", type: Type.NUMBER},
+    {name: "gradClip", type: Type.NUMBER},
+    {name: "weightDecay", type: Type.NUMBER},
+    {name: "batchNorm", type: Type.BOOLEAN},
+    {name: "layerNorm", type: Type.BOOLEAN},
     {name: "regularization", type: Type.OBJECT, keyMap: regularizations},
     {name: "weightQuantization", type: Type.OBJECT, keyMap: weightQuantizations},
     {name: "batchSize", type: Type.NUMBER},
@@ -161,7 +377,19 @@ export class State {
     {name: "problem", type: Type.OBJECT, keyMap: problems},
     {name: "initZero", type: Type.BOOLEAN},
     {name: "hideText", type: Type.BOOLEAN},
-    {name: "editColor", type: Type.NUMBER}
+    {name: "editColor", type: Type.NUMBER},
+    {name: "adversarialTraining", type: Type.BOOLEAN},
+    {name: "advEpsilon", type: Type.NUMBER},
+    {name: "advMethod", type: Type.STRING},
+    {name: "threeD", type: Type.BOOLEAN},
+    {name: "threeDDataset", type: Type.STRING},
+    {name: "lossFunction", type: Type.STRING},
+    {name: "classWeighting", type: Type.BOOLEAN},
+    {name: "labelNoise", type: Type.NUMBER},
+    {name: "mixup", type: Type.BOOLEAN},
+    {name: "inputJitter", type: Type.NUMBER},
+    {name: "gradientNoise", type: Type.NUMBER},
+    {name: "epochShuffle", type: Type.BOOLEAN}
   ];
 
   [key: string]: any;
@@ -174,6 +402,14 @@ export class State {
   tutorial: string = null;
   percTrainData = 50;
   activation = nn.Activations.TANH;
+  optimizer: string = "sgd";
+  weightInit: string = "random-uniform";
+  lrSchedule: string = "constant";
+  dropout = 0;
+  gradClip = 0;
+  weightDecay = 0;
+  batchNorm: boolean = false;
+  layerNorm: boolean = false;
   regularization: nn.RegularizationFunction = null;
   weightQuantization: nn.WeightQuantizationFunction = null;
   problem = Problem.CLASSIFICATION;
@@ -182,6 +418,11 @@ export class State {
   collectStats = false;
   numHiddenLayers = 1;
   hiddenLayerControls: any[] = [];
+  /**
+   * Indices (1-based, into the hidden layers) of layers that are frozen for
+   * fine-tuning. Persisted so reset() can reapply them after rebuilding.
+   */
+  frozenLayers: number[] = [];
   networkShape: number[] = [4, 2];
   x = true;
   y = true;
@@ -195,6 +436,18 @@ export class State {
   absx_y_add= false;
   absx_y=false
   editColor = -1;
+  adversarialTraining = false;
+  advEpsilon = 0.5;
+  advMethod: string = "fgsm";
+  threeD = false;
+  threeDDataset: string = "blobs";
+  lossFunction: string = "square";
+  classWeighting = false;
+  labelNoise = 0;
+  mixup = false;
+  inputJitter = 0;
+  gradientNoise = 0;
+  epochShuffle = false;
   dataset: dataset.DataGenerator = dataset.classifyCircleData;
   regDataset: dataset.DataGenerator = dataset.regressPlane;
   trainData: dataset.Example2D[] = [];

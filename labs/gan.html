@@ -1,0 +1,256 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>GAN Playground</title>
+  <style>
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+    body {
+      background: #0f0f1a;
+      color: #d0d0e8;
+      font-family: 'Segoe UI', system-ui, sans-serif;
+      font-size: 14px;
+      min-height: 100vh;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      padding: 20px 12px 40px;
+    }
+    h1 {
+      font-size: 1.5rem;
+      font-weight: 600;
+      color: #a78bfa;
+      margin-bottom: 4px;
+      letter-spacing: 0.04em;
+    }
+    .subtitle {
+      color: #6b7280;
+      font-size: 0.82rem;
+      margin-bottom: 18px;
+    }
+    .main-row {
+      display: flex;
+      gap: 18px;
+      align-items: flex-start;
+      flex-wrap: wrap;
+      justify-content: center;
+    }
+    .canvas-col {
+      display: flex;
+      flex-direction: column;
+      gap: 10px;
+    }
+    canvas#mainCanvas {
+      border-radius: 8px;
+      border: 1px solid #2a2a4a;
+      display: block;
+    }
+    .loss-box {
+      background: #1a1a2e;
+      border-radius: 8px;
+      border: 1px solid #2a2a4a;
+      overflow: hidden;
+    }
+    canvas#lossCanvas {
+      display: block;
+      width: 380px;
+      height: 120px;
+    }
+    .controls-col {
+      background: #13132a;
+      border: 1px solid #2a2a4a;
+      border-radius: 10px;
+      padding: 18px 20px;
+      width: 240px;
+      display: flex;
+      flex-direction: column;
+      gap: 14px;
+    }
+    .ctrl-group {
+      display: flex;
+      flex-direction: column;
+      gap: 4px;
+    }
+    .ctrl-group label {
+      font-size: 0.78rem;
+      color: #8888bb;
+      text-transform: uppercase;
+      letter-spacing: 0.06em;
+    }
+    select, input[type=range] {
+      width: 100%;
+      background: #1e1e38;
+      border: 1px solid #3a3a5c;
+      border-radius: 5px;
+      color: #d0d0e8;
+      padding: 4px 6px;
+      font-size: 0.85rem;
+      cursor: pointer;
+    }
+    input[type=range] {
+      padding: 0;
+      accent-color: #a78bfa;
+      height: 18px;
+    }
+    .range-row {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      gap: 6px;
+    }
+    .range-row span {
+      min-width: 36px;
+      text-align: right;
+      font-size: 0.82rem;
+      color: #c0c0e0;
+    }
+    .btn-row {
+      display: flex;
+      gap: 8px;
+    }
+    button {
+      flex: 1;
+      padding: 7px 4px;
+      border: none;
+      border-radius: 6px;
+      cursor: pointer;
+      font-size: 0.82rem;
+      font-weight: 600;
+      transition: opacity 0.15s;
+    }
+    button:hover { opacity: 0.85; }
+    #playPause { background: #7c3aed; color: #fff; }
+    #stepBtn   { background: #1e3a5f; color: #7dd3fc; }
+    #resetBtn  { background: #3b1f1f; color: #fca5a5; }
+    .stats {
+      border-top: 1px solid #2a2a4a;
+      padding-top: 12px;
+      display: flex;
+      flex-direction: column;
+      gap: 5px;
+    }
+    .stat-row {
+      display: flex;
+      justify-content: space-between;
+      font-size: 0.82rem;
+    }
+    .stat-row .label { color: #6b7280; }
+    .stat-row .val   { color: #e0e0ff; font-variant-numeric: tabular-nums; }
+    .legend {
+      display: flex;
+      gap: 14px;
+      justify-content: center;
+      font-size: 0.78rem;
+      margin-top: 4px;
+    }
+    .legend-item { display: flex; align-items: center; gap: 5px; }
+    .dot { width: 10px; height: 10px; border-radius: 50%; display: inline-block; }
+    .dot-real { background: #64dc64; }
+    .dot-fake { background: #ffb41e; }
+    .hm-label {
+      font-size: 0.72rem;
+      color: #5a5a8a;
+      text-align: center;
+      margin-top: -4px;
+    }
+    .section-title {
+      font-size: 0.72rem;
+      color: #5a5a8a;
+      text-transform: uppercase;
+      letter-spacing: 0.07em;
+      border-bottom: 1px solid #22224a;
+      padding-bottom: 4px;
+    }
+  </style>
+</head>
+<body>
+  <h1>GAN Playground</h1>
+  <p class="subtitle">Live adversarial training on 2-D toy distributions</p>
+
+  <div class="main-row">
+    <div class="canvas-col">
+      <canvas id="mainCanvas"></canvas>
+      <div class="legend">
+        <span class="legend-item"><span class="dot dot-real"></span> Real</span>
+        <span class="legend-item"><span class="dot dot-fake"></span> Generated</span>
+        <span class="legend-item" style="color:#5a5a8a;font-size:0.72rem;">Background: D(x) — blue=fake, red=real</span>
+      </div>
+      <p class="hm-label"></p>
+      <div class="loss-box">
+        <canvas id="lossCanvas" width="380" height="120"></canvas>
+      </div>
+    </div>
+
+    <div class="controls-col">
+      <div class="section-title">Controls</div>
+
+      <div class="btn-row">
+        <button id="playPause">Play</button>
+        <button id="stepBtn">Step</button>
+        <button id="resetBtn">Reset</button>
+      </div>
+
+      <div class="ctrl-group">
+        <label>Target Distribution</label>
+        <select id="distSelect">
+          <option value="ring">Ring / Circle</option>
+          <option value="two-moons">Two Moons</option>
+          <option value="8-gaussians">8 Gaussians</option>
+          <option value="spiral">Spiral</option>
+        </select>
+      </div>
+
+      <div class="ctrl-group">
+        <label>Learning Rate</label>
+        <div class="range-row">
+          <input type="range" id="lrInput" min="0.001" max="0.05" step="0.001" value="0.01" />
+          <span id="lrVal">0.01</span>
+        </div>
+      </div>
+
+      <div class="ctrl-group">
+        <label>Latent Dim</label>
+        <div class="range-row">
+          <input type="range" id="latentInput" min="2" max="8" step="1" value="2" />
+          <span id="latentVal">2</span>
+        </div>
+      </div>
+
+      <div class="ctrl-group">
+        <label>Hidden Size</label>
+        <div class="range-row">
+          <input type="range" id="hiddenInput" min="8" max="64" step="8" value="32" />
+          <span id="hiddenVal">32</span>
+        </div>
+      </div>
+
+      <div class="ctrl-group">
+        <label>D steps per G step</label>
+        <div class="range-row">
+          <input type="range" id="dStepsInput" min="1" max="5" step="1" value="1" />
+          <span id="dStepsVal">1</span>
+        </div>
+      </div>
+
+      <div class="stats">
+        <div class="section-title">Stats</div>
+        <div class="stat-row">
+          <span class="label">Training step</span>
+          <span class="val" id="stepCount">0</span>
+        </div>
+        <div class="stat-row">
+          <span class="label">D loss</span>
+          <span class="val" id="lossDVal">—</span>
+        </div>
+        <div class="stat-row">
+          <span class="label">G loss</span>
+          <span class="val" id="lossGVal">—</span>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <script src="../dist/bundlegan.js"></script>
+</body>
+</html>

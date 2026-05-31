@@ -1,0 +1,278 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Unsupervised Clustering Lab</title>
+  <style>
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+
+    body {
+      font-family: 'Segoe UI', Arial, sans-serif;
+      background: #1a1a2e;
+      color: #e0e0f0;
+      min-height: 100vh;
+      padding: 16px;
+    }
+
+    h1 {
+      font-size: 1.6rem;
+      font-weight: 700;
+      color: #a78bfa;
+      margin-bottom: 4px;
+      letter-spacing: 0.5px;
+    }
+
+    .subtitle {
+      font-size: 0.85rem;
+      color: #8888aa;
+      margin-bottom: 16px;
+    }
+
+    .layout {
+      display: grid;
+      grid-template-columns: 230px 1fr;
+      gap: 12px;
+      align-items: start;
+    }
+
+    /* Controls panel */
+    .controls {
+      background: #16213e;
+      border: 1px solid #2a2a5a;
+      border-radius: 10px;
+      padding: 14px;
+      display: flex;
+      flex-direction: column;
+      gap: 14px;
+    }
+
+    .controls h2 {
+      font-size: 0.78rem;
+      text-transform: uppercase;
+      letter-spacing: 1px;
+      color: #7777aa;
+    }
+
+    .btn-row {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 6px;
+    }
+
+    button {
+      padding: 7px 14px;
+      border: none;
+      border-radius: 6px;
+      font-size: 0.82rem;
+      font-weight: 600;
+      cursor: pointer;
+      transition: opacity 0.15s;
+    }
+    button:hover { opacity: 0.85; }
+
+    #btn-play  { background: #27ae60; color: #fff; }
+    #btn-pause { background: #e67e22; color: #fff; }
+    #btn-step  { background: #3498db; color: #fff; }
+    #btn-reset { background: #e74c3c; color: #fff; }
+
+    label {
+      font-size: 0.8rem;
+      color: #aaa;
+      display: block;
+      margin-bottom: 4px;
+    }
+
+    input[type=range] {
+      width: 100%;
+      accent-color: #a78bfa;
+    }
+
+    select {
+      width: 100%;
+      background: #0f3460;
+      color: #e0e0f0;
+      border: 1px solid #3a3a6a;
+      border-radius: 6px;
+      padding: 6px 8px;
+      font-size: 0.82rem;
+    }
+
+    .param-row {
+      display: flex;
+      flex-direction: column;
+      gap: 4px;
+    }
+
+    .slider-row {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+    }
+
+    .slider-val {
+      font-size: 0.82rem;
+      color: #a78bfa;
+      min-width: 28px;
+      text-align: right;
+    }
+
+    /* Canvas panel */
+    .canvas-panel {
+      background: #12122a;
+      border: 1px solid #2a2a5a;
+      border-radius: 10px;
+      padding: 12px;
+      display: flex;
+      flex-direction: column;
+      gap: 10px;
+    }
+
+    .canvas-wrap {
+      width: 100%;
+      aspect-ratio: 1;
+      max-width: 600px;
+      position: relative;
+    }
+
+    canvas {
+      display: block;
+      border-radius: 8px;
+      background: #0d0d1e;
+      width: 100%;
+      height: 100%;
+    }
+
+    .status-bar {
+      display: flex;
+      gap: 16px;
+      font-size: 0.82rem;
+      color: #aaa;
+    }
+
+    .status-bar span b {
+      color: #a78bfa;
+    }
+
+    #legend {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 8px;
+      font-size: 0.8rem;
+      color: #ccc;
+    }
+
+    .legend-item {
+      display: flex;
+      align-items: center;
+      gap: 4px;
+      background: #16213e;
+      border-radius: 4px;
+      padding: 2px 8px;
+    }
+
+    .algo-info {
+      font-size: 0.75rem;
+      color: #6677aa;
+      padding: 8px 10px;
+      background: #0f0f28;
+      border-left: 3px solid #a78bfa;
+      border-radius: 4px;
+      line-height: 1.5;
+    }
+
+    @media (max-width: 700px) {
+      .layout { grid-template-columns: 1fr; }
+      .canvas-wrap { max-width: 100%; }
+    }
+  </style>
+</head>
+<body>
+  <h1>Unsupervised Clustering Lab</h1>
+  <p class="subtitle">Explore K-Means, DBSCAN, and Gaussian Mixture Models on 2D datasets</p>
+
+  <div class="layout">
+    <!-- Controls -->
+    <div class="controls">
+      <div>
+        <h2>Playback</h2>
+        <div class="btn-row" style="margin-top:8px">
+          <button id="btn-play">Play</button>
+          <button id="btn-pause">Pause</button>
+          <button id="btn-step">Step</button>
+          <button id="btn-reset">Reset</button>
+        </div>
+      </div>
+
+      <div class="param-row">
+        <h2>Algorithm</h2>
+        <select id="sel-algo" style="margin-top:6px">
+          <option value="kmeans">K-Means</option>
+          <option value="dbscan">DBSCAN</option>
+          <option value="gmm">GMM (EM)</option>
+        </select>
+      </div>
+
+      <div class="param-row">
+        <h2>Dataset</h2>
+        <select id="sel-data" style="margin-top:6px">
+          <option value="blobs">Blobs (4 clusters)</option>
+          <option value="moons">Two Moons</option>
+          <option value="circles">Concentric Circles</option>
+          <option value="aniso">Anisotropic Blobs</option>
+          <option value="uniform">Uniform + Outliers</option>
+        </select>
+      </div>
+
+      <div class="param-row" id="row-k">
+        <label>k (clusters): <span id="label-k" class="slider-val">3</span></label>
+        <input type="range" id="slider-k" min="2" max="8" value="3" step="1">
+      </div>
+
+      <div class="param-row" id="row-eps">
+        <label>Epsilon (radius): <span id="label-eps" class="slider-val">0.5</span></label>
+        <input type="range" id="slider-eps" min="0.1" max="1.5" value="0.5" step="0.05">
+      </div>
+
+      <div class="param-row" id="row-minpts">
+        <label>Min Points: <span id="label-minpts" class="slider-val">5</span></label>
+        <input type="range" id="slider-minpts" min="2" max="20" value="5" step="1">
+      </div>
+
+      <div class="param-row">
+        <label>Num Points: <span id="label-n" class="slider-val">200</span></label>
+        <input type="range" id="slider-n" min="50" max="500" value="200" step="10">
+      </div>
+
+      <div class="algo-info" id="algo-info">
+        <b>K-Means:</b> Assigns each point to nearest centroid, then moves centroids to cluster means. Repeats until convergence. Works best with spherical clusters.
+      </div>
+    </div>
+
+    <!-- Canvas panel -->
+    <div class="canvas-panel">
+      <div class="canvas-wrap">
+        <canvas id="canvas"></canvas>
+      </div>
+      <div class="status-bar">
+        <span>Iteration: <b id="span-iter">0</b></span>
+        <span id="span-metric">—</span>
+      </div>
+      <div id="legend"></div>
+    </div>
+  </div>
+
+  <script src="../dist/bundleclustering.js"></script>
+  <script>
+    // Update algo info text when selection changes
+    const algoInfo = {
+      kmeans: '<b>K-Means:</b> Assigns each point to nearest centroid, then moves centroids to cluster means. Repeats until convergence. Works best with spherical clusters.',
+      dbscan: '<b>DBSCAN:</b> Groups points that are densely connected. Core points have ≥MinPts neighbours within epsilon. Border points are reachable from core. Noise points are isolated. Handles arbitrary shapes.',
+      gmm: '<b>GMM (EM):</b> Models data as a mixture of Gaussians. E-step assigns soft responsibilities; M-step updates component means, covariances, and weights. Shows 1σ and 2σ ellipses.',
+    };
+    document.getElementById('sel-algo').addEventListener('change', function() {
+      document.getElementById('algo-info').innerHTML = algoInfo[this.value] || '';
+    });
+  </script>
+</body>
+</html>

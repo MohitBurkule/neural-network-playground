@@ -1,0 +1,59 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Double Pendulum — NN Playground Labs</title>
+  <style>
+    :root { --bg:#0f1117; --panel:#1a1d27; --fg:#e6e6e6; --muted:#8a93a6; --accent:#ff4d6d; }
+    * { box-sizing: border-box; }
+    body { margin:0; background:var(--bg); color:var(--fg); font-family:-apple-system,Segoe UI,Roboto,sans-serif; }
+    header { padding:14px 18px; border-bottom:1px solid #262a36; display:flex; align-items:center; gap:14px; flex-wrap:wrap; }
+    header h1 { font-size:17px; margin:0; font-weight:600; }
+    header a { color:var(--muted); text-decoration:none; font-size:13px; }
+    header a:hover { color:var(--fg); }
+    .wrap { display:flex; gap:18px; padding:18px; flex-wrap:wrap; }
+    .panel { background:var(--panel); border:1px solid #262a36; border-radius:10px; padding:16px; width:260px; }
+    .panel h2 { font-size:13px; text-transform:uppercase; letter-spacing:.05em; color:var(--muted); margin:0 0 12px; }
+    label { display:block; font-size:13px; margin:10px 0 4px; color:#c7cedb; }
+    input[type=range] { width:100%; }
+    .row { display:flex; gap:8px; margin-top:8px; }
+    button { background:#262a36; color:var(--fg); border:1px solid #353b4a; border-radius:7px; padding:8px 12px; cursor:pointer; font-size:13px; }
+    button:hover { background:#30364a; }
+    .chk { display:flex; align-items:center; gap:8px; margin-top:10px; font-size:13px; }
+    canvas { background:#0f1117; border:1px solid #262a36; border-radius:10px; max-width:100%; }
+  </style>
+</head>
+<body>
+  <header>
+    <h1>🌀 Double Pendulum</h1>
+    <a href="labs.html">← All labs</a>
+    <a href="index.html">Main playground</a>
+  </header>
+  <div class="wrap">
+    <div class="panel">
+      <h2>Controls</h2>
+      <div class="row">
+        <button id="pen-play">Pause</button>
+        <button id="pen-reset">Reset</button>
+      </div>
+      <label>Speed</label>
+      <input type="range" id="pen-speed" min="0.1" max="3" step="0.1" value="1">
+      <label>Mass 1</label>
+      <input type="range" id="pen-m1" min="2" max="30" step="1" value="10">
+      <label>Mass 2</label>
+      <input type="range" id="pen-m2" min="2" max="30" step="1" value="10">
+      <label>Length 1</label>
+      <input type="range" id="pen-l1" min="40" max="180" step="5" value="120">
+      <label>Length 2</label>
+      <input type="range" id="pen-l2" min="40" max="180" step="5" value="120">
+      <label>Damping</label>
+      <input type="range" id="pen-damping" min="0" max="50" step="1" value="0">
+      <label class="chk"><input type="checkbox" id="pen-trail" checked> Show trail</label>
+      <label class="chk"><input type="checkbox" id="pen-second" checked> Show twin (chaos demo)</label>
+    </div>
+    <canvas id="pendulum-canvas" width="640" height="640"></canvas>
+  </div>
+  <script src="bundlependulum.js"></script>
+</body>
+</html>

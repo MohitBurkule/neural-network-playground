@@ -1,0 +1,150 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Gradient Descent Optimizer Visualizer</title>
+  <style>
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+    body {
+      background: #0f0f14;
+      color: #e0e0e0;
+      font-family: 'Segoe UI', system-ui, sans-serif;
+      font-size: 13px;
+      min-height: 100vh;
+      padding: 18px 24px 32px;
+    }
+    h1 {
+      font-size: 22px;
+      font-weight: 600;
+      color: #fff;
+      margin-bottom: 18px;
+      letter-spacing: 0.03em;
+    }
+    #app { max-width: 1020px; margin: 0 auto; }
+
+    /* Layout */
+    .main-row {
+      display: flex;
+      gap: 24px;
+      align-items: flex-start;
+    }
+    .left-col { flex: 0 0 auto; }
+    .right-col {
+      flex: 1 1 auto;
+      display: flex;
+      flex-direction: column;
+      gap: 8px;
+      min-width: 200px;
+      max-width: 280px;
+    }
+
+    /* Canvas */
+    #contour-canvas {
+      display: block;
+      border: 1px solid #2a2a3a;
+      border-radius: 6px;
+      cursor: crosshair;
+    }
+
+    /* Controls */
+    label {
+      color: #aaa;
+      display: inline-block;
+    }
+    select, input[type=number], input[type=range] {
+      background: #1a1a2a;
+      color: #e0e0e0;
+      border: 1px solid #333;
+      border-radius: 4px;
+      padding: 3px 6px;
+      font-size: 12px;
+      margin-top: 2px;
+    }
+    select { width: 100%; display: block; padding: 5px 6px; }
+    input[type=number] { width: 90px; }
+    input[type=range] { width: 100px; vertical-align: middle; }
+
+    .section-title {
+      font-size: 11px;
+      text-transform: uppercase;
+      letter-spacing: 0.1em;
+      color: #666;
+      margin-top: 8px;
+      margin-bottom: 4px;
+    }
+
+    /* Optimizer checkboxes */
+    #opt-checkboxes label {
+      display: flex;
+      align-items: center;
+      gap: 6px;
+      font-weight: 500;
+      margin-bottom: 3px;
+    }
+    #opt-checkboxes input[type=checkbox] {
+      accent-color: currentColor;
+      width: 14px;
+      height: 14px;
+      cursor: pointer;
+    }
+
+    /* Buttons */
+    .btn-row {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 6px;
+      margin-top: 6px;
+    }
+    .btn-row button {
+      background: #1e1e2e;
+      color: #e0e0e0;
+      border: 1px solid #3a3a5a;
+      border-radius: 4px;
+      padding: 5px 10px;
+      font-size: 12px;
+      cursor: pointer;
+      transition: background 0.15s, border-color 0.15s;
+    }
+    .btn-row button:hover:not(:disabled) { background: #2a2a4a; border-color: #5a5a9a; }
+    .btn-row button:disabled { opacity: 0.4; cursor: default; }
+
+    .hint {
+      font-size: 11px;
+      color: #555;
+      margin-top: 4px;
+    }
+
+    /* Legend */
+    .legend { margin-top: 10px; }
+    .legend-row {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      margin-bottom: 4px;
+      font-size: 12px;
+    }
+    .legend-swatch {
+      display: inline-block;
+      width: 22px;
+      height: 3px;
+      border-radius: 2px;
+    }
+
+    /* Chart */
+    .chart-container {
+      margin-top: 22px;
+    }
+    .chart-container .section-title { margin-bottom: 8px; }
+    svg text { fill: #888; font-size: 11px; }
+    svg .domain, svg .tick line { stroke: #333; }
+
+    /* Misc */
+    br { display: none; } /* replaced by flex gap */
+  </style>
+</head>
+<body>
+  <div id="app"></div>
+  <script src="bundleoptviz.js"></script>
+</body>
+</html>

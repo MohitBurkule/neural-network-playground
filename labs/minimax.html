@@ -1,0 +1,290 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Minimax / Alpha-Beta Pruning Lab</title>
+  <style>
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+
+    body {
+      font-family: 'Segoe UI', Arial, sans-serif;
+      background: #0f0f1a;
+      color: #e0e0f0;
+      min-height: 100vh;
+      padding: 16px;
+    }
+
+    h1 {
+      font-size: 1.6rem;
+      font-weight: 700;
+      color: #a78bfa;
+      margin-bottom: 4px;
+      letter-spacing: 0.5px;
+    }
+
+    .subtitle {
+      font-size: 0.85rem;
+      color: #8888aa;
+      margin-bottom: 16px;
+    }
+
+    .layout {
+      display: grid;
+      grid-template-columns: auto 1fr;
+      gap: 20px;
+      align-items: start;
+      max-width: 1100px;
+    }
+
+    .left-panel {
+      display: flex;
+      flex-direction: column;
+      gap: 16px;
+      min-width: 220px;
+    }
+
+    .card {
+      background: #13132a;
+      border: 1px solid #2a2a4a;
+      border-radius: 10px;
+      padding: 14px 16px;
+    }
+
+    .card h2 {
+      font-size: 0.8rem;
+      text-transform: uppercase;
+      letter-spacing: 1px;
+      color: #6666aa;
+      margin-bottom: 10px;
+    }
+
+    .control-row {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      margin-bottom: 8px;
+    }
+
+    label {
+      font-size: 0.82rem;
+      color: #aaaacc;
+      min-width: 80px;
+    }
+
+    select, input[type=range] {
+      background: #1e1e40;
+      border: 1px solid #3a3a6a;
+      border-radius: 5px;
+      color: #e0e0f0;
+      padding: 4px 8px;
+      font-size: 0.82rem;
+      cursor: pointer;
+    }
+
+    select:focus { outline: none; border-color: #a78bfa; }
+
+    input[type=range] {
+      padding: 0;
+      width: 100px;
+      accent-color: #a78bfa;
+    }
+
+    .toggle-row {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      font-size: 0.82rem;
+      color: #aaaacc;
+    }
+
+    input[type=checkbox] {
+      accent-color: #a78bfa;
+      width: 15px;
+      height: 15px;
+      cursor: pointer;
+    }
+
+    .btn {
+      background: #2a1a5a;
+      border: 1px solid #5a3a9a;
+      border-radius: 6px;
+      color: #c4a0ff;
+      padding: 7px 14px;
+      font-size: 0.82rem;
+      cursor: pointer;
+      transition: background 0.15s;
+      width: 100%;
+      margin-bottom: 6px;
+      font-weight: 600;
+    }
+
+    .btn:hover { background: #3a2a6a; }
+    .btn.secondary { background: #1a2a1a; border-color: #3a6a3a; color: #6abe6a; }
+    .btn.secondary:hover { background: #223022; }
+
+    #status {
+      font-size: 1rem;
+      font-weight: 700;
+      color: #a78bfa;
+      margin-bottom: 10px;
+      min-height: 1.4em;
+    }
+
+    #board-container {
+      display: flex;
+      justify-content: center;
+      align-items: flex-start;
+      background: #13132a;
+      border: 1px solid #2a2a4a;
+      border-radius: 10px;
+      padding: 16px;
+    }
+
+    .right-panel {
+      display: flex;
+      flex-direction: column;
+      gap: 16px;
+    }
+
+    .game-area {
+      display: flex;
+      gap: 20px;
+      align-items: flex-start;
+    }
+
+    #tree-panel-card {
+      flex: 1;
+      min-width: 0;
+    }
+
+    #tree-panel-card h2 {
+      font-size: 0.8rem;
+      text-transform: uppercase;
+      letter-spacing: 1px;
+      color: #6666aa;
+      margin-bottom: 8px;
+    }
+
+    #tree-panel {
+      min-height: 80px;
+    }
+
+    .stats {
+      display: flex;
+      gap: 16px;
+      flex-wrap: wrap;
+      font-size: 0.8rem;
+      color: #8888aa;
+      margin-bottom: 8px;
+      padding: 8px 12px;
+      background: #0f0f20;
+      border-radius: 6px;
+      border: 1px solid #2a2a4a;
+    }
+
+    .stats b { font-size: 0.85rem; }
+
+    .legend-row {
+      display: flex;
+      gap: 16px;
+      font-size: 0.75rem;
+      color: #6666aa;
+      margin-top: 6px;
+      flex-wrap: wrap;
+    }
+
+    .legend-item { display: flex; align-items: center; gap: 4px; }
+    .dot { width: 10px; height: 10px; border-radius: 50%; display: inline-block; }
+
+    @media (max-width: 700px) {
+      .layout { grid-template-columns: 1fr; }
+      .game-area { flex-direction: column; }
+    }
+  </style>
+</head>
+<body>
+  <h1>Minimax &amp; Alpha-Beta Pruning</h1>
+  <p class="subtitle">Play against a minimax AI — watch the search tree and see how pruning saves work.</p>
+
+  <div class="layout">
+    <!-- Left: controls -->
+    <div class="left-panel">
+      <div class="card">
+        <h2>Game</h2>
+        <div class="control-row">
+          <label>Game</label>
+          <select id="game-select">
+            <option value="ttt">Tic-Tac-Toe</option>
+            <option value="c4">Connect Four</option>
+          </select>
+        </div>
+        <div class="control-row">
+          <label>You play</label>
+          <select id="who-first">
+            <option value="X">X (goes first)</option>
+            <option value="O">O (goes second)</option>
+          </select>
+        </div>
+        <div class="control-row">
+          <label>AI strength</label>
+          <select id="strength-select">
+            <option value="easy">Easy</option>
+            <option value="medium">Medium</option>
+            <option value="hard" selected>Hard</option>
+          </select>
+        </div>
+        <div id="depth-row" class="control-row" style="display:none;">
+          <label>C4 depth</label>
+          <input type="range" id="depth-slider" min="2" max="8" value="5" />
+          <span id="depth-label" style="font-size:0.82rem;color:#e0e0f0;min-width:16px;">5</span>
+        </div>
+        <div id="tree-toggle-row" class="toggle-row" style="display:flex;margin-top:4px;">
+          <input type="checkbox" id="show-tree" checked />
+          <label for="show-tree" style="min-width:0;">Show game tree</label>
+        </div>
+      </div>
+
+      <div class="card">
+        <h2>Actions</h2>
+        <button class="btn" id="new-game-btn">New Game</button>
+        <button class="btn secondary" id="undo-btn">Undo Move</button>
+      </div>
+
+      <div class="card">
+        <h2>Legend</h2>
+        <div style="font-size:0.78rem;color:#8888aa;line-height:1.7;">
+          <div><span style="color:#60a5fa">●</span> AI node (maximizer)</div>
+          <div><span style="color:#f87171">●</span> Human node (minimizer)</div>
+          <div><span style="color:#4ade80">positive</span> = AI advantage</div>
+          <div><span style="color:#f87171">negative</span> = Human advantage</div>
+          <div><span style="color:#444466">✂</span> Alpha-beta pruned</div>
+          <div style="margin-top:6px;border-top:1px solid #2a2a4a;padding-top:6px;">
+            Tree shown up to depth 4.<br>
+            Tic-Tac-Toe is fully solved.<br>
+            Connect Four uses heuristic eval.
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Right: board + tree -->
+    <div class="right-panel">
+      <div id="status">Loading…</div>
+
+      <div class="game-area">
+        <div id="board-container"></div>
+
+        <div class="card" id="tree-panel-card" style="flex:1;min-width:280px;">
+          <h2>Search Visualization</h2>
+          <div id="tree-panel">
+            <p style="color:#8888aa;font-size:0.85rem;">Make a move to see the search tree.</p>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <script src="bundleminimax.js"></script>
+</body>
+</html>

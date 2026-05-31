@@ -1,0 +1,301 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>k-Nearest Neighbors Lab</title>
+  <style>
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+
+    body {
+      font-family: 'Segoe UI', Arial, sans-serif;
+      background: #0f0f1a;
+      color: #e0e0f0;
+      min-height: 100vh;
+      padding: 16px;
+    }
+
+    h1 {
+      font-size: 1.6rem;
+      font-weight: 700;
+      color: #818cf8;
+      margin-bottom: 4px;
+      letter-spacing: 0.5px;
+    }
+
+    .subtitle {
+      font-size: 0.85rem;
+      color: #8888aa;
+      margin-bottom: 16px;
+    }
+
+    .layout {
+      display: flex;
+      gap: 16px;
+      align-items: flex-start;
+      flex-wrap: wrap;
+    }
+
+    /* ── left column: canvas + curve ── */
+    .visuals {
+      display: flex;
+      flex-direction: column;
+      gap: 12px;
+      flex: 1 1 480px;
+      min-width: 320px;
+    }
+
+    canvas#main-canvas {
+      width: 100%;
+      aspect-ratio: 1;
+      border-radius: 10px;
+      border: 1px solid #ffffff18;
+      background: #13131f;
+      cursor: crosshair;
+      display: block;
+    }
+
+    .curve-wrap {
+      background: #13131f;
+      border: 1px solid #ffffff18;
+      border-radius: 10px;
+      padding: 10px 10px 6px;
+    }
+
+    .curve-title {
+      font-size: 0.78rem;
+      color: #8888aa;
+      margin-bottom: 4px;
+    }
+
+    canvas#curve-canvas {
+      width: 100%;
+      height: 120px;
+      display: block;
+    }
+
+    /* ── right column: controls ── */
+    .controls {
+      flex: 0 0 240px;
+      min-width: 200px;
+      display: flex;
+      flex-direction: column;
+      gap: 14px;
+    }
+
+    .panel {
+      background: #13131f;
+      border: 1px solid #ffffff18;
+      border-radius: 10px;
+      padding: 14px;
+    }
+
+    .panel-title {
+      font-size: 0.72rem;
+      font-weight: 600;
+      letter-spacing: 1px;
+      text-transform: uppercase;
+      color: #6366f1;
+      margin-bottom: 10px;
+    }
+
+    .ctrl-row {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      margin-bottom: 8px;
+      gap: 8px;
+    }
+
+    label {
+      font-size: 0.82rem;
+      color: #c0c0d8;
+      white-space: nowrap;
+    }
+
+    select {
+      background: #1e1e38;
+      color: #e0e0f0;
+      border: 1px solid #ffffff22;
+      border-radius: 5px;
+      padding: 3px 6px;
+      font-size: 0.82rem;
+      flex: 1;
+      min-width: 0;
+    }
+
+    input[type=range] {
+      flex: 1;
+      accent-color: #6366f1;
+      min-width: 0;
+    }
+
+    .val-badge {
+      font-size: 0.78rem;
+      color: #818cf8;
+      min-width: 28px;
+      text-align: right;
+      font-variant-numeric: tabular-nums;
+    }
+
+    .toggle-row {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+    }
+
+    input[type=checkbox] {
+      accent-color: #6366f1;
+      width: 15px;
+      height: 15px;
+    }
+
+    button {
+      width: 100%;
+      padding: 7px;
+      background: #6366f1;
+      color: #fff;
+      border: none;
+      border-radius: 6px;
+      font-size: 0.85rem;
+      font-weight: 600;
+      cursor: pointer;
+      transition: background 0.15s;
+    }
+
+    button:hover { background: #818cf8; }
+
+    /* accuracy strip */
+    .accuracy-strip {
+      background: #1a1a30;
+      border: 1px solid #ffffff18;
+      border-radius: 8px;
+      padding: 10px 14px;
+      font-size: 0.82rem;
+      color: #a0a8c8;
+      font-variant-numeric: tabular-nums;
+      letter-spacing: 0.3px;
+    }
+
+    .accuracy-strip span { color: #818cf8; font-weight: 600; }
+
+    /* legend */
+    .legend {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 6px 12px;
+      font-size: 0.78rem;
+      color: #8888aa;
+    }
+
+    .legend-dot {
+      display: inline-block;
+      width: 10px;
+      height: 10px;
+      border-radius: 50%;
+      vertical-align: middle;
+      margin-right: 4px;
+    }
+
+    .hint {
+      font-size: 0.76rem;
+      color: #55556a;
+      margin-top: 6px;
+    }
+  </style>
+</head>
+<body>
+  <h1>k-Nearest Neighbors</h1>
+  <p class="subtitle">Interactive 2D classification — hover or click the canvas to query a point</p>
+
+  <div class="layout">
+    <!-- visuals -->
+    <div class="visuals">
+      <canvas id="main-canvas" width="600" height="600"></canvas>
+
+      <div class="curve-wrap">
+        <div class="curve-title">k vs. Accuracy curve &nbsp;(overfitting at small k, underfitting at large k)</div>
+        <canvas id="curve-canvas" width="600" height="130"></canvas>
+      </div>
+    </div>
+
+    <!-- controls -->
+    <div class="controls">
+
+      <div class="panel">
+        <div class="panel-title">Dataset</div>
+
+        <div class="ctrl-row">
+          <label for="dataset-sel">Type</label>
+          <select id="dataset-sel">
+            <option value="blobs">Blobs</option>
+            <option value="moons">Moons</option>
+            <option value="circles">Circles</option>
+            <option value="xor">XOR</option>
+            <option value="spiral">Spiral</option>
+            <option value="three-class">Three-class</option>
+          </select>
+        </div>
+
+        <div class="ctrl-row">
+          <label for="n-slider">Points</label>
+          <input type="range" id="n-slider" min="60" max="600" step="20" value="200">
+          <span class="val-badge" id="n-val">200</span>
+        </div>
+
+        <div class="ctrl-row">
+          <label for="noise-slider">Noise</label>
+          <input type="range" id="noise-slider" min="0" max="1" step="0.05" value="0.10">
+          <span class="val-badge" id="noise-val">0.10</span>
+        </div>
+
+        <button id="regen-btn">Regenerate</button>
+      </div>
+
+      <div class="panel">
+        <div class="panel-title">k-NN Settings</div>
+
+        <div class="ctrl-row">
+          <label for="k-slider">k</label>
+          <input type="range" id="k-slider" min="1" max="25" step="1" value="5">
+          <span class="val-badge" id="k-val">5</span>
+        </div>
+
+        <div class="ctrl-row">
+          <label for="metric-sel">Metric</label>
+          <select id="metric-sel">
+            <option value="euclidean">Euclidean</option>
+            <option value="manhattan">Manhattan</option>
+            <option value="chebyshev">Chebyshev</option>
+          </select>
+        </div>
+
+        <div class="toggle-row" style="margin-top:4px;">
+          <input type="checkbox" id="weight-toggle">
+          <label for="weight-toggle">Distance weighting (1/d²)</label>
+        </div>
+      </div>
+
+      <div class="accuracy-strip">
+        <span id="accuracy-display">Train: —   Test: —</span>
+      </div>
+
+      <div class="panel">
+        <div class="panel-title">Legend</div>
+        <div class="legend">
+          <div><span class="legend-dot" style="background:#6366f1"></span>Class 0</div>
+          <div><span class="legend-dot" style="background:#f43f5e"></span>Class 1</div>
+          <div><span class="legend-dot" style="background:#10b981"></span>Class 2</div>
+        </div>
+        <div class="hint" style="margin-top:8px;">
+          Filled dots = train &nbsp;·&nbsp; dashed rings = test<br>
+          Hover canvas to query; click to pin.
+        </div>
+      </div>
+
+    </div>
+  </div>
+
+  <script src="bundleknn.js"></script>
+</body>
+</html>

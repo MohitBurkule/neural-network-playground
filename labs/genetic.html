@@ -1,0 +1,306 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Genetic Algorithm Lab</title>
+  <style>
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+
+    body {
+      font-family: 'Segoe UI', Arial, sans-serif;
+      background: #1a1a2e;
+      color: #e0e0f0;
+      min-height: 100vh;
+      padding: 16px;
+    }
+
+    h1 {
+      font-size: 1.6rem;
+      font-weight: 700;
+      color: #a78bfa;
+      margin-bottom: 4px;
+      letter-spacing: 0.5px;
+    }
+
+    .subtitle {
+      font-size: 0.85rem;
+      color: #8888aa;
+      margin-bottom: 16px;
+    }
+
+    .layout {
+      display: grid;
+      grid-template-columns: 240px 1fr;
+      gap: 12px;
+      align-items: start;
+    }
+
+    /* ── Controls panel ── */
+    .controls {
+      background: #16213e;
+      border: 1px solid #2a2a5a;
+      border-radius: 10px;
+      padding: 14px;
+      display: flex;
+      flex-direction: column;
+      gap: 14px;
+    }
+
+    .controls h2 {
+      font-size: 0.75rem;
+      text-transform: uppercase;
+      letter-spacing: 1px;
+      color: #7777aa;
+      margin-bottom: 4px;
+    }
+
+    .btn-row {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 6px;
+    }
+
+    button {
+      padding: 7px 13px;
+      border: none;
+      border-radius: 6px;
+      font-size: 0.82rem;
+      font-weight: 600;
+      cursor: pointer;
+      transition: opacity 0.15s;
+    }
+    button:hover { opacity: 0.82; }
+
+    #btn-play  { background: #27ae60; color: #fff; }
+    #btn-pause { background: #e67e22; color: #fff; }
+    #btn-step  { background: #3498db; color: #fff; }
+    #btn-reset { background: #e74c3c; color: #fff; }
+
+    label {
+      font-size: 0.8rem;
+      color: #aaa;
+      display: block;
+      margin-bottom: 3px;
+    }
+
+    input[type=range] {
+      width: 100%;
+      accent-color: #a78bfa;
+    }
+
+    select {
+      width: 100%;
+      background: #0f3460;
+      color: #e0e0f0;
+      border: 1px solid #3a3a6a;
+      border-radius: 6px;
+      padding: 6px 8px;
+      font-size: 0.82rem;
+    }
+
+    .param-row {
+      display: flex;
+      flex-direction: column;
+      gap: 3px;
+    }
+
+    .slider-val {
+      font-size: 0.82rem;
+      color: #a78bfa;
+      font-weight: 600;
+    }
+
+    .algo-info {
+      font-size: 0.74rem;
+      color: #6677aa;
+      padding: 8px 10px;
+      background: #0f0f28;
+      border-left: 3px solid #a78bfa;
+      border-radius: 4px;
+      line-height: 1.55;
+    }
+
+    /* ── Canvas panel ── */
+    .canvas-panel {
+      background: #12122a;
+      border: 1px solid #2a2a5a;
+      border-radius: 10px;
+      padding: 12px;
+      display: flex;
+      flex-direction: column;
+      gap: 10px;
+    }
+
+    .canvas-label {
+      font-size: 0.72rem;
+      text-transform: uppercase;
+      letter-spacing: 1px;
+      color: #5566aa;
+      margin-bottom: 2px;
+    }
+
+    canvas {
+      display: block;
+      border-radius: 8px;
+      background: #0d0d1e;
+      width: 100%;
+    }
+
+    #canvas-landscape { cursor: crosshair; }
+
+    .status-bar {
+      display: flex;
+      gap: 18px;
+      font-size: 0.82rem;
+      color: #aaa;
+      flex-wrap: wrap;
+    }
+
+    .status-bar span b { color: #a78bfa; }
+
+    .legend-row {
+      display: flex;
+      gap: 16px;
+      font-size: 0.78rem;
+      color: #aaa;
+      align-items: center;
+      flex-wrap: wrap;
+    }
+
+    .legend-dot {
+      display: inline-block;
+      width: 10px;
+      height: 10px;
+      border-radius: 50%;
+      margin-right: 4px;
+      vertical-align: middle;
+    }
+
+    @media (max-width: 720px) {
+      .layout { grid-template-columns: 1fr; }
+    }
+  </style>
+</head>
+<body>
+  <h1>Genetic Algorithm Lab</h1>
+  <p class="subtitle">
+    Evolve a population to optimize 2-D fitness landscapes — watch selection, crossover, and mutation at work.
+  </p>
+
+  <div class="layout">
+
+    <!-- ── Controls ── -->
+    <div class="controls">
+
+      <div>
+        <h2>Playback</h2>
+        <div class="btn-row">
+          <button id="btn-play">&#9654; Play</button>
+          <button id="btn-pause">&#9646;&#9646; Pause</button>
+          <button id="btn-step">&#8677; Step</button>
+          <button id="btn-reset">&#8635; Reset</button>
+        </div>
+      </div>
+
+      <div class="param-row">
+        <h2>Fitness Function</h2>
+        <select id="sel-fn">
+          <option value="rastrigin">Rastrigin (many local minima)</option>
+          <option value="ackley">Ackley (funnel + ripples)</option>
+          <option value="rosenbrock">Rosenbrock (banana valley)</option>
+          <option value="sphere">Sphere (convex bowl)</option>
+          <option value="himmelblau">Himmelblau (4 global minima)</option>
+        </select>
+      </div>
+
+      <div class="param-row">
+        <h2>Selection Method</h2>
+        <select id="sel-sel">
+          <option value="tournament">Tournament (k=3)</option>
+          <option value="roulette">Roulette Wheel</option>
+        </select>
+      </div>
+
+      <div class="param-row">
+        <label>Population Size: <span id="label-pop" class="slider-val">80</span></label>
+        <input type="range" id="slider-pop" min="10" max="300" value="80" step="10">
+      </div>
+
+      <div class="param-row">
+        <label>Mutation Rate: <span id="label-mutrate" class="slider-val">0.15</span></label>
+        <input type="range" id="slider-mutrate" min="0.01" max="1.0" value="0.15" step="0.01">
+      </div>
+
+      <div class="param-row">
+        <label>Mutation &sigma;: <span id="label-mutsigma" class="slider-val">0.3</span></label>
+        <input type="range" id="slider-mutsigma" min="0.01" max="2.0" value="0.3" step="0.01">
+      </div>
+
+      <div class="param-row">
+        <label>Crossover Rate: <span id="label-cross" class="slider-val">0.8</span></label>
+        <input type="range" id="slider-cross" min="0.0" max="1.0" value="0.8" step="0.05">
+      </div>
+
+      <div class="param-row">
+        <label>Elitism Count: <span id="label-elite" class="slider-val">2</span></label>
+        <input type="range" id="slider-elite" min="0" max="20" value="2" step="1">
+      </div>
+
+      <div class="param-row">
+        <label>Speed (delay): <span id="label-speed" class="slider-val">60 ms</span></label>
+        <input type="range" id="slider-speed" min="10" max="600" value="60" step="10">
+      </div>
+
+      <div class="algo-info" id="algo-info">
+        <b>Genetic Algorithm:</b> a population of candidate solutions evolves over generations via
+        <i>selection</i> (preferring fitter individuals), <i>crossover</i> (blending parents), and
+        <i>mutation</i> (random perturbations). Elitism preserves the top individuals unchanged.
+        The heatmap shows the fitness landscape; yellow/bright = global optimum region.
+      </div>
+
+    </div>
+
+    <!-- ── Canvas panel ── -->
+    <div class="canvas-panel" id="canvas-panel">
+
+      <div>
+        <div class="canvas-label">Fitness Landscape &amp; Population</div>
+        <canvas id="canvas-landscape"></canvas>
+      </div>
+
+      <div class="status-bar">
+        <span>Generation: <b id="span-gen">0</b></span>
+        <span>Best f: <b id="span-best">—</b></span>
+        <span>Mean f: <b id="span-mean">—</b></span>
+      </div>
+
+      <div class="legend-row">
+        <span>
+          <span class="legend-dot" style="background:#ffffff;border:2px solid #ff4444;"></span>
+          Best individual
+        </span>
+        <span>
+          <span class="legend-dot" style="background:rgba(255,220,80,0.85);"></span>
+          Population
+        </span>
+        <span style="color:#5566aa;">Domain: [−5.12, 5.12]²</span>
+      </div>
+
+      <div>
+        <div class="canvas-label">Best &amp; Mean Fitness vs Generation</div>
+        <canvas id="canvas-curve"></canvas>
+      </div>
+
+      <div class="legend-row">
+        <span><span style="display:inline-block;width:24px;height:3px;background:#ff6666;vertical-align:middle;margin-right:4px;"></span>Best</span>
+        <span><span style="display:inline-block;width:24px;height:3px;background:rgba(100,180,255,0.8);vertical-align:middle;margin-right:4px;"></span>Mean</span>
+        <span style="color:#5566aa;font-size:0.76rem;">Lower = better for minimisation functions</span>
+      </div>
+
+    </div>
+  </div>
+
+  <script src="bundlegenetic.js"></script>
+</body>
+</html>

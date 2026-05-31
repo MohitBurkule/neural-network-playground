@@ -1,0 +1,279 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Particle Swarm Optimization Lab</title>
+  <style>
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+
+    body {
+      font-family: 'Segoe UI', Arial, sans-serif;
+      background: #0f0f1a;
+      color: #e0e0f0;
+      min-height: 100vh;
+      padding: 16px;
+    }
+
+    h1 {
+      font-size: 1.6rem;
+      font-weight: 700;
+      color: #38bdf8;
+      margin-bottom: 4px;
+      letter-spacing: 0.5px;
+    }
+
+    .subtitle {
+      font-size: 0.85rem;
+      color: #8888aa;
+      margin-bottom: 16px;
+    }
+
+    .layout {
+      display: flex;
+      gap: 16px;
+      flex-wrap: wrap;
+      align-items: flex-start;
+    }
+
+    /* ── Left: main canvas ── */
+    .canvas-wrap {
+      position: relative;
+      flex-shrink: 0;
+    }
+
+    #main-canvas {
+      display: block;
+      border: 1px solid #334;
+      border-radius: 6px;
+      background: #000;
+    }
+
+    /* ── Right: controls + fitness ── */
+    .right-panel {
+      display: flex;
+      flex-direction: column;
+      gap: 14px;
+      min-width: 300px;
+      flex: 1;
+    }
+
+    .card {
+      background: #1a1a2e;
+      border: 1px solid #2a2a44;
+      border-radius: 8px;
+      padding: 14px 16px;
+    }
+
+    .card h2 {
+      font-size: 0.8rem;
+      text-transform: uppercase;
+      letter-spacing: 1px;
+      color: #7777aa;
+      margin-bottom: 10px;
+    }
+
+    .control-row {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      margin-bottom: 8px;
+    }
+
+    .control-row label {
+      font-size: 0.82rem;
+      color: #aaa;
+      width: 110px;
+      flex-shrink: 0;
+    }
+
+    .control-row input[type=range] {
+      flex: 1;
+      accent-color: #38bdf8;
+    }
+
+    .control-row .val {
+      font-size: 0.78rem;
+      color: #38bdf8;
+      width: 40px;
+      text-align: right;
+      font-family: monospace;
+    }
+
+    select, input[type=number] {
+      background: #12121f;
+      border: 1px solid #334;
+      color: #e0e0f0;
+      padding: 4px 8px;
+      border-radius: 4px;
+      font-size: 0.82rem;
+      flex: 1;
+    }
+
+    .btn-row {
+      display: flex;
+      gap: 8px;
+      flex-wrap: wrap;
+    }
+
+    button {
+      padding: 7px 16px;
+      border-radius: 5px;
+      border: none;
+      cursor: pointer;
+      font-size: 0.85rem;
+      font-weight: 600;
+      transition: background 0.15s;
+    }
+
+    #btn-play  { background: #0ea5e9; color: #fff; }
+    #btn-play:hover { background: #38bdf8; }
+    #btn-step  { background: #334; color: #e0e0f0; }
+    #btn-step:hover { background: #445; }
+    #btn-reset { background: #7c3aed; color: #fff; }
+    #btn-reset:hover { background: #8b5cf6; }
+
+    #iter-label {
+      font-size: 0.78rem;
+      color: #7777aa;
+      margin-left: auto;
+      font-family: monospace;
+      align-self: center;
+    }
+
+    #fit-chart {
+      width: 100%;
+      min-height: 160px;
+    }
+
+    #fit-chart svg {
+      overflow: visible;
+    }
+
+    /* ── Legend ── */
+    .legend {
+      display: flex;
+      gap: 14px;
+      flex-wrap: wrap;
+      margin-top: 6px;
+    }
+    .legend-item {
+      display: flex;
+      align-items: center;
+      gap: 5px;
+      font-size: 0.75rem;
+      color: #aaa;
+    }
+    .dot { width: 10px; height: 10px; border-radius: 50%; }
+    .dot-particle { background: #38bdf8; }
+    .dot-gbest    { background: #fbbf24; }
+    .swatch-trail { width: 18px; height: 3px; background: rgba(100,220,255,0.5); border-radius: 2px; }
+  </style>
+</head>
+<body>
+  <h1>Particle Swarm Optimization</h1>
+  <p class="subtitle">
+    Visualize swarm convergence on classic 2-D benchmark functions — tune inertia, cognitive &amp; social weights live.
+  </p>
+
+  <div class="layout">
+
+    <!-- Main canvas -->
+    <div class="canvas-wrap">
+      <canvas id="main-canvas" width="560" height="560"></canvas>
+      <div class="legend" style="margin-top:8px">
+        <div class="legend-item"><div class="dot dot-particle"></div> Particle</div>
+        <div class="legend-item"><div class="dot dot-gbest"></div> Global Best</div>
+        <div class="legend-item"><div class="swatch-trail"></div> Trail</div>
+        <div class="legend-item" style="color:#888;font-size:0.72rem">Arrows = velocity direction</div>
+      </div>
+    </div>
+
+    <!-- Right panel -->
+    <div class="right-panel">
+
+      <!-- Playback controls -->
+      <div class="card">
+        <h2>Playback</h2>
+        <div class="btn-row">
+          <button id="btn-play">▶ Play</button>
+          <button id="btn-step">⏭ Step</button>
+          <button id="btn-reset">↺ Reset</button>
+          <span id="iter-label">Iter 0 / 300</span>
+        </div>
+        <div class="control-row" style="margin-top:10px">
+          <label>Speed (ms/frame)</label>
+          <input type="range" id="inp-speed" min="10" max="500" step="10" value="50">
+          <span class="val" id="lbl-speed">50</span>
+        </div>
+      </div>
+
+      <!-- Function & topology -->
+      <div class="card">
+        <h2>Function &amp; Topology</h2>
+        <div class="control-row">
+          <label>Function</label>
+          <select id="sel-fn">
+            <option value="rastrigin">Rastrigin</option>
+            <option value="ackley">Ackley</option>
+            <option value="sphere">Sphere</option>
+            <option value="rosenbrock">Rosenbrock</option>
+            <option value="schwefel">Schwefel</option>
+            <option value="himmelblau">Himmelblau</option>
+          </select>
+        </div>
+        <div class="control-row">
+          <label>Neighborhood</label>
+          <select id="sel-nbr">
+            <option value="global">Global (gbest)</option>
+            <option value="ring">Ring (lbest)</option>
+          </select>
+        </div>
+      </div>
+
+      <!-- PSO parameters -->
+      <div class="card">
+        <h2>PSO Parameters</h2>
+        <div class="control-row">
+          <label>Swarm size</label>
+          <input type="range" id="inp-n" min="5" max="120" step="5" value="40">
+          <span class="val" id="lbl-n">40</span>
+        </div>
+        <div class="control-row">
+          <label>Inertia w</label>
+          <input type="range" id="inp-w" min="0.1" max="1.2" step="0.01" value="0.729">
+          <span class="val" id="lbl-w">0.729</span>
+        </div>
+        <div class="control-row">
+          <label>Cognitive c₁</label>
+          <input type="range" id="inp-c1" min="0" max="3" step="0.01" value="1.494">
+          <span class="val" id="lbl-c1">1.494</span>
+        </div>
+        <div class="control-row">
+          <label>Social c₂</label>
+          <input type="range" id="inp-c2" min="0" max="3" step="0.01" value="1.494">
+          <span class="val" id="lbl-c2">1.494</span>
+        </div>
+      </div>
+
+      <!-- Fitness curve -->
+      <div class="card">
+        <h2>Best Fitness vs Iteration</h2>
+        <div id="fit-chart"></div>
+      </div>
+
+      <!-- Quick-reference -->
+      <div class="card" style="font-size:0.75rem;color:#7777aa;line-height:1.6">
+        <h2>Parameter Guide</h2>
+        <strong style="color:#aaa">w</strong> — inertia: high → exploration, low → exploitation<br>
+        <strong style="color:#aaa">c₁</strong> — cognitive: pulls toward personal best<br>
+        <strong style="color:#aaa">c₂</strong> — social: pulls toward neighbourhood best<br>
+        <strong style="color:#aaa">Ring</strong> topology slows convergence but avoids premature stagnation.
+      </div>
+
+    </div>
+  </div>
+
+  <script src="bundlepso.js"></script>
+</body>
+</html>

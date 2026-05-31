@@ -1,0 +1,264 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Reaction-Diffusion Lab</title>
+  <style>
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+    body {
+      background: #0e0e12;
+      color: #d4d4e8;
+      font-family: 'Segoe UI', system-ui, sans-serif;
+      font-size: 13px;
+      display: flex;
+      flex-direction: row;
+      height: 100vh;
+      overflow: hidden;
+    }
+
+    #sidebar {
+      width: 240px;
+      min-width: 240px;
+      background: #16161e;
+      border-right: 1px solid #2a2a3a;
+      padding: 16px 14px;
+      display: flex;
+      flex-direction: column;
+      gap: 14px;
+      overflow-y: auto;
+    }
+
+    #main {
+      flex: 1;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      padding: 16px;
+      gap: 10px;
+    }
+
+    h1 {
+      font-size: 15px;
+      font-weight: 600;
+      color: #a0a0cc;
+      letter-spacing: 0.04em;
+    }
+
+    h2 {
+      font-size: 11px;
+      font-weight: 600;
+      text-transform: uppercase;
+      letter-spacing: 0.08em;
+      color: #6060a0;
+      margin-bottom: 4px;
+    }
+
+    .section {
+      display: flex;
+      flex-direction: column;
+      gap: 8px;
+    }
+
+    .row {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 6px;
+    }
+
+    label {
+      color: #9090b8;
+      white-space: nowrap;
+      flex-shrink: 0;
+    }
+
+    .val {
+      color: #b0b0e0;
+      font-weight: 600;
+      min-width: 44px;
+      text-align: right;
+      font-size: 12px;
+    }
+
+    input[type=range] {
+      flex: 1;
+      accent-color: #7070cc;
+      height: 4px;
+      cursor: pointer;
+    }
+
+    select {
+      width: 100%;
+      background: #1e1e2a;
+      color: #c0c0e0;
+      border: 1px solid #3a3a5a;
+      border-radius: 4px;
+      padding: 4px 6px;
+      font-size: 13px;
+      cursor: pointer;
+    }
+
+    select:focus { outline: none; border-color: #7070cc; }
+
+    .btn-row {
+      display: flex;
+      gap: 6px;
+    }
+
+    button {
+      flex: 1;
+      padding: 6px 0;
+      border: 1px solid #3a3a5a;
+      border-radius: 4px;
+      background: #1e1e2a;
+      color: #c0c0e0;
+      cursor: pointer;
+      font-size: 13px;
+      transition: background 0.15s, border-color 0.15s;
+    }
+
+    button:hover {
+      background: #2e2e44;
+      border-color: #7070cc;
+      color: #e0e0ff;
+    }
+
+    #btnPlay {
+      background: #28284a;
+      border-color: #7070cc;
+      color: #b0b0ff;
+    }
+
+    #canvas-wrap {
+      position: relative;
+      border: 1px solid #2a2a3a;
+      border-radius: 6px;
+      overflow: hidden;
+      box-shadow: 0 0 40px rgba(80,80,180,0.15);
+    }
+
+    canvas {
+      display: block;
+      image-rendering: pixelated;
+      width: min(70vw, 70vh, 680px);
+      height: min(70vw, 70vh, 680px);
+      cursor: crosshair;
+    }
+
+    #statusbar {
+      font-size: 12px;
+      color: #505080;
+      display: flex;
+      gap: 16px;
+    }
+
+    .hint {
+      font-size: 11px;
+      color: #404060;
+      line-height: 1.5;
+    }
+
+    hr {
+      border: none;
+      border-top: 1px solid #2a2a3a;
+    }
+  </style>
+</head>
+<body>
+
+<div id="sidebar">
+  <h1>Reaction-Diffusion</h1>
+  <div class="hint">Gray-Scott model — Turing patterns</div>
+
+  <hr>
+
+  <div class="section">
+    <h2>Preset</h2>
+    <select id="preset"></select>
+  </div>
+
+  <div class="section">
+    <h2>Parameters</h2>
+    <div class="row">
+      <label>Feed F</label>
+      <input type="range" id="inF" min="0.01" max="0.1" step="0.0001" value="0.0545">
+      <span class="val" id="lblF">0.0545</span>
+    </div>
+    <div class="row">
+      <label>Kill k</label>
+      <input type="range" id="inK" min="0.04" max="0.075" step="0.0001" value="0.062">
+      <span class="val" id="lblK">0.062</span>
+    </div>
+    <div class="row">
+      <label>Du</label>
+      <input type="range" id="inDu" min="0.05" max="0.5" step="0.001" value="0.2097">
+      <span class="val" id="lblDu">0.2097</span>
+    </div>
+    <div class="row">
+      <label>Dv</label>
+      <input type="range" id="inDv" min="0.02" max="0.3" step="0.001" value="0.105">
+      <span class="val" id="lblDv">0.105</span>
+    </div>
+  </div>
+
+  <div class="section">
+    <h2>Colormap</h2>
+    <select id="colormap"></select>
+  </div>
+
+  <div class="section">
+    <h2>Playback</h2>
+    <div class="btn-row">
+      <button id="btnPlay">Pause</button>
+      <button id="btnStep">Step</button>
+      <button id="btnReset">Reset</button>
+    </div>
+    <div class="row">
+      <label>Speed</label>
+      <input type="range" id="inSpeed" min="1" max="30" step="1" value="8">
+      <span class="val" id="lblSpeed">8</span>
+    </div>
+  </div>
+
+  <div class="section">
+    <h2>Brush</h2>
+    <div class="hint">Click/drag on canvas to seed</div>
+    <div class="row">
+      <label>Radius</label>
+      <input type="range" id="inBrush" min="1" max="30" step="1" value="6">
+      <span class="val" id="lblBrush">6</span>
+    </div>
+  </div>
+
+  <div class="section">
+    <h2>Grid</h2>
+    <div class="row">
+      <label>Size</label>
+      <input type="range" id="inGridSize" min="64" max="512" step="32" value="256">
+      <span class="val" id="lblGridSize">256</span>
+    </div>
+  </div>
+
+  <hr>
+  <div class="hint">
+    Each frame runs multiple PDE substeps (speed).<br>
+    Adjust F/k to explore pattern space.
+  </div>
+</div>
+
+<div id="main">
+  <div id="canvas-wrap">
+    <canvas id="canvas" width="256" height="256"></canvas>
+  </div>
+  <div id="statusbar">
+    <span>FPS: <strong id="fps">—</strong></span>
+    <span>Gray-Scott reaction-diffusion · draw to perturb</span>
+  </div>
+</div>
+
+<script src="bundlerd.js"></script>
+</body>
+</html>

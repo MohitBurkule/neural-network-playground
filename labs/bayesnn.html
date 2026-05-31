@@ -1,0 +1,356 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Bayesian Neural Network — Predictive Uncertainty</title>
+  <style>
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+    body {
+      font-family: 'Segoe UI', Arial, sans-serif;
+      background: #0f1117;
+      color: #e0e0e0;
+      min-height: 100vh;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      padding: 24px 16px 48px;
+    }
+
+    h1 {
+      font-size: 1.55rem;
+      font-weight: 600;
+      color: #64a0ff;
+      margin-bottom: 4px;
+      letter-spacing: 0.4px;
+    }
+
+    .subtitle {
+      font-size: 0.84rem;
+      color: #888;
+      margin-bottom: 22px;
+      text-align: center;
+      max-width: 640px;
+      line-height: 1.5;
+    }
+
+    .main-layout {
+      display: flex;
+      gap: 20px;
+      align-items: flex-start;
+      flex-wrap: wrap;
+      justify-content: center;
+    }
+
+    /* ── Plot panel ── */
+    .plot-panel {
+      background: #1a1d27;
+      border: 1px solid #2d3045;
+      border-radius: 10px;
+      padding: 16px;
+      display: flex;
+      flex-direction: column;
+      gap: 10px;
+    }
+
+    .plot-panel svg {
+      display: block;
+    }
+
+    .plot-label {
+      font-size: 0.75rem;
+      color: #666;
+      letter-spacing: 0.3px;
+      text-align: center;
+    }
+
+    /* ── Controls ── */
+    .ctrl-panel {
+      background: #1a1d27;
+      border: 1px solid #2d3045;
+      border-radius: 10px;
+      padding: 18px 16px;
+      width: 220px;
+      display: flex;
+      flex-direction: column;
+      gap: 14px;
+    }
+
+    .ctrl-section-title {
+      font-size: 0.72rem;
+      font-weight: 600;
+      color: #64a0ff;
+      text-transform: uppercase;
+      letter-spacing: 0.8px;
+      border-bottom: 1px solid #2d3045;
+      padding-bottom: 5px;
+    }
+
+    .ctrl-row {
+      display: flex;
+      flex-direction: column;
+      gap: 4px;
+    }
+
+    .ctrl-row-inline {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+    }
+
+    label {
+      font-size: 0.78rem;
+      color: #aaa;
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+    }
+
+    label .val {
+      color: #ccc;
+      font-variant-numeric: tabular-nums;
+      min-width: 32px;
+      text-align: right;
+    }
+
+    input[type="range"] {
+      -webkit-appearance: none;
+      width: 100%;
+      height: 4px;
+      background: #2d3045;
+      border-radius: 2px;
+      outline: none;
+    }
+
+    input[type="range"]::-webkit-slider-thumb {
+      -webkit-appearance: none;
+      width: 13px; height: 13px;
+      border-radius: 50%;
+      background: #64a0ff;
+      cursor: pointer;
+    }
+
+    select {
+      background: #0f1117;
+      border: 1px solid #2d3045;
+      border-radius: 5px;
+      color: #ddd;
+      font-size: 0.8rem;
+      padding: 4px 6px;
+      width: 100%;
+      outline: none;
+      cursor: pointer;
+    }
+
+    select:focus { border-color: #64a0ff; }
+
+    /* ── Buttons ── */
+    .btn-group {
+      display: flex;
+      gap: 6px;
+      flex-wrap: wrap;
+    }
+
+    button {
+      flex: 1;
+      padding: 6px 4px;
+      border: none;
+      border-radius: 5px;
+      cursor: pointer;
+      font-size: 0.78rem;
+      font-weight: 500;
+      transition: background 0.15s, opacity 0.15s;
+    }
+
+    button:disabled { opacity: 0.4; cursor: default; }
+
+    #btn-play  { background: #2e6ed4; color: #fff; }
+    #btn-pause { background: #2d3045; color: #aaa; }
+    #btn-step  { background: #2d3045; color: #aaa; }
+    #btn-reset { background: #3d2260; color: #ccc; }
+    #btn-clear { background: #2d3045; color: #888; }
+
+    button:not(:disabled):hover { filter: brightness(1.15); }
+
+    /* ── Legend ── */
+    .legend {
+      display: flex;
+      flex-direction: column;
+      gap: 5px;
+    }
+
+    .legend-item {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      font-size: 0.75rem;
+      color: #aaa;
+    }
+
+    .legend-swatch {
+      width: 24px; height: 10px;
+      border-radius: 2px;
+      flex-shrink: 0;
+    }
+
+    /* ── Step counter ── */
+    #step-count {
+      font-size: 0.72rem;
+      color: #666;
+      text-align: center;
+      font-variant-numeric: tabular-nums;
+    }
+
+    /* ── Teaching note ── */
+    .teaching-note {
+      margin-top: 20px;
+      max-width: 800px;
+      background: #1a1d27;
+      border: 1px solid #2d3045;
+      border-left: 3px solid #64a0ff;
+      border-radius: 6px;
+      padding: 12px 16px;
+      font-size: 0.8rem;
+      color: #aaa;
+      line-height: 1.6;
+    }
+
+    .teaching-note strong { color: #ccc; }
+    .teaching-note em { color: #ffcc55; font-style: normal; }
+
+    .gap-label {
+      font-size: 0.7rem;
+      color: rgba(255,200,50,0.5);
+      text-align: center;
+      margin-top: -4px;
+    }
+  </style>
+</head>
+<body>
+
+  <h1>Predictive Uncertainty in Neural Networks</h1>
+  <p class="subtitle">
+    A live 1D regression lab. Uncertainty is <em>small near data</em> and <em>large in gaps / extrapolation</em>.
+    Click the plot to add or remove points and watch the bands respond.
+  </p>
+
+  <div class="main-layout">
+
+    <!-- ── Main plot + loss ── -->
+    <div class="plot-panel">
+      <div>
+        <svg id="main-plot"></svg>
+        <div class="gap-label">Shaded yellow zone = deliberate data gap — watch uncertainty widen here</div>
+      </div>
+
+      <div class="plot-label">Loss curve</div>
+      <svg id="loss-plot"></svg>
+      <div id="step-count">Step: 0</div>
+    </div>
+
+    <!-- ── Controls ── -->
+    <div class="ctrl-panel">
+
+      <div>
+        <div class="ctrl-section-title">Method</div>
+        <div class="ctrl-row" style="margin-top:8px;">
+          <label>Uncertainty method</label>
+          <select id="ctrl-method">
+            <option value="mc-dropout">MC-Dropout</option>
+            <option value="ensemble">Deep Ensemble</option>
+          </select>
+        </div>
+
+        <div class="ctrl-row" style="margin-top:8px;" id="dropout-row">
+          <label>Dropout rate <span class="val" id="lbl-dropout">0.2</span></label>
+          <input type="range" id="ctrl-dropout" min="0.05" max="0.5" step="0.05" value="0.2" />
+        </div>
+
+        <div class="ctrl-row" style="margin-top:8px;">
+          <label><span id="samples-label">MC Samples</span> <span class="val" id="lbl-samples">20</span></label>
+          <input type="range" id="ctrl-samples" min="5" max="50" step="5" value="20" />
+        </div>
+      </div>
+
+      <div>
+        <div class="ctrl-section-title">Architecture</div>
+        <div class="ctrl-row" style="margin-top:8px;">
+          <label>Hidden units <span class="val" id="lbl-hidden">32</span></label>
+          <input type="range" id="ctrl-hidden" min="8" max="64" step="8" value="32" />
+        </div>
+      </div>
+
+      <div>
+        <div class="ctrl-section-title">Training</div>
+        <div class="ctrl-row" style="margin-top:8px;">
+          <label>Learning rate <span class="val" id="lbl-lr">0.005</span></label>
+          <input type="range" id="ctrl-lr" min="0.0005" max="0.02" step="0.0005" value="0.005" />
+        </div>
+        <div class="ctrl-row" style="margin-top:8px;">
+          <label>Target function</label>
+          <select id="ctrl-preset">
+            <option value="sine">Sine</option>
+            <option value="step">Step</option>
+            <option value="cubic">Cubic</option>
+          </select>
+        </div>
+      </div>
+
+      <div>
+        <div class="ctrl-section-title">Controls</div>
+        <div class="btn-group" style="margin-top:8px;">
+          <button id="btn-play">&#9654; Play</button>
+          <button id="btn-pause" disabled>&#10074;&#10074; Pause</button>
+        </div>
+        <div class="btn-group" style="margin-top:6px;">
+          <button id="btn-step">Step</button>
+          <button id="btn-reset">Reset</button>
+          <button id="btn-clear">Clear</button>
+        </div>
+      </div>
+
+      <div>
+        <div class="ctrl-section-title">Legend</div>
+        <div class="legend" style="margin-top:8px;">
+          <div class="legend-item">
+            <div class="legend-swatch" style="background:rgba(100,160,255,0.22);border:1px solid rgba(100,160,255,0.4);"></div>
+            <span>&pm;1&sigma; (epistemic)</span>
+          </div>
+          <div class="legend-item">
+            <div class="legend-swatch" style="background:rgba(100,160,255,0.12);border:1px solid rgba(100,160,255,0.2);"></div>
+            <span>&pm;2&sigma; (epistemic)</span>
+          </div>
+          <div class="legend-item">
+            <div class="legend-swatch" style="background:#64a0ff;height:3px;margin-top:3px;"></div>
+            <span>Mean prediction</span>
+          </div>
+          <div class="legend-item">
+            <div class="legend-swatch" style="background:rgba(150,200,255,0.35);border:1px dashed rgba(150,200,255,0.4);"></div>
+            <span>Individual samples</span>
+          </div>
+          <div class="legend-item">
+            <div class="legend-swatch" style="background:rgba(200,200,120,0.5);height:2px;margin-top:4px;border-top:1px dashed rgba(200,200,120,0.6);"></div>
+            <span>True function</span>
+          </div>
+          <div class="legend-item">
+            <div class="legend-swatch" style="background:#ffcc55;border-radius:50%;width:10px;height:10px;"></div>
+            <span>Data points (click to add/remove)</span>
+          </div>
+        </div>
+      </div>
+
+    </div>
+  </div>
+
+  <div class="teaching-note">
+    <strong>How it works:</strong>
+    <strong>MC-Dropout</strong> keeps dropout active at inference time and runs many forward passes — the spread of outputs captures epistemic uncertainty.
+    <strong>Deep Ensemble</strong> trains N networks from different random initialisations; disagreement between members reveals uncertainty.
+    In both cases the <em>shaded band widens</em> in the yellow gap region where no data exists, and <em>shrinks</em> where training points are dense.
+    Click anywhere on the plot to inject a new point into the gap — watch the bands collapse there within seconds of training.
+  </div>
+
+  <script src="bundlebayesnn.js"></script>
+</body>
+</html>

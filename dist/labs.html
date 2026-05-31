@@ -1,0 +1,589 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Neural Network Playground — Labs</title>
+  <style>
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+    :root {
+      --bg:        #0f1117;
+      --surface:   #181c2a;
+      --border:    #272d45;
+      --accent:    #7c6fff;
+      --accent2:   #38bdf8;
+      --text:      #d4d8f0;
+      --muted:     #6b7099;
+      --tag-bg:    #1e2340;
+      --hover-bg:  #1e233a;
+      --hover-brd: #7c6fff;
+      --radius:    12px;
+      --gap:       20px;
+    }
+
+    html { scroll-behavior: smooth; }
+
+    body {
+      font-family: 'Segoe UI', system-ui, -apple-system, Arial, sans-serif;
+      background: var(--bg);
+      color: var(--text);
+      line-height: 1.6;
+      min-height: 100vh;
+    }
+
+    /* ── Header ── */
+    header {
+      background: linear-gradient(135deg, #12163a 0%, #1a1136 60%, #0f1117 100%);
+      border-bottom: 1px solid var(--border);
+      padding: 48px 24px 40px;
+      text-align: center;
+    }
+
+    header h1 {
+      font-size: clamp(1.6rem, 4vw, 2.6rem);
+      font-weight: 800;
+      letter-spacing: -0.5px;
+      background: linear-gradient(90deg, #a78bfa, var(--accent2));
+      -webkit-background-clip: text;
+      -webkit-text-fill-color: transparent;
+      background-clip: text;
+      margin-bottom: 14px;
+    }
+
+    header p {
+      color: var(--muted);
+      font-size: 1rem;
+      max-width: 580px;
+      margin: 0 auto 22px;
+    }
+
+    .home-btn {
+      display: inline-flex;
+      align-items: center;
+      gap: 8px;
+      background: var(--accent);
+      color: #fff;
+      text-decoration: none;
+      font-weight: 600;
+      font-size: 0.9rem;
+      padding: 10px 22px;
+      border-radius: 999px;
+      transition: background 0.2s, transform 0.15s;
+      box-shadow: 0 2px 12px rgba(124, 111, 255, 0.35);
+    }
+    .home-btn:hover { background: #6457e8; transform: translateY(-1px); }
+    .home-btn svg { width: 16px; height: 16px; flex-shrink: 0; }
+
+    /* ── Main layout ── */
+    main {
+      max-width: 1160px;
+      margin: 0 auto;
+      padding: 40px 20px 64px;
+    }
+
+    /* ── Section headings ── */
+    .section-heading {
+      display: flex;
+      align-items: center;
+      gap: 12px;
+      margin: 44px 0 18px;
+    }
+    .section-heading:first-of-type { margin-top: 0; }
+
+    .section-heading h2 {
+      font-size: 1.05rem;
+      font-weight: 700;
+      text-transform: uppercase;
+      letter-spacing: 1px;
+      color: var(--accent2);
+      white-space: nowrap;
+    }
+
+    .section-heading::after {
+      content: '';
+      flex: 1;
+      height: 1px;
+      background: var(--border);
+    }
+
+    /* ── Grid ── */
+    .grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fill, minmax(260px, 1fr));
+      gap: var(--gap);
+    }
+
+    /* ── Card ── */
+    .card {
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: var(--radius);
+      padding: 22px 20px 18px;
+      text-decoration: none;
+      color: inherit;
+      display: flex;
+      flex-direction: column;
+      gap: 10px;
+      transition: background 0.2s, border-color 0.2s, transform 0.18s, box-shadow 0.2s;
+      position: relative;
+      overflow: hidden;
+    }
+
+    .card::before {
+      content: '';
+      position: absolute;
+      inset: 0;
+      border-radius: var(--radius);
+      background: linear-gradient(135deg, rgba(124,111,255,0.07) 0%, transparent 60%);
+      opacity: 0;
+      transition: opacity 0.2s;
+    }
+
+    .card:hover {
+      background: var(--hover-bg);
+      border-color: var(--hover-brd);
+      transform: translateY(-3px);
+      box-shadow: 0 8px 28px rgba(0,0,0,0.4), 0 0 0 1px rgba(124,111,255,0.15);
+    }
+
+    .card:hover::before { opacity: 1; }
+
+    /* featured (core) card */
+    .card.featured {
+      border-color: rgba(124,111,255,0.4);
+      background: linear-gradient(135deg, #1a1c38 0%, #181c2a 100%);
+    }
+    .card.featured:hover { border-color: var(--accent); }
+
+    .card-icon {
+      font-size: 1.6rem;
+      line-height: 1;
+      display: block;
+      margin-bottom: 2px;
+      /* filter keeps emoji crisp on dark bg */
+      filter: drop-shadow(0 1px 3px rgba(0,0,0,0.5));
+    }
+
+    .card-title {
+      font-size: 1rem;
+      font-weight: 700;
+      color: #e8eaf6;
+      letter-spacing: 0.1px;
+    }
+
+    .card-desc {
+      font-size: 0.855rem;
+      color: var(--muted);
+      line-height: 1.55;
+      flex: 1;
+    }
+
+    .card-tag {
+      display: inline-block;
+      background: var(--tag-bg);
+      color: var(--accent);
+      font-size: 0.72rem;
+      font-weight: 600;
+      letter-spacing: 0.5px;
+      padding: 2px 8px;
+      border-radius: 999px;
+      border: 1px solid rgba(124,111,255,0.2);
+      text-transform: uppercase;
+    }
+
+    /* ── Footer ── */
+    footer {
+      text-align: center;
+      padding: 24px;
+      color: var(--muted);
+      font-size: 0.82rem;
+      border-top: 1px solid var(--border);
+    }
+
+    footer a { color: var(--accent); text-decoration: none; }
+    footer a:hover { text-decoration: underline; }
+
+    /* ── Responsive ── */
+    @media (max-width: 540px) {
+      header { padding: 32px 16px 28px; }
+      main   { padding: 28px 14px 48px; }
+      .grid  { grid-template-columns: 1fr; }
+    }
+  </style>
+</head>
+<body>
+
+<header>
+  <h1>Neural Network Playground — Labs</h1>
+  <p>Interactive, browser-based machine-learning demos — no install required. Pick any lab to explore the algorithm hands-on.</p>
+  <a class="home-btn" href="index.html">
+    <svg viewBox="0 0 20 20" fill="currentColor" aria-hidden="true">
+      <path d="M10.707 2.293a1 1 0 00-1.414 0l-7 7A1 1 0 002 11h1v7a1 1 0 001 1h4a1 1 0 001-1v-4h2v4a1 1 0 001 1h4a1 1 0 001-1v-7h1a1 1 0 00.707-1.707l-7-7z"/>
+    </svg>
+    Main Playground
+  </a>
+</header>
+
+<main>
+
+  <!-- ── CORE ── -->
+  <div class="section-heading"><h2>Core</h2></div>
+  <div class="grid">
+    <a class="card featured" href="index.html">
+      <span class="card-icon">🧠</span>
+      <span class="card-title">Main Playground</span>
+      <p class="card-desc">The unified deep-net playground — design multi-layer networks, switch datasets, try optimizers, run adversarial attacks, machine unlearning, 3-D weight visualization, interpretability tools, and experiments all in one place.</p>
+      <span class="card-tag">Flagship</span>
+    </a>
+  </div>
+
+  <!-- ── DEEP LEARNING ── -->
+  <div class="section-heading"><h2>Deep Learning</h2></div>
+  <div class="grid">
+
+    <a class="card" href="cnn.html">
+      <span class="card-icon">🖼️</span>
+      <span class="card-title">Convolutional Neural Network</span>
+      <p class="card-desc">Build and train a CNN from scratch on tiny images. Watch live convolutional filters and feature maps evolve as the network learns.</p>
+      <span class="card-tag">CNN</span>
+    </a>
+
+    <a class="card" href="transformer.html">
+      <span class="card-icon">🔮</span>
+      <span class="card-title">Transformer</span>
+      <p class="card-desc">Self-attention visualized on a toy sequence task. Inspect attention heads, positional encodings, and how context flows through each layer.</p>
+      <span class="card-tag">Attention</span>
+    </a>
+
+    <a class="card" href="rnn.html">
+      <span class="card-icon">🔁</span>
+      <span class="card-title">Recurrent Neural Network</span>
+      <p class="card-desc">Elman RNN trained with backpropagation-through-time (BPTT). A hidden-state heat-strip shows how sequence memory builds up step by step.</p>
+      <span class="card-tag">RNN · BPTT</span>
+    </a>
+
+    <a class="card" href="autoencoder.html">
+      <span class="card-icon">🗜️</span>
+      <span class="card-title">Autoencoder</span>
+      <p class="card-desc">Compress data to a 2-D latent space and decode it back. Explore the learned manifold interactively by clicking anywhere in latent space.</p>
+      <span class="card-tag">Latent Space</span>
+    </a>
+
+    <a class="card" href="gan.html">
+      <span class="card-icon">⚔️</span>
+      <span class="card-title">Generative Adversarial Network</span>
+      <p class="card-desc">Generator and discriminator locked in a minimax game over 2-D distributions. Watch the generator gradually fool the discriminator in real time.</p>
+      <span class="card-tag">GAN</span>
+    </a>
+
+    <a class="card" href="diffusion.html">
+      <span class="card-icon">🌫️</span>
+      <span class="card-title">Diffusion Model</span>
+      <p class="card-desc">DDPM forward noising progressively destroys structure; the trained network reverses the process, denoising back to clean 2-D samples.</p>
+      <span class="card-tag">DDPM</span>
+    </a>
+
+    <a class="card" href="word2vec.html">
+      <span class="card-icon">📝</span>
+      <span class="card-title">Word2Vec</span>
+      <p class="card-desc">Train skip-gram embeddings on a small corpus. Explore nearest-neighbor relationships and solve word analogies in the projected embedding space.</p>
+      <span class="card-tag">Embeddings</span>
+    </a>
+
+    <a class="card" href="bayesnn.html">
+      <span class="card-icon">🎲</span>
+      <span class="card-title">Bayesian Neural Network</span>
+      <p class="card-desc">Quantify predictive uncertainty using MC-dropout and deep ensembles. The uncertainty envelope widens visibly in regions with sparse training data.</p>
+      <span class="card-tag">Uncertainty</span>
+    </a>
+
+  </div>
+
+  <!-- ── CLASSIC ML ── -->
+  <div class="section-heading"><h2>Classic ML</h2></div>
+  <div class="grid">
+
+    <a class="card" href="dtree.html">
+      <span class="card-icon">🌳</span>
+      <span class="card-title">Decision Tree &amp; Random Forest</span>
+      <p class="card-desc">Grow decision trees of variable depth and aggregate them into a random forest. The live decision boundary updates as you tune depth and tree count.</p>
+      <span class="card-tag">Trees</span>
+    </a>
+
+    <a class="card" href="svm.html">
+      <span class="card-icon">✂️</span>
+      <span class="card-title">Support Vector Machine</span>
+      <p class="card-desc">Experiment with linear, RBF, and polynomial kernels. The maximum-margin hyperplane and support vectors are drawn live as you adjust C and γ.</p>
+      <span class="card-tag">SVM · Kernels</span>
+    </a>
+
+    <a class="card" href="glm.html">
+      <span class="card-icon">📈</span>
+      <span class="card-title">Linear / Logistic / Naive Bayes</span>
+      <p class="card-desc">Compare generalized linear models side by side on 2-D data: linear regression, logistic regression, and Gaussian Naive Bayes — all with live fits.</p>
+      <span class="card-tag">GLM</span>
+    </a>
+
+    <a class="card" href="gp.html">
+      <span class="card-icon">🌊</span>
+      <span class="card-title">Gaussian Process</span>
+      <p class="card-desc">Click to add observations and watch the posterior mean and confidence ribbon update instantly. Tune the kernel to change smoothness and length-scale.</p>
+      <span class="card-tag">GP · Kernel</span>
+    </a>
+
+    <a class="card" href="clustering.html">
+      <span class="card-icon">🔵</span>
+      <span class="card-title">k-Means / DBSCAN / GMM</span>
+      <p class="card-desc">Three clustering algorithms on the same 2-D canvas. Adjust k, epsilon, and min-samples to see how each method handles noise and non-convex shapes.</p>
+      <span class="card-tag">Clustering</span>
+    </a>
+
+    <a class="card" href="dimred.html">
+      <span class="card-icon">📉</span>
+      <span class="card-title">PCA &amp; t-SNE</span>
+      <p class="card-desc">Project high-dimensional data down to 2-D with PCA or t-SNE. Adjust perplexity and iterations and watch clusters emerge in the scatter plot.</p>
+      <span class="card-tag">Dim Reduction</span>
+    </a>
+
+    <a class="card" href="som.html">
+      <span class="card-icon">🗺️</span>
+      <span class="card-title">Self-Organizing Map</span>
+      <p class="card-desc">Kohonen SOM lattice folds and unfolds over your data as training progresses, creating a topology-preserving 2-D map of the input distribution.</p>
+      <span class="card-tag">SOM</span>
+    </a>
+
+  </div>
+
+  <!-- ── OTHER ── -->
+  <div class="section-heading"><h2>Other</h2></div>
+  <div class="grid">
+
+    <a class="card" href="rl.html">
+      <span class="card-icon">🕹️</span>
+      <span class="card-title">Reinforcement Learning Gridworld</span>
+      <p class="card-desc">Q-learning and SARSA on a configurable grid with walls, rewards, and penalties. Watch value estimates and the greedy policy converge episode by episode.</p>
+      <span class="card-tag">Q-Learning · SARSA</span>
+    </a>
+
+    <a class="card" href="hopfield.html">
+      <span class="card-icon">🧩</span>
+      <span class="card-title">Hopfield Network</span>
+      <p class="card-desc">Store binary patterns as energy minima and demonstrate associative memory recall — corrupted inputs converge back to the nearest stored memory.</p>
+      <span class="card-tag">Associative Memory</span>
+    </a>
+
+    <a class="card" href="genetic.html">
+      <span class="card-icon">🧬</span>
+      <span class="card-title">Genetic Algorithm</span>
+      <p class="card-desc">Evolve a population toward optimal fitness on configurable landscapes. Tune selection pressure, mutation rate, and crossover to see evolutionary dynamics.</p>
+      <span class="card-tag">Evolutionary</span>
+    </a>
+
+  </div>
+
+  <div class="section-heading"><h2>Sampling &amp; Optimization</h2></div>
+  <div class="grid">
+
+    <a class="card" href="bandit.html">
+      <span class="card-icon">🎰</span>
+      <span class="card-title">Multi-Armed Bandit</span>
+      <p class="card-desc">Explore vs. exploit: compare ε-greedy, optimistic initial values, UCB1, and Thompson sampling on a k-armed bandit, watching cumulative regret and optimal-action rates.</p>
+      <span class="card-tag">Exploration</span>
+    </a>
+
+    <a class="card" href="optviz.html">
+      <span class="card-icon">📉</span>
+      <span class="card-title">Optimizer Visualizer</span>
+      <p class="card-desc">Race SGD, Momentum, Nesterov, Adagrad, RMSProp, and Adam down 2-D loss surfaces (Rosenbrock, saddle, Beale, ravine…) and watch their trajectories diverge.</p>
+      <span class="card-tag">Gradient Descent</span>
+    </a>
+
+    <a class="card" href="markov.html">
+      <span class="card-icon">🔡</span>
+      <span class="card-title">Markov Chain Text</span>
+      <p class="card-desc">Train an n-gram (char or word) Markov model on any corpus and generate new text, with a live next-token distribution and temperature control.</p>
+      <span class="card-tag">N-gram</span>
+    </a>
+
+    <a class="card" href="mcmc.html">
+      <span class="card-icon">🎲</span>
+      <span class="card-title">MCMC Sampling</span>
+      <p class="card-desc">Sample 2-D distributions with Metropolis-Hastings, Gibbs, and HMC-lite. Watch the chain explore the density and the sample histogram converge to the target.</p>
+      <span class="card-tag">Bayesian</span>
+    </a>
+
+  </div>
+
+  <div class="section-heading"><h2>Dynamics &amp; Signals</h2></div>
+  <div class="grid">
+
+    <a class="card" href="ca.html">
+      <span class="card-icon">🦠</span>
+      <span class="card-title">Cellular Automata</span>
+      <p class="card-desc">Conway's Game of Life with classic patterns, plus elementary Wolfram rules (30/90/110/184) rendered as space-time diagrams. Draw and watch emergence.</p>
+      <span class="card-tag">Emergence</span>
+    </a>
+
+    <a class="card" href="fourier.html">
+      <span class="card-icon">〰️</span>
+      <span class="card-title">Fourier / Epicycles</span>
+      <p class="card-desc">Draw any closed curve and watch a chain of rotating circles (its DFT) retrace it, or build square/saw waves from harmonics with a live amplitude spectrum.</p>
+      <span class="card-tag">DFT</span>
+    </a>
+
+    <a class="card" href="kalman.html">
+      <span class="card-icon">🛰️</span>
+      <span class="card-title">Kalman Filter</span>
+      <p class="card-desc">Track a moving target from noisy measurements with a constant-velocity Kalman filter; see the smoothed estimate and its covariance ellipse, tuning R vs Q.</p>
+      <span class="card-tag">State Estimation</span>
+    </a>
+
+    <a class="card" href="rbm.html">
+      <span class="card-icon">🎛️</span>
+      <span class="card-title">Restricted Boltzmann Machine</span>
+      <p class="card-desc">Train a binary RBM with contrastive divergence on tiny glyphs; watch receptive fields form, reconstruct inputs, and "dream" new samples via Gibbs sampling.</p>
+      <span class="card-tag">Energy-Based</span>
+    </a>
+
+    <a class="card" href="vae.html">
+      <span class="card-icon">🌀</span>
+      <span class="card-title">Variational Autoencoder</span>
+      <p class="card-desc">A VAE with a 2-D latent space trained on the ELBO (reconstruction + β·KL). Explore the smooth generative manifold and sample new glyphs from the prior.</p>
+      <span class="card-tag">Generative</span>
+    </a>
+
+    <a class="card" href="pso.html">
+      <span class="card-icon">🐝</span>
+      <span class="card-title">Particle Swarm Optimization</span>
+      <p class="card-desc">A swarm of particles with inertia, cognitive and social pulls converges on 2-D benchmark functions (Rastrigin, Ackley, Schwefel…). Watch exploration vs exploitation.</p>
+      <span class="card-tag">Swarm</span>
+    </a>
+
+    <a class="card" href="snn.html">
+      <span class="card-icon">⚡</span>
+      <span class="card-title">Spiking Neural Network</span>
+      <p class="card-desc">Leaky integrate-and-fire neurons driven by Poisson input, with optional STDP. Live raster plot, membrane-voltage traces, and per-neuron firing rates.</p>
+      <span class="card-tag">Neuromorphic</span>
+    </a>
+
+    <a class="card" href="rd.html">
+      <span class="card-icon">🐆</span>
+      <span class="card-title">Reaction-Diffusion</span>
+      <p class="card-desc">The Gray-Scott model produces Turing patterns — spots, stripes, mazes, coral. Tune feed/kill rates and paint the field to seed new patterns.</p>
+      <span class="card-tag">Turing Patterns</span>
+    </a>
+
+  </div>
+
+  <div class="section-heading"><h2>Swarms, Search &amp; More</h2></div>
+  <div class="grid">
+
+    <a class="card" href="boids.html">
+      <span class="card-icon">🐦</span>
+      <span class="card-title">Boids Flocking</span>
+      <p class="card-desc">Reynolds' three rules — separation, alignment, cohesion — produce emergent flocking from simple local interactions. Add a predator and steer the swarm with the mouse.</p>
+      <span class="card-tag">Emergence</span>
+    </a>
+
+    <a class="card" href="aco.html">
+      <span class="card-icon">🐜</span>
+      <span class="card-title">Ant Colony Optimization</span>
+      <p class="card-desc">Ants deposit pheromone on short tours and evaporation forgets bad ones, collectively solving the Traveling Salesman Problem. Watch trails strengthen on the best route.</p>
+      <span class="card-tag">TSP · Swarm</span>
+    </a>
+
+    <a class="card" href="nca.html">
+      <span class="card-icon">🌱</span>
+      <span class="card-title">Neural Cellular Automata</span>
+      <p class="card-desc">A tiny shared neural net is the CA update rule: train it to grow a target image from a single seed cell, then damage the grid and watch it regenerate.</p>
+      <span class="card-tag">Self-Organizing</span>
+    </a>
+
+    <a class="card" href="knn.html">
+      <span class="card-icon">📍</span>
+      <span class="card-title">k-Nearest Neighbors</span>
+      <p class="card-desc">The simplest classifier: vote among the k closest points. See decision regions reshape as you change k and the distance metric, with a k-vs-accuracy curve.</p>
+      <span class="card-tag">Instance-Based</span>
+    </a>
+
+  </div>
+
+  <div class="section-heading"><h2>Algorithms &amp; Visual Math</h2></div>
+  <div class="grid">
+
+    <a class="card" href="pathfind.html">
+      <span class="card-icon">🗺️</span>
+      <span class="card-title">Pathfinding</span>
+      <p class="card-desc">Watch A*, Dijkstra, Greedy Best-First and BFS explore a grid with walls and weighted terrain. Draw mazes and compare nodes-expanded vs path length.</p>
+      <span class="card-tag">Search</span>
+    </a>
+
+    <a class="card" href="attractor.html">
+      <span class="card-icon">🦋</span>
+      <span class="card-title">Strange Attractors</span>
+      <p class="card-desc">RK4-integrated chaotic systems (Lorenz, Rössler, Aizawa, Thomas, Halvorsen, Chen) in a rotating 3-D view, plus a sensitivity-to-initial-conditions demo and a logistic bifurcation map.</p>
+      <span class="card-tag">Chaos</span>
+    </a>
+
+    <a class="card" href="fractal.html">
+      <span class="card-icon">❄️</span>
+      <span class="card-title">Fractal Explorer</span>
+      <p class="card-desc">Deep-zoom the Mandelbrot set with smooth coloring, or explore linked Julia sets by hovering to pick the c parameter live.</p>
+      <span class="card-tag">Complex Dynamics</span>
+    </a>
+
+    <a class="card" href="actfn.html">
+      <span class="card-icon">📈</span>
+      <span class="card-title">Activation Explorer</span>
+      <p class="card-desc">Overlay ~26 activation functions and their derivatives, compare properties (saturation, zero-centering, dead-ReLU risk), and see where gradients vanish.</p>
+      <span class="card-tag">Reference</span>
+    </a>
+
+  </div>
+
+  <div class="section-heading"><h2>More Models</h2></div>
+  <div class="grid">
+
+    <a class="card" href="perceptron.html">
+      <span class="card-icon">➖</span>
+      <span class="card-title">Perceptron</span>
+      <p class="card-desc">Rosenblatt's perceptron learning rule animated: the decision line rotates toward separation, converges on linearly-separable data, and (with the pocket trick) copes with XOR.</p>
+      <span class="card-tag">Linear</span>
+    </a>
+
+    <a class="card" href="conv.html">
+      <span class="card-icon">🖼️</span>
+      <span class="card-title">Convolution Kernels</span>
+      <p class="card-desc">Apply and edit image convolution kernels (blur, sharpen, Sobel, emboss…) with an animated sliding window showing how each output pixel is computed.</p>
+      <span class="card-tag">Image Processing</span>
+    </a>
+
+    <a class="card" href="esn.html">
+      <span class="card-icon">💧</span>
+      <span class="card-title">Echo State Network</span>
+      <p class="card-desc">Reservoir computing: a fixed random recurrent reservoir with only a ridge-regression readout trained, forecasting chaotic time series and free-running generation.</p>
+      <span class="card-tag">Reservoir</span>
+    </a>
+
+    <a class="card" href="mdn.html">
+      <span class="card-icon">🌗</span>
+      <span class="card-title">Mixture Density Network</span>
+      <p class="card-desc">Predict a full multi-modal conditional p(y|x) with a mixture of Gaussians — solving inverse problems where a plain regressor fails. Live density heatmap and samples.</p>
+      <span class="card-tag">Probabilistic</span>
+    </a>
+
+  </div>
+
+</main>
+
+<footer>
+  <p>
+    Part of the
+    <a href="index.html">Neural Network Playground</a>
+    — interactive ML education in your browser.
+  </p>
+</footer>
+
+</body>
+</html>

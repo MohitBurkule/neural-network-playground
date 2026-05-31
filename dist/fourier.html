@@ -1,0 +1,339 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>Fourier Lab</title>
+<style>
+  *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+  body {
+    background: #0f0f1a;
+    color: #e2e8f0;
+    font-family: 'Segoe UI', system-ui, -apple-system, sans-serif;
+    font-size: 14px;
+    min-height: 100vh;
+    display: flex;
+    flex-direction: column;
+  }
+
+  header {
+    background: #13131f;
+    border-bottom: 1px solid #1e1e3a;
+    padding: 14px 24px;
+    display: flex;
+    align-items: center;
+    gap: 20px;
+    flex-wrap: wrap;
+  }
+
+  header h1 {
+    font-size: 1.2rem;
+    font-weight: 700;
+    color: #818cf8;
+    letter-spacing: 0.04em;
+  }
+
+  header p.subtitle {
+    color: #64748b;
+    font-size: 0.82rem;
+  }
+
+  .mode-selector {
+    display: flex;
+    gap: 6px;
+    margin-left: auto;
+  }
+
+  .mode-btn {
+    padding: 6px 18px;
+    border-radius: 6px;
+    border: 1px solid #312e81;
+    background: transparent;
+    color: #94a3b8;
+    cursor: pointer;
+    font-size: 0.85rem;
+    font-weight: 500;
+    transition: background 0.15s, color 0.15s;
+  }
+
+  .mode-btn:hover { background: #1e1b4b; color: #e2e8f0; }
+  .mode-btn.active { background: #4338ca; color: #fff; border-color: #4338ca; }
+
+  main {
+    display: flex;
+    flex: 1;
+    overflow: hidden;
+  }
+
+  .sidebar {
+    width: 230px;
+    min-width: 200px;
+    background: #13131f;
+    border-right: 1px solid #1e1e3a;
+    padding: 16px 14px;
+    display: flex;
+    flex-direction: column;
+    gap: 16px;
+    overflow-y: auto;
+  }
+
+  .ctrl-group {
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+  }
+
+  .ctrl-group label {
+    font-size: 0.75rem;
+    color: #94a3b8;
+    text-transform: uppercase;
+    letter-spacing: 0.06em;
+    font-weight: 600;
+  }
+
+  .ctrl-group select,
+  .ctrl-group input[type="range"] {
+    width: 100%;
+  }
+
+  select {
+    background: #1e1e3a;
+    color: #e2e8f0;
+    border: 1px solid #312e81;
+    border-radius: 5px;
+    padding: 5px 8px;
+    font-size: 0.85rem;
+    cursor: pointer;
+  }
+
+  select:focus { outline: none; border-color: #6366f1; }
+
+  input[type="range"] {
+    accent-color: #6366f1;
+    cursor: pointer;
+  }
+
+  .slider-row {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+  }
+
+  .slider-val {
+    min-width: 36px;
+    text-align: right;
+    color: #818cf8;
+    font-size: 0.85rem;
+    font-variant-numeric: tabular-nums;
+  }
+
+  button.action-btn {
+    width: 100%;
+    padding: 7px;
+    border-radius: 6px;
+    border: 1px solid #ef4444;
+    background: transparent;
+    color: #ef4444;
+    cursor: pointer;
+    font-size: 0.84rem;
+    font-weight: 500;
+    transition: background 0.15s;
+  }
+
+  button.action-btn:hover { background: rgba(239,68,68,0.12); }
+
+  .toggle-row {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+  }
+
+  .toggle-row input[type="checkbox"] { accent-color: #6366f1; width: 16px; height: 16px; cursor: pointer; }
+  .toggle-row span { color: #cbd5e1; font-size: 0.85rem; }
+
+  .divider {
+    border: none;
+    border-top: 1px solid #1e1e3a;
+  }
+
+  .canvas-area {
+    flex: 1;
+    display: flex;
+    flex-direction: column;
+    overflow: hidden;
+  }
+
+  #epicycles-panel,
+  #signal1d-panel {
+    flex: 1;
+    display: flex;
+    flex-direction: column;
+    overflow: hidden;
+  }
+
+  #signal1d-panel { display: none; }
+
+  canvas {
+    display: block;
+    background: #0f0f1a;
+  }
+
+  #epicycles-canvas {
+    flex: 1;
+    width: 100%;
+    cursor: crosshair;
+  }
+
+  .signal-area {
+    flex: 1;
+    display: flex;
+    flex-direction: column;
+    overflow: hidden;
+  }
+
+  #signal1d-canvas {
+    flex: 2;
+    width: 100%;
+  }
+
+  #spectrum-container {
+    flex: 1;
+    border-top: 1px solid #1e1e3a;
+    min-height: 120px;
+    max-height: 200px;
+  }
+
+  #spectrum-canvas {
+    width: 100%;
+    height: 100%;
+  }
+
+  .hint {
+    color: #475569;
+    font-size: 0.75rem;
+    line-height: 1.5;
+  }
+</style>
+</head>
+<body>
+
+<header>
+  <div>
+    <h1>⚡ Fourier Lab</h1>
+    <p class="subtitle">Interactive DFT visualization — epicycles &amp; 1D signals</p>
+  </div>
+  <div class="mode-selector">
+    <button class="mode-btn active" data-mode="epicycles">Epicycles</button>
+    <button class="mode-btn" data-mode="1d">1D Signal</button>
+  </div>
+</header>
+
+<main>
+  <div class="sidebar">
+
+    <!-- Epicycles controls -->
+    <div id="epicycles-panel-ctrl">
+      <div class="ctrl-group">
+        <label>Shape / Input</label>
+        <select id="preset-select">
+          <option value="square">Square</option>
+          <option value="star">Star</option>
+          <option value="heart">Heart</option>
+          <option value="figure8">Figure-8</option>
+          <option value="draw">✏ Draw (mouse)</option>
+        </select>
+      </div>
+
+      <div class="ctrl-group" style="margin-top:12px;">
+        <label>Fourier Terms</label>
+        <div class="slider-row">
+          <input type="range" id="terms-slider" min="1" max="256" value="10" />
+          <span class="slider-val" id="terms-label">10</span>
+        </div>
+      </div>
+
+      <div class="ctrl-group" style="margin-top:12px;">
+        <label>Animation Speed</label>
+        <div class="slider-row">
+          <input type="range" id="speed-slider" min="0.1" max="5" step="0.1" value="1" />
+          <span class="slider-val" id="speed-label">1.0x</span>
+        </div>
+      </div>
+
+      <div style="margin-top:12px;">
+        <button class="action-btn" id="clear-btn">Clear drawing</button>
+      </div>
+
+      <hr class="divider" style="margin-top:14px;" />
+      <p class="hint">Pick a preset shape, or choose "Draw" and drag on the canvas to sketch your own closed curve. Adjust <em>Fourier Terms</em> to watch the epicycle approximation improve.</p>
+    </div>
+
+    <!-- 1D controls -->
+    <div id="signal1d-panel-ctrl" style="display:none;">
+      <div class="ctrl-group">
+        <label>Waveform</label>
+        <select id="waveform-select">
+          <option value="square">Square wave</option>
+          <option value="sawtooth">Sawtooth</option>
+          <option value="triangle">Triangle</option>
+          <option value="custom">Custom sum</option>
+        </select>
+      </div>
+
+      <div class="ctrl-group" style="margin-top:12px;">
+        <label>Harmonics</label>
+        <div class="slider-row">
+          <input type="range" id="harmonics-slider" min="1" max="40" value="5" />
+          <span class="slider-val" id="harmonics-label">5</span>
+        </div>
+      </div>
+
+      <div class="ctrl-group" style="margin-top:12px;">
+        <label>Playback Speed</label>
+        <div class="slider-row">
+          <input type="range" id="signal1d-speed-slider" min="0.1" max="5" step="0.1" value="1" />
+          <span class="slider-val" id="signal1d-speed-label">1.0x</span>
+        </div>
+      </div>
+
+      <div class="toggle-row" style="margin-top:14px;">
+        <input type="checkbox" id="spectrum-toggle" checked />
+        <span>Show spectrum</span>
+      </div>
+
+      <hr class="divider" style="margin-top:14px;" />
+      <p class="hint">Yellow = target waveform. Green = Fourier approximation. Increase harmonics to reduce Gibbs ringing. The bar chart shows coefficient amplitudes.</p>
+    </div>
+
+  </div>
+
+  <div class="canvas-area">
+    <div id="epicycles-panel">
+      <canvas id="epicycles-canvas"></canvas>
+    </div>
+
+    <div id="signal1d-panel">
+      <div class="signal-area">
+        <canvas id="signal1d-canvas"></canvas>
+        <div id="spectrum-container">
+          <canvas id="spectrum-canvas"></canvas>
+        </div>
+      </div>
+    </div>
+  </div>
+</main>
+
+<script src="bundlefourier.js"></script>
+<script>
+  // Wire mode buttons to also toggle sidebar control panels
+  document.querySelectorAll('.mode-btn').forEach(function(btn) {
+    btn.addEventListener('click', function() {
+      var mode = btn.dataset.mode;
+      document.getElementById('epicycles-panel-ctrl').style.display = mode === 'epicycles' ? '' : 'none';
+      document.getElementById('signal1d-panel-ctrl').style.display = mode === '1d' ? '' : 'none';
+    });
+  });
+</script>
+</body>
+</html>

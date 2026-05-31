@@ -1,0 +1,349 @@
+<!doctype html>
+<!--
+  Transformer Attention Lab
+  A tiny single-block transformer trained in-browser with full backprop.
+  Visualises attention heatmaps, Q/K/V vectors, token predictions, and loss.
+-->
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=1200">
+  <title>Transformer Attention Lab</title>
+  <style>
+    /* ---- Reset & base ---- */
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+    :root {
+      --bg:     #1a1a2e;
+      --panel:  #16213e;
+      --accent: #0f3460;
+      --hot:    #e94560;
+      --cold:   #4fc3f7;
+      --text:   #e0e0e0;
+      --muted:  #888;
+      --green:  #69f0ae;
+      --yellow: #ffeb3b;
+      --radius: 10px;
+    }
+
+    html, body {
+      height: 100%;
+      background: var(--bg);
+      color: var(--text);
+      font-family: 'Segoe UI', system-ui, -apple-system, sans-serif;
+      font-size: 14px;
+      line-height: 1.5;
+    }
+
+    /* ---- Header ---- */
+    header {
+      padding: 18px 32px 12px;
+      border-bottom: 1px solid var(--accent);
+      background: var(--panel);
+    }
+
+    header h1 {
+      font-size: 1.55rem;
+      font-weight: 600;
+      color: var(--cold);
+      letter-spacing: .03em;
+    }
+
+    header p {
+      margin-top: 4px;
+      color: var(--muted);
+      font-size: .85rem;
+    }
+
+    header .tag {
+      display: inline-block;
+      margin-left: 10px;
+      padding: 2px 8px;
+      border-radius: 12px;
+      font-size: .75rem;
+      background: var(--accent);
+      color: var(--cold);
+      vertical-align: middle;
+    }
+
+    /* ---- Controls ---- */
+    #controls {
+      display: flex;
+      align-items: center;
+      gap: 16px;
+      padding: 10px 32px;
+      background: var(--accent);
+      flex-wrap: wrap;
+      border-bottom: 2px solid #0a2240;
+    }
+
+    #controls button {
+      cursor: pointer;
+      font-size: .88rem;
+      border-radius: 6px;
+      padding: 7px 16px;
+      border: 1px solid var(--muted);
+      background: var(--panel);
+      color: var(--text);
+      transition: background .15s;
+    }
+
+    #controls button:hover { background: #1e3060; }
+
+    #btn-play {
+      font-size: 1.3rem !important;
+      background: var(--hot) !important;
+      color: #fff !important;
+      border: none !important;
+      border-radius: 50% !important;
+      width: 42px !important;
+      height: 42px !important;
+      padding: 0 !important;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      flex-shrink: 0;
+    }
+
+    #btn-play:hover { background: #c73352 !important; }
+
+    .ctrl-group {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      color: var(--text);
+      font-size: .85rem;
+    }
+
+    .ctrl-group label { color: var(--muted); }
+
+    .ctrl-group input[type="range"] {
+      width: 110px;
+      accent-color: var(--cold);
+    }
+
+    .ctrl-group select {
+      background: var(--panel);
+      color: var(--text);
+      border: 1px solid var(--muted);
+      border-radius: 4px;
+      padding: 5px 10px;
+      font-size: .85rem;
+    }
+
+    #step-counter {
+      color: var(--muted);
+      font-size: .82rem;
+      margin-left: 4px;
+    }
+
+    #loss-display {
+      color: var(--yellow);
+      font-weight: 600;
+      font-size: .88rem;
+    }
+
+    /* ---- Main grid ---- */
+    #main {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 20px;
+      padding: 20px 32px 32px;
+    }
+
+    .panel {
+      background: var(--panel);
+      border-radius: var(--radius);
+      padding: 18px 20px;
+      border: 1px solid var(--accent);
+    }
+
+    .panel h2 {
+      font-size: .95rem;
+      font-weight: 600;
+      color: var(--cold);
+      margin-bottom: 4px;
+    }
+
+    .panel .desc {
+      font-size: .76rem;
+      color: var(--muted);
+      margin-bottom: 14px;
+      line-height: 1.4;
+    }
+
+    /* ---- Attention legend ---- */
+    #attn-legend {
+      display: flex;
+      align-items: center;
+      gap: 6px;
+      margin-top: 14px;
+      font-size: .74rem;
+      color: var(--muted);
+    }
+
+    #attn-legend .grad {
+      width: 100px;
+      height: 12px;
+      border-radius: 4px;
+      background: linear-gradient(to right, #fff9e6, #fe9929, #d7301f);
+      border: 1px solid #333;
+    }
+
+    /* ---- Responsive ---- */
+    @media (max-width: 960px) {
+      #main { grid-template-columns: 1fr; }
+    }
+
+    /* ---- Axis tick colour override ---- */
+    .tick text { fill: var(--muted) !important; }
+    .domain, .tick line { stroke: #444 !important; }
+
+    /* ---- Tooltip ---- */
+    #tooltip {
+      position: fixed;
+      pointer-events: none;
+      background: #111;
+      color: #eee;
+      padding: 5px 10px;
+      border-radius: 6px;
+      font-size: .78rem;
+      border: 1px solid #444;
+      opacity: 0;
+      transition: opacity .1s;
+      z-index: 9999;
+    }
+
+    /* ---- Footer ---- */
+    footer {
+      padding: 12px 32px;
+      text-align: center;
+      font-size: .75rem;
+      color: var(--muted);
+      border-top: 1px solid var(--accent);
+    }
+
+    footer a { color: var(--cold); text-decoration: none; }
+  </style>
+</head>
+<body>
+<div style="padding:8px 14px;font-family:sans-serif;font-size:13px;"><a href="index.html" style="color:#0877bd;">← Back to Playground</a></div>
+
+<!-- ---- Header ---- -->
+<header>
+  <h1>Transformer Attention Lab <span class="tag">Educational</span></h1>
+  <p>
+    A tiny single-block transformer â Q/K/V projections, scaled dot-product attention, residual + FFN â
+    trained end-to-end with backprop in your browser.  Watch attention patterns emerge as loss falls.
+  </p>
+</header>
+
+<!-- ---- Controls ---- -->
+<div id="controls">
+  <button id="btn-play" title="Play / Pause training (Space)">â¶</button>
+  <button id="btn-step" title="Single step (S)">Step</button>
+  <button id="btn-reset" title="Reset weights (R)">Reset</button>
+
+  <div class="ctrl-group">
+    <label>Learning rate</label>
+    <input id="lr-slider" type="range" min="-4" max="-1" step="0.05" value="-2.5">
+    <span id="lr-display">0.0032</span>
+  </div>
+
+  <div class="ctrl-group">
+    <label>Task</label>
+    <select id="task-select">
+      <option value="copy">Copy sequence</option>
+      <option value="reverse">Reverse sequence</option>
+      <option value="shift">Shift by one</option>
+    </select>
+  </div>
+
+  <span id="step-counter">Step: 0</span>
+  <span id="loss-display">Loss: â</span>
+</div>
+
+<!-- ---- Content ---- -->
+<div id="main">
+
+  <!-- Attention heatmaps -->
+  <div class="panel" id="panel-attn">
+    <h2>Attention Weights</h2>
+    <p class="desc">
+      Each cell (row = query position, col = key position) shows how strongly that query token
+      attends to that key.  Brighter = more attention.  Rows sum to 1 (softmax).
+    </p>
+    <div id="attn-heatmaps"></div>
+    <div id="attn-legend">
+      <span>0</span>
+      <div class="grad"></div>
+      <span>1</span>
+      <span style="margin-left:12px">Head 1 (left) &nbsp;Â·&nbsp; Head 2 (right)</span>
+    </div>
+  </div>
+
+  <!-- Token predictions -->
+  <div class="panel" id="panel-pred">
+    <h2>Predictions vs. Targets</h2>
+    <p class="desc">
+      Current example: input tokens â model's argmax prediction â correct target.
+      Green background = correct prediction; red = wrong.
+    </p>
+    <div id="token-display"></div>
+  </div>
+
+  <!-- Q/K/V vectors -->
+  <div class="panel" id="panel-qkv">
+    <h2>Q / K / V Vectors  <span style="font-weight:400;color:var(--muted);font-size:.8rem">(head 1)</span></h2>
+    <p class="desc">
+      Each row = one sequence position; each tiny cell = one dimension of the vector.
+      Blue = positive, red = negative value.  The dot-product of a Q row and K row drives
+      the corresponding attention weight.
+    </p>
+    <div id="qkv-display"></div>
+  </div>
+
+  <!-- Loss chart -->
+  <div class="panel" id="panel-loss">
+    <h2>Training Loss  <span style="font-weight:400;color:var(--muted);font-size:.8rem">(cross-entropy, last 300 steps)</span></h2>
+    <p class="desc">
+      Loss should trend downward as the model learns the task.
+      Different tasks have different difficulty; <em>Copy</em> is easiest.
+    </p>
+    <div id="loss-chart"></div>
+
+    <!-- Accuracy bar -->
+    <div style="margin-top:16px">
+      <div style="font-size:.78rem;color:var(--muted);margin-bottom:4px">Token accuracy (current example)</div>
+      <div style="background:#1a3060;border-radius:6px;height:14px;overflow:hidden">
+        <div id="acc-bar" style="height:100%;background:var(--green);width:0%;transition:width .3s;border-radius:6px"></div>
+      </div>
+      <div id="acc-label" style="font-size:.78rem;color:var(--green);margin-top:3px">0 / 6</div>
+    </div>
+  </div>
+
+</div>
+
+<!-- Tooltip -->
+<div id="tooltip"></div>
+
+<!-- Footer -->
+<footer>
+  Transformer Attention Lab &mdash;
+  Built on the <a href="../index.html">Neural Network Playground</a>.
+  Tiny transformer: seq_len=6, vocab=8, d_model=16, d_head=8, 2 heads, d_ff=32.
+</footer>
+
+<script src="bundletransformer.js"></script>
+
+<script>
+  // ---- Keyboard shortcuts ---- (must run after bundle)
+  document.addEventListener('keydown', function(e) {
+    if (e.target.tagName === 'INPUT' || e.target.tagName === 'SELECT') return;
+    if (e.code === 'Space') { e.preventDefault(); document.getElementById('btn-play').click(); }
+    if (e.code === 'KeyS')  { document.getElementById('btn-step').click(); }
+    if (e.code === 'KeyR')  { document.getElementById('btn-reset').click(); }
+  });
+</script>
+</body>
+</html>

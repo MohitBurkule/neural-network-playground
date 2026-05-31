@@ -1,0 +1,309 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Echo State Network — Reservoir Computing Lab</title>
+  <style>
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+
+    body {
+      font-family: 'Segoe UI', Arial, sans-serif;
+      background: #0f0f1a;
+      color: #e0e0f0;
+      min-height: 100vh;
+      padding: 16px;
+    }
+
+    h1 {
+      font-size: 1.6rem;
+      font-weight: 700;
+      color: #38bdf8;
+      margin-bottom: 4px;
+      letter-spacing: 0.5px;
+    }
+
+    .subtitle {
+      font-size: 0.85rem;
+      color: #8888aa;
+      margin-bottom: 16px;
+    }
+
+    .layout {
+      display: flex;
+      gap: 16px;
+      flex-wrap: wrap;
+      align-items: flex-start;
+    }
+
+    .plots {
+      display: flex;
+      flex-direction: column;
+      gap: 12px;
+      flex: 1 1 600px;
+    }
+
+    .plot-card {
+      background: #12121f;
+      border: 1px solid #1e2040;
+      border-radius: 8px;
+      padding: 10px 12px;
+    }
+
+    .plot-title {
+      font-size: 0.78rem;
+      color: #8888bb;
+      text-transform: uppercase;
+      letter-spacing: 1px;
+      margin-bottom: 8px;
+    }
+
+    canvas {
+      display: block;
+      border-radius: 4px;
+    }
+
+    /* Controls panel */
+    .controls {
+      flex: 0 0 240px;
+      display: flex;
+      flex-direction: column;
+      gap: 10px;
+    }
+
+    .ctrl-card {
+      background: #12121f;
+      border: 1px solid #1e2040;
+      border-radius: 8px;
+      padding: 12px 14px;
+    }
+
+    .ctrl-title {
+      font-size: 0.72rem;
+      color: #8888bb;
+      text-transform: uppercase;
+      letter-spacing: 1px;
+      margin-bottom: 10px;
+    }
+
+    .ctrl-row {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      margin-bottom: 8px;
+      gap: 8px;
+    }
+
+    .ctrl-row label {
+      font-size: 0.8rem;
+      color: #aaa;
+      flex: 0 0 auto;
+      min-width: 90px;
+    }
+
+    .ctrl-row input[type=range] {
+      flex: 1;
+      accent-color: #38bdf8;
+      height: 4px;
+    }
+
+    .ctrl-val {
+      font-size: 0.78rem;
+      color: #38bdf8;
+      min-width: 40px;
+      text-align: right;
+      font-family: monospace;
+    }
+
+    select {
+      background: #1a1a2e;
+      color: #e0e0f0;
+      border: 1px solid #334;
+      border-radius: 4px;
+      padding: 4px 8px;
+      font-size: 0.82rem;
+      width: 100%;
+    }
+
+    .btn-row {
+      display: flex;
+      flex-direction: column;
+      gap: 8px;
+    }
+
+    button {
+      padding: 8px 14px;
+      border: none;
+      border-radius: 6px;
+      cursor: pointer;
+      font-size: 0.85rem;
+      font-weight: 600;
+      letter-spacing: 0.3px;
+      transition: opacity 0.15s;
+    }
+
+    button:hover:not(:disabled) { opacity: 0.85; }
+    button:disabled { opacity: 0.35; cursor: default; }
+
+    #btn-reset  { background: #334; color: #aab; }
+    #btn-train  { background: #1d4ed8; color: #e0f0ff; }
+    #btn-freerun { background: #9f1239; color: #ffd0d8; }
+
+    .stats-grid {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 8px;
+    }
+
+    .stat-box {
+      background: #0c0c18;
+      border: 1px solid #1e2040;
+      border-radius: 6px;
+      padding: 8px;
+      text-align: center;
+    }
+
+    .stat-label {
+      font-size: 0.7rem;
+      color: #666;
+      text-transform: uppercase;
+      letter-spacing: 0.8px;
+    }
+
+    .stat-val {
+      font-size: 1.05rem;
+      font-family: monospace;
+      color: #facc15;
+      margin-top: 4px;
+    }
+
+    #status {
+      font-size: 0.78rem;
+      color: #6b7280;
+      font-style: italic;
+      text-align: center;
+      min-height: 18px;
+    }
+
+    .info-box {
+      background: #0c0c18;
+      border: 1px solid #1e2040;
+      border-radius: 6px;
+      padding: 10px 12px;
+      font-size: 0.75rem;
+      color: #778;
+      line-height: 1.55;
+    }
+
+    .info-box strong { color: #8ab4f8; }
+
+    @media (max-width: 860px) {
+      .layout { flex-direction: column; }
+      .controls { flex: 0 0 auto; width: 100%; flex-direction: row; flex-wrap: wrap; }
+      .ctrl-card { flex: 1 1 200px; }
+    }
+  </style>
+</head>
+<body>
+  <h1>Echo State Network</h1>
+  <p class="subtitle">Reservoir Computing — fixed random recurrent reservoir + trained linear readout</p>
+
+  <div class="layout">
+    <!-- Plots column -->
+    <div class="plots">
+      <div class="plot-card">
+        <div class="plot-title">Signal: Target vs Prediction (train) + Free-run generation</div>
+        <canvas id="signal-canvas" width="700" height="200"></canvas>
+      </div>
+
+      <div class="plot-card">
+        <div class="plot-title">Reservoir Activations (neuron sample × training time)</div>
+        <canvas id="act-canvas" width="700" height="140"></canvas>
+      </div>
+
+      <div class="plot-card">
+        <div class="plot-title">Readout Weights W<sub>out</sub></div>
+        <canvas id="wout-canvas" width="700" height="80"></canvas>
+      </div>
+    </div>
+
+    <!-- Controls column -->
+    <div class="controls">
+
+      <div class="ctrl-card">
+        <div class="ctrl-title">Signal</div>
+        <select id="signal-sel">
+          <option value="sine">Sine wave</option>
+          <option value="sum-of-sines" selected>Sum of sines</option>
+          <option value="mackey-glass">Mackey-Glass</option>
+          <option value="square">Square wave</option>
+          <option value="lorenz">Lorenz X</option>
+        </select>
+      </div>
+
+      <div class="ctrl-card">
+        <div class="ctrl-title">Reservoir</div>
+
+        <div class="ctrl-row">
+          <label>Size N</label>
+          <input type="range" id="res-size" min="20" max="200" step="10" value="100">
+          <span class="ctrl-val" id="lbl-res-size">100</span>
+        </div>
+
+        <div class="ctrl-row">
+          <label>Spectral ρ</label>
+          <input type="range" id="spectral-radius" min="0.1" max="1.5" step="0.05" value="0.9">
+          <span class="ctrl-val" id="lbl-sr">0.9</span>
+        </div>
+
+        <div class="ctrl-row">
+          <label>Input scale</label>
+          <input type="range" id="input-scale" min="0.1" max="2.0" step="0.05" value="0.5">
+          <span class="ctrl-val" id="lbl-is">0.5</span>
+        </div>
+
+        <div class="ctrl-row">
+          <label>Leak rate α</label>
+          <input type="range" id="leak-rate" min="0.1" max="1.0" step="0.05" value="0.5">
+          <span class="ctrl-val" id="lbl-lr">0.5</span>
+        </div>
+
+        <div class="ctrl-row">
+          <label>Ridge λ</label>
+          <input type="range" id="ridge" min="1" max="7" step="0.5" value="3">
+          <span class="ctrl-val" id="lbl-ridge">1e+3</span>
+        </div>
+      </div>
+
+      <div class="ctrl-card btn-row">
+        <div class="ctrl-title">Actions</div>
+        <button id="btn-reset">↺ Reset reservoir</button>
+        <button id="btn-train">▶ Train readout</button>
+        <button id="btn-freerun" disabled>⚡ Free-run</button>
+        <div id="status">Initialising…</div>
+      </div>
+
+      <div class="ctrl-card">
+        <div class="ctrl-title">Error (RMSE)</div>
+        <div class="stats-grid">
+          <div class="stat-box">
+            <div class="stat-label">Train</div>
+            <div class="stat-val" id="stat-train">—</div>
+          </div>
+          <div class="stat-box">
+            <div class="stat-label">Free-run</div>
+            <div class="stat-val" id="stat-test">—</div>
+          </div>
+        </div>
+      </div>
+
+      <div class="info-box">
+        <strong>How it works:</strong> A large fixed random recurrent network (reservoir) maps the input into a high-dimensional nonlinear state. Only the <strong>linear readout</strong> is trained (ridge regression). The reservoir must satisfy the <em>echo state property</em>: spectral radius &lt; 1 (with leaky units). Free-run feeds the model's own prediction back as the next input.
+      </div>
+
+    </div>
+  </div>
+
+  <script src="bundleesn.js"></script>
+</body>
+</html>

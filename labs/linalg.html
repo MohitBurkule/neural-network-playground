@@ -1,0 +1,362 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Linear Algebra Visualizer</title>
+  <style>
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+    body {
+      font-family: 'Segoe UI', Arial, sans-serif;
+      background: #0d1117;
+      color: #c9d1d9;
+      height: 100vh;
+      display: flex;
+      flex-direction: column;
+      overflow: hidden;
+      font-size: 13px;
+    }
+
+    /* ── Header ── */
+    .header {
+      padding: 10px 18px 6px;
+      border-bottom: 1px solid #21262d;
+      flex-shrink: 0;
+      display: flex;
+      align-items: baseline;
+      gap: 14px;
+    }
+    .header h1 {
+      font-size: 1.35rem;
+      font-weight: 700;
+      color: #58a6ff;
+      letter-spacing: 0.3px;
+    }
+    .header p {
+      color: #8b949e;
+      font-size: 12px;
+    }
+
+    /* ── Layout ── */
+    .main {
+      display: flex;
+      flex: 1;
+      overflow: hidden;
+    }
+
+    /* ── Sidebar ── */
+    .sidebar {
+      width: 270px;
+      flex-shrink: 0;
+      background: #0d1117;
+      border-right: 1px solid #21262d;
+      overflow-y: auto;
+      padding: 12px 14px;
+      display: flex;
+      flex-direction: column;
+      gap: 14px;
+    }
+
+    .panel {
+      background: #161b22;
+      border: 1px solid #21262d;
+      border-radius: 8px;
+      padding: 11px 13px;
+    }
+    .panel-title {
+      font-size: 11px;
+      font-weight: 600;
+      color: #8b949e;
+      text-transform: uppercase;
+      letter-spacing: 0.6px;
+      margin-bottom: 10px;
+    }
+
+    /* ── Matrix grid ── */
+    .matrix-wrap {
+      display: flex;
+      align-items: center;
+      gap: 6px;
+    }
+    .mat-bracket {
+      font-size: 38px;
+      color: #58a6ff;
+      font-weight: 100;
+      line-height: 1;
+      user-select: none;
+    }
+    .mat-grid {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 5px;
+    }
+    .mat-grid input {
+      width: 60px;
+      padding: 5px 7px;
+      background: #0d1117;
+      border: 1px solid #30363d;
+      border-radius: 5px;
+      color: #c9d1d9;
+      font-size: 14px;
+      font-family: 'Courier New', monospace;
+      text-align: center;
+      outline: none;
+      transition: border-color 0.15s;
+    }
+    .mat-grid input:focus { border-color: #58a6ff; }
+    .mat-label {
+      font-size: 11px;
+      color: #8b949e;
+      margin-bottom: 5px;
+    }
+
+    /* Basis vector colour hints */
+    .col-i { border-color: #5a1e1e !important; color: #f85149 !important; }
+    .col-j { border-color: #1e3a1e !important; color: #3fb950 !important; }
+    .col-i:focus { border-color: #f85149 !important; }
+    .col-j:focus { border-color: #3fb950 !important; }
+
+    /* ── Preset selector ── */
+    select {
+      width: 100%;
+      padding: 6px 8px;
+      background: #0d1117;
+      border: 1px solid #30363d;
+      border-radius: 5px;
+      color: #c9d1d9;
+      font-size: 12px;
+      outline: none;
+      cursor: pointer;
+    }
+    select:focus { border-color: #58a6ff; }
+
+    /* ── Buttons ── */
+    .btn-row {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 5px;
+    }
+    button {
+      padding: 5px 10px;
+      border-radius: 5px;
+      border: 1px solid #30363d;
+      background: #21262d;
+      color: #c9d1d9;
+      font-size: 12px;
+      cursor: pointer;
+      transition: background 0.15s, border-color 0.15s;
+      white-space: nowrap;
+    }
+    button:hover { background: #30363d; }
+    button.active {
+      background: #1f3a5f;
+      border-color: #58a6ff;
+      color: #58a6ff;
+    }
+    button.primary {
+      background: #1f6feb;
+      border-color: #1f6feb;
+      color: #fff;
+    }
+    button.primary:hover { background: #388bfd; }
+    button.danger {
+      background: #3d1f1f;
+      border-color: #f85149;
+      color: #f85149;
+    }
+    button.danger:hover { background: #5a2020; }
+
+    /* ── Readouts ── */
+    .readout {
+      font-family: 'Courier New', monospace;
+      font-size: 12px;
+      padding: 6px 9px;
+      background: #0d1117;
+      border-radius: 5px;
+      border: 1px solid #21262d;
+      margin-top: 5px;
+      min-height: 26px;
+      display: flex;
+      align-items: center;
+    }
+
+    /* ── Legend ── */
+    .legend {
+      display: flex;
+      flex-direction: column;
+      gap: 4px;
+      font-size: 11px;
+      color: #8b949e;
+    }
+    .legend-row {
+      display: flex;
+      align-items: center;
+      gap: 6px;
+    }
+    .swatch {
+      width: 22px;
+      height: 3px;
+      border-radius: 2px;
+      flex-shrink: 0;
+    }
+
+    /* ── Canvas ── */
+    .canvas-wrap {
+      flex: 1;
+      overflow: hidden;
+      position: relative;
+    }
+    #plane {
+      display: block;
+      cursor: crosshair;
+    }
+    #plane:active { cursor: grabbing; }
+
+    /* ── Composed label ── */
+    .compose-label {
+      font-size: 11px;
+      color: #e3b341;
+      margin-top: 6px;
+      font-family: 'Courier New', monospace;
+      min-height: 18px;
+    }
+
+    /* ── Tooltip hint ── */
+    .hint {
+      font-size: 11px;
+      color: #6e7681;
+      margin-top: 4px;
+    }
+
+    /* ── Scrollbar ── */
+    .sidebar::-webkit-scrollbar { width: 5px; }
+    .sidebar::-webkit-scrollbar-track { background: transparent; }
+    .sidebar::-webkit-scrollbar-thumb { background: #30363d; border-radius: 3px; }
+  </style>
+</head>
+<body>
+
+<div class="header">
+  <h1>Linear Algebra Visualizer</h1>
+  <p>Drag vector tips · Edit matrix · See the transformation</p>
+</div>
+
+<div class="main">
+  <!-- ── Sidebar ── -->
+  <div class="sidebar">
+
+    <!-- Matrix A -->
+    <div class="panel">
+      <div class="panel-title">Matrix A</div>
+      <div class="mat-label" style="color:#f85149">Column 1 = î&nbsp;&nbsp;&nbsp;<span style="color:#3fb950">Column 2 = ĵ</span></div>
+      <div class="matrix-wrap">
+        <span class="mat-bracket">[</span>
+        <div class="mat-grid">
+          <input id="ma0" type="number" value="1" step="0.1" class="col-i" title="a₁₁">
+          <input id="ma1" type="number" value="0" step="0.1" class="col-j" title="a₁₂">
+          <input id="ma2" type="number" value="0" step="0.1" class="col-i" title="a₂₁">
+          <input id="ma3" type="number" value="1" step="0.1" class="col-j" title="a₂₂">
+        </div>
+        <span class="mat-bracket">]</span>
+      </div>
+      <p class="hint">Or drag î/ĵ arrow tips on canvas</p>
+    </div>
+
+    <!-- Presets -->
+    <div class="panel">
+      <div class="panel-title">Presets</div>
+      <select id="preset-select">
+        <option value="">— choose —</option>
+        <optgroup label="Basic">
+          <option value="identity">Identity</option>
+          <option value="rotate90">Rotation 90°</option>
+          <option value="rotate45">Rotation 45°</option>
+          <option value="rotscale">Rotation + Scale (×1.5)</option>
+        </optgroup>
+        <optgroup label="Scale / Stretch">
+          <option value="scale2">Uniform Scale ×2</option>
+          <option value="scalexy">Scale x2 / y0.5</option>
+          <option value="squeeze">Squeeze (hyperbolic)</option>
+        </optgroup>
+        <optgroup label="Shear">
+          <option value="shearx">Shear X</option>
+          <option value="sheary">Shear Y</option>
+        </optgroup>
+        <optgroup label="Reflection">
+          <option value="reflectx">Reflect across X</option>
+          <option value="reflecty">Reflect across Y</option>
+          <option value="reflectdiag">Reflect across y=x</option>
+        </optgroup>
+        <optgroup label="Special">
+          <option value="projectx">Project onto X-axis</option>
+          <option value="singular">Singular (rank 1)</option>
+        </optgroup>
+      </select>
+    </div>
+
+    <!-- Controls -->
+    <div class="panel">
+      <div class="panel-title">Controls</div>
+      <div class="btn-row">
+        <button id="btn-apply" class="primary">▶ Apply</button>
+        <button id="btn-animate">⟳ Animate</button>
+        <button id="btn-reset" class="danger">↺ Reset</button>
+      </div>
+      <div class="btn-row" style="margin-top:7px">
+        <button id="btn-det" class="active">Det area</button>
+        <button id="btn-eigen" class="active">Eigenvecs</button>
+        <button id="btn-svd">SVD ellipse</button>
+        <button id="btn-compose">Compose B·A</button>
+      </div>
+    </div>
+
+    <!-- Composition panel (hidden by default) -->
+    <div class="panel" id="compose-panel" style="display:none">
+      <div class="panel-title" style="color:#e3b341">Matrix B (applied second)</div>
+      <div class="matrix-wrap">
+        <span class="mat-bracket" style="color:#e3b341">[</span>
+        <div class="mat-grid">
+          <input id="mb0" type="number" value="1" step="0.1" title="b₁₁">
+          <input id="mb1" type="number" value="0" step="0.1" title="b₁₂">
+          <input id="mb2" type="number" value="0" step="0.1" title="b₂₁">
+          <input id="mb3" type="number" value="1" step="0.1" title="b₂₂">
+        </div>
+        <span class="mat-bracket" style="color:#e3b341">]</span>
+      </div>
+      <p class="hint" style="margin-top:5px">Composite = B·A&nbsp;(order matters!)</p>
+    </div>
+
+    <!-- Readouts -->
+    <div class="panel">
+      <div class="panel-title">Readouts</div>
+      <div id="det-readout" class="readout">det = 1.000</div>
+      <div id="eigen-readout" class="readout" style="margin-top:5px">λ₁ = 1.000, λ₂ = 1.000</div>
+      <div id="svd-readout" class="readout" style="margin-top:5px">σ₁=1.000, σ₂=1.000  cond=1.00</div>
+    </div>
+
+    <!-- Legend -->
+    <div class="panel">
+      <div class="panel-title">Legend</div>
+      <div class="legend">
+        <div class="legend-row"><div class="swatch" style="background:#f85149"></div>î — first basis vector</div>
+        <div class="legend-row"><div class="swatch" style="background:#3fb950"></div>ĵ — second basis vector</div>
+        <div class="legend-row"><div class="swatch" style="background:#58a6ff;opacity:0.5;height:8px"></div>det area (blue=pos, red=neg)</div>
+        <div class="legend-row"><div class="swatch" style="background:#d2a8ff"></div>Eigenvec λ₁</div>
+        <div class="legend-row"><div class="swatch" style="background:#79c0ff"></div>Eigenvec λ₂</div>
+        <div class="legend-row"><div class="swatch" style="background:#e3b341"></div>Sample shape</div>
+        <div class="legend-row"><div class="swatch" style="background:#f0883e"></div>SVD ellipse / σ₁</div>
+      </div>
+    </div>
+
+  </div>
+
+  <!-- ── Canvas ── -->
+  <div class="canvas-wrap">
+    <svg id="plane"></svg>
+  </div>
+</div>
+
+<script src="bundlelinalg.js"></script>
+</body>
+</html>

@@ -1,0 +1,273 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Markov Chain Text Lab</title>
+  <style>
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+
+    body {
+      font-family: 'Segoe UI', Arial, sans-serif;
+      background: #1a1a2e;
+      color: #e0e0f0;
+      min-height: 100vh;
+      padding: 16px;
+    }
+
+    h1 {
+      font-size: 1.6rem;
+      font-weight: 700;
+      color: #a78bfa;
+      margin-bottom: 4px;
+      letter-spacing: 0.5px;
+    }
+
+    .subtitle {
+      font-size: 0.85rem;
+      color: #8888aa;
+      margin-bottom: 16px;
+    }
+
+    .layout {
+      display: grid;
+      grid-template-columns: 320px 1fr;
+      gap: 16px;
+      align-items: start;
+    }
+
+    .panel {
+      background: #16213e;
+      border: 1px solid #2d2b55;
+      border-radius: 10px;
+      padding: 14px;
+    }
+
+    .panel h2 {
+      font-size: 0.9rem;
+      font-weight: 600;
+      color: #a78bfa;
+      text-transform: uppercase;
+      letter-spacing: 0.8px;
+      margin-bottom: 12px;
+    }
+
+    .control-row {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      margin-bottom: 10px;
+      flex-wrap: wrap;
+    }
+
+    label {
+      font-size: 0.8rem;
+      color: #aaa;
+      min-width: 70px;
+    }
+
+    select, input[type="range"] {
+      background: #0f0f23;
+      border: 1px solid #3d3b6e;
+      border-radius: 5px;
+      color: #e0e0f0;
+      padding: 4px 8px;
+      font-size: 0.82rem;
+      flex: 1;
+    }
+
+    select { cursor: pointer; }
+
+    .val-badge {
+      font-size: 0.8rem;
+      color: #f0c674;
+      min-width: 30px;
+      text-align: right;
+    }
+
+    textarea {
+      width: 100%;
+      background: #0f0f23;
+      border: 1px solid #3d3b6e;
+      border-radius: 6px;
+      color: #d0d0e8;
+      font-size: 0.78rem;
+      font-family: 'Consolas', monospace;
+      padding: 8px;
+      resize: vertical;
+      margin-bottom: 10px;
+      line-height: 1.4;
+    }
+
+    .btn-row {
+      display: flex;
+      gap: 8px;
+      flex-wrap: wrap;
+      margin-bottom: 10px;
+    }
+
+    button {
+      background: #4c3b9e;
+      border: none;
+      border-radius: 6px;
+      color: #fff;
+      cursor: pointer;
+      font-size: 0.82rem;
+      font-weight: 600;
+      padding: 6px 14px;
+      transition: background 0.15s;
+      flex: 1;
+    }
+
+    button:hover { background: #6450c0; }
+    button:active { background: #3a2b7e; }
+
+    #btn-train { background: #0e7490; }
+    #btn-train:hover { background: #0891b2; }
+
+    #status {
+      font-size: 0.78rem;
+      color: #a78bfa;
+      margin-top: 6px;
+      min-height: 1.2em;
+      word-break: break-word;
+    }
+
+    .viz-col {
+      display: flex;
+      flex-direction: column;
+      gap: 14px;
+    }
+
+    #bar-chart, #graph-view {
+      width: 100%;
+      overflow-x: auto;
+    }
+
+    #bar-chart svg, #graph-view svg {
+      display: block;
+      max-width: 100%;
+    }
+
+    #gen-output {
+      background: #0f0f23;
+      border: 1px solid #2d2b55;
+      border-radius: 8px;
+      padding: 12px;
+      font-family: 'Consolas', monospace;
+      font-size: 0.88rem;
+      line-height: 1.7;
+      min-height: 100px;
+      max-height: 180px;
+      overflow-y: auto;
+      word-break: break-all;
+      color: #c0c0d8;
+    }
+
+    span.ctx {
+      background: #2d4a7a;
+      color: #90caf9;
+      border-radius: 3px;
+      padding: 0 1px;
+    }
+
+    span.sampled {
+      background: #7a4a00;
+      color: #ffd54f;
+      border-radius: 3px;
+      padding: 0 1px;
+      font-weight: bold;
+    }
+
+    .section-label {
+      font-size: 0.75rem;
+      color: #666;
+      text-transform: uppercase;
+      letter-spacing: 0.6px;
+      margin-bottom: 6px;
+    }
+
+    @media (max-width: 800px) {
+      .layout { grid-template-columns: 1fr; }
+    }
+  </style>
+</head>
+<body>
+  <h1>Markov Chain Text Lab</h1>
+  <p class="subtitle">Build n-gram Markov models from text corpora and watch them generate new sequences.</p>
+
+  <div class="layout">
+    <!-- Controls panel -->
+    <div class="panel">
+      <h2>Model &amp; Controls</h2>
+
+      <div class="control-row">
+        <label>Corpus</label>
+        <select id="corpus-select" style="flex:1"></select>
+      </div>
+
+      <textarea id="corpus-text" rows="7" placeholder="Paste your own text here..."></textarea>
+
+      <div class="control-row">
+        <label>Model</label>
+        <select id="model-type">
+          <option value="char">Character</option>
+          <option value="word">Word</option>
+        </select>
+      </div>
+
+      <div class="control-row">
+        <label>Order n</label>
+        <input type="range" id="order" min="1" max="4" value="2" step="1">
+        <span class="val-badge" id="order-val">2</span>
+      </div>
+
+      <div class="control-row">
+        <label>Temperature</label>
+        <input type="range" id="temperature" min="0.1" max="2.0" value="1.0" step="0.05">
+        <span class="val-badge" id="temp-val">1.00</span>
+      </div>
+
+      <div class="control-row">
+        <label>Max length</label>
+        <input type="range" id="length" min="50" max="500" value="200" step="10">
+        <span class="val-badge" id="length-val">200</span>
+      </div>
+
+      <div class="btn-row">
+        <button id="btn-train">Train</button>
+      </div>
+
+      <div class="btn-row">
+        <button id="btn-step">Step</button>
+        <button id="btn-continuous">Continuous</button>
+        <button id="btn-reset">Reset</button>
+      </div>
+
+      <div id="status">Ready.</div>
+    </div>
+
+    <!-- Visualizations -->
+    <div class="viz-col">
+      <div class="panel">
+        <h2>Generated Text</h2>
+        <div id="gen-output"><span style="color:#555">Press Train then Generate to start…</span></div>
+      </div>
+
+      <div class="panel">
+        <h2>Next-Token Distribution</h2>
+        <p class="section-label">Probability of each next token given current context (top 20)</p>
+        <div id="bar-chart"></div>
+      </div>
+
+      <div class="panel">
+        <h2>State Graph</h2>
+        <p class="section-label">Transition graph (char model, order 1, ≤40 states)</p>
+        <div id="graph-view"></div>
+      </div>
+    </div>
+  </div>
+
+  <script src="bundlemarkov.js"></script>
+</body>
+</html>
