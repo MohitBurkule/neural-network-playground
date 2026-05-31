@@ -2,7 +2,7 @@
 
 This document enumerates every feature available in the Neural Network Playground Extended Edition, grouped by category. Sources of truth used: `index.html`, `src/state.ts`, `src/nn.ts`, `src/dataset.ts`, `src/dataset3d.ts`, `src/adversarial.ts`, `src/unlearning.ts`, and `src/playground.ts`.
 
-**Approximate feature total: ~130 distinct controls and capabilities on the main page, plus 18 standalone labs.**
+**Approximate feature total: ~130 distinct controls and capabilities on the main page, plus 42 standalone labs.**
 
 ---
 
@@ -237,17 +237,17 @@ Additional custom features can be added inline via the **Custom feature** button
 
 ---
 
-## 11. Datasets — Classification (48+)
+## 11. Datasets — Classification (88)
 
 Thumbnail picker in the **Data** panel. Labels ∈ {−1, +1}.
 
 **Original classics:** Circle, XOR, Two Gaussians (gauss), Spiral, Hash, MNIST-Three, Concentric Circles, Biclusters, Moons
 
-**Extended set (39 additional):** Checkerboard, Quadrant XOR Blobs, Concentric Rings, Three-Arm Spiral, Four-Arm Spiral, Tight Spirals, Clean Moons, Nested U Shapes, Gaussian Mixture, Diagonal Stripes, Sine Boundary, Circle in Square, Cross/Plus, S-Curve Boundary, Pinwheel, Island Clusters, Ring vs Center, Gaussian Quantiles, Anisotropic Blobs, Random-Label Blobs, Target Rings, Spiral Galaxy, Yin-Yang, Smiley, Grid of Blobs, Interleaving Waves, Blob in Ring, Triangle vs Circle, Gaussian Cross, Noisy XOR (4-quadrant), Crescent Pair, Dartboard, Comb (vertical stripes), Diagonal Checker, Cluster Chain
+**Extended set (79 additional):** Checkerboard, Quadrant XOR Blobs, Concentric Rings, Three-Arm Spiral, Four-Arm Spiral, Tight Spirals, Clean Moons, Nested U Shapes, Gaussian Mixture, Diagonal Stripes, Sine Boundary, Circle in Square, Cross/Plus, S-Curve Boundary, Pinwheel, Island Clusters, Ring vs Center, Gaussian Quantiles, Anisotropic Blobs, Random-Label Blobs, Target Rings, Spiral Galaxy, Yin-Yang, Smiley, Grid of Blobs, Interleaving Waves, Blob in Ring, Triangle vs Circle, Gaussian Cross, Noisy XOR (4-quadrant), Crescent Pair, Dartboard, Comb (vertical stripes), Diagonal Checker, Cluster Chain, Nested Squares, Polygon Boundary, Voronoi Regions, Gaussian Grid 9, Two Rings XOR, Checker-4, Radial Petals, Heart Shape, Wave Interference, Gradient Blobs, Three-Class Binary, Noisy Concentric 3, Diagonal Bands 5, Blob Constellation, Sparse vs Dense, Half-Plane Noisy, Lens, Hourglass, Zigzag Boundary, Comb Teeth, Target 3-Rings, Double Spiral Tight, Quadrant Stripes, Gaussian Ring, Trefoil 2D, Gear, Star-6, Crescent Moons 3, Blob Lattice 16, Noisy Checker 6, Spiral 3-Arm Tight, Ring Segments, Pie Slices, Droplet, Infinity Symbol, Bowtie, Parallel Sines, Radial Gradient Class, Concentric Arcs, Clustered Outliers, Two Blobs Overlap, Diamond Grid, Wavy Stripes, Plus-Minus Grid
 
 ---
 
-## 12. Datasets — Regression (17)
+## 12. Datasets — Regression (32)
 
 Selected when **Problem type** is Regression.
 
@@ -270,6 +270,21 @@ Selected when **Problem type** is Regression.
 | `reg-abs` | |x| + |y| |
 | `reg-step-circle` | Step function based on distance from origin |
 | `reg-waves` | Superimposed wave surface |
+| `reg-sin2d` | sin(x) + sin(y) |
+| `reg-product` | x · y |
+| `reg-distance` | Distance from origin |
+| `reg-rosenbrock-slice` | 2D Rosenbrock slice |
+| `reg-checkerboard-smooth` | Smooth checkerboard |
+| `reg-peaks` | MATLAB-style peaks function |
+| `reg-mexican-hat` | Mexican hat wavelet |
+| `reg-ripple2` | Two-frequency ripple |
+| `reg-saddle2` | Rotated saddle |
+| `reg-gaussian-hill` | Offset Gaussian hill |
+| `reg-sin-product` | sin(x) · sin(y) |
+| `reg-abs-diff` | \|x − y\| |
+| `reg-log` | log(r + 1) |
+| `reg-tanh-wave` | tanh-modulated wave |
+| `reg-cross-ridge` | Cross-shaped ridge |
 
 ---
 
@@ -489,20 +504,27 @@ The export is fully self-contained: PReLU's learned alpha value is inlined direc
 
 ---
 
-## 23. Advanced Labs (18) + Gallery
+## 23. Advanced Labs (42) + Gallery
 
 Accessible via the **lab gallery** (`labs.html`, linked from the bottom of the output panel), or directly by URL.
 
 | Lab | URL | Algorithm(s) |
 |---|---|---|
+| Perceptron | `perceptron.html` | Single-layer perceptron with Rosenblatt learning rule |
 | CNN | `cnn.html` | Convolutional neural network (Conv→ReLU→Pool×2 → FC → Softmax) |
 | Transformer | `transformer.html` | Single/multi-head self-attention transformer block |
 | RNN | `rnn.html` | Elman RNN trained on sequence echo/delay task |
 | Autoencoder | `autoencoder.html` | Fully-connected autoencoder with 2D bottleneck |
+| VAE | `vae.html` | Variational autoencoder with reparameterization trick |
 | GAN | `gan.html` | Minimax GAN with MLP generator and discriminator |
 | Diffusion (DDPM) | `diffusion.html` | DDPM forward noising + learned reverse denoising on 2D data |
 | Word2Vec | `word2vec.html` | Skip-gram embeddings with negative sampling; analogy arithmetic |
 | Bayesian NN | `bayesnn.html` | MC-dropout and deep ensembles for predictive uncertainty |
+| RBM | `rbm.html` | Restricted Boltzmann Machine with CD-1 training |
+| SNN | `snn.html` | Spiking neural network with LIF neurons and rate coding |
+| MDN | `mdn.html` | Mixture Density Network for multi-modal conditional distributions |
+| ESN | `esn.html` | Echo State Network (reservoir computing) |
+| Activation Explorer | `actfn.html` | Interactive explorer for all 24 activation functions |
 | Decision Tree / Forest | `dtree.html` | CART decision tree and random forest |
 | SVM | `svm.html` | SMO-lite SVM with linear, poly, and RBF kernels |
 | Linear/Logistic/Naive Bayes | `glm.html` | OLS linear regression, logistic regression, Gaussian Naive Bayes |
@@ -510,18 +532,35 @@ Accessible via the **lab gallery** (`labs.html`, linked from the bottom of the o
 | Clustering | `clustering.html` | k-means, DBSCAN, GMM with EM |
 | PCA / t-SNE | `dimred.html` | PCA (power iteration) and t-SNE (Barnes-Hut-lite) |
 | Self-Organizing Map | `som.html` | Kohonen SOM lattice; topology-preserving 2D map |
+| k-NN | `knn.html` | k-Nearest Neighbor classifier with interactive Voronoi boundary |
+| Conv Kernel Explorer | `conv.html` | 2D convolution kernel explorer (preset + custom kernels) |
 | RL Gridworld | `rl.html` | Q-learning and SARSA on a tabular 7×10 grid |
-| Hopfield Network | `hopfield.html` | Associative memory with Hebbian weights; energy-descent recall |
 | Genetic Algorithm | `genetic.html` | Evolutionary optimization: selection, crossover, mutation |
-| **Gallery** | `labs.html` | Static entry-point card grid linking all 18 labs (no bundle) |
+| PSO | `pso.html` | Particle Swarm Optimization on 2D fitness landscapes |
+| Multi-Armed Bandit | `bandit.html` | ε-greedy, UCB, and Thompson sampling exploration strategies |
+| Optimizer Visualizer | `optviz.html` | Gradient descent trajectories on 2D loss surfaces |
+| Ant Colony Optimization | `aco.html` | ACO metaheuristic on configurable TSP graphs |
+| Pathfinding | `pathfind.html` | A*, Dijkstra, BFS, DFS on interactive grid |
+| Hopfield Network | `hopfield.html` | Associative memory with Hebbian weights; energy-descent recall |
+| Markov Chain | `markov.html` | Discrete Markov chain with stationary distribution |
+| MCMC | `mcmc.html` | Metropolis-Hastings and Gibbs sampling on 2D targets |
+| Cellular Automata | `ca.html` | 1D (all 256 rules) and 2D (Game of Life, custom rules) automata |
+| Neural Cellular Automata | `nca.html` | Self-organizing patterns via neural update rules |
+| Reaction-Diffusion | `rd.html` | Gray-Scott system producing spots, stripes, and mazes |
+| Fourier | `fourier.html` | Fourier series/transform with phasor and spectrum visualization |
+| Kalman Filter | `kalman.html` | 1D/2D Kalman filter with predict/update animation |
+| Boids | `boids.html` | Craig Reynolds' flocking (separation, alignment, cohesion) |
+| Strange Attractors | `attractor.html` | Lorenz, Rössler, and other chaotic attractors via particle integration |
+| Fractal Explorer | `fractal.html` | WebGL Mandelbrot and Julia set renderer with pan/zoom |
+| **Gallery** | `labs.html` | Static entry-point card grid linking all 42 labs (no bundle) |
 
 See [docs/LABS.md](LABS.md) for a detailed description of each lab.
 
 ---
 
-## 24. Test Suite (445 tests)
+## 24. Test Suite (445 unit tests + lab smoke tests)
 
-The Jest unit test suite (`npm test`) has 445 tests across 11 test files. In addition to the existing coverage of the core ML engine, dataset generators, adversarial attacks, unlearning, and CSV parsing, the suite now includes:
+The Jest unit test suite (`npm test`) has 445 tests across 11 test files. A separate runtime smoke test (`npm run test:labs`, via `scripts/smoke-labs.js`) boots all 42 lab HTML pages headlessly and verifies they load without JavaScript errors; this runs as part of CI alongside the unit tests. In addition to the existing coverage of the core ML engine, dataset generators, adversarial attacks, unlearning, and CSV parsing, the suite now includes:
 
 - **Finite-difference gradient checks for all 24 activation functions** (`tests/activation_grad.test.ts`) — verifies that each `Activations.*` analytic derivative agrees with a central finite-difference approximation at multiple test points, skipping known kinks.
 - **Finite-difference gradient checks for all 5 loss functions** (`tests/loss_grad.test.ts`) — same approach applied to every `Errors.*` derivative.

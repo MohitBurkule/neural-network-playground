@@ -1,0 +1,375 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Image Convolution Kernel Playground</title>
+  <style>
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+    body {
+      font-family: 'Segoe UI', Arial, sans-serif;
+      background: #0f0f1a;
+      color: #d4d4e8;
+      min-height: 100vh;
+      padding: 16px;
+      font-size: 13px;
+    }
+
+    .header {
+      margin-bottom: 16px;
+    }
+    .header h1 {
+      font-size: 1.55rem;
+      font-weight: 700;
+      color: #a78bfa;
+      letter-spacing: 0.4px;
+      margin-bottom: 4px;
+    }
+    .header .subtitle {
+      font-size: 0.82rem;
+      color: #6666a0;
+    }
+
+    .main-layout {
+      display: flex;
+      gap: 18px;
+      align-items: flex-start;
+      flex-wrap: wrap;
+    }
+
+    /* ── Controls panel ── */
+    .controls {
+      background: #16162a;
+      border: 1px solid #2a2a45;
+      border-radius: 10px;
+      padding: 14px;
+      width: 260px;
+      flex-shrink: 0;
+      display: flex;
+      flex-direction: column;
+      gap: 14px;
+    }
+
+    .section-title {
+      font-size: 0.72rem;
+      font-weight: 600;
+      letter-spacing: 0.08em;
+      text-transform: uppercase;
+      color: #7777a8;
+      margin-bottom: 6px;
+    }
+
+    label {
+      display: flex;
+      flex-direction: column;
+      gap: 4px;
+      color: #b0b0d0;
+      font-size: 0.82rem;
+    }
+
+    select, input[type="number"], input[type="file"] {
+      background: #0f0f1a;
+      border: 1px solid #2e2e50;
+      border-radius: 5px;
+      color: #d4d4e8;
+      padding: 5px 8px;
+      font-size: 0.82rem;
+      outline: none;
+    }
+    select:focus, input[type="number"]:focus {
+      border-color: #7c6fb0;
+    }
+
+    .row {
+      display: flex;
+      gap: 8px;
+      align-items: center;
+    }
+
+    .checkbox-label {
+      display: flex;
+      flex-direction: row;
+      align-items: center;
+      gap: 7px;
+      cursor: pointer;
+      color: #c0c0e0;
+      font-size: 0.82rem;
+    }
+    input[type="checkbox"] {
+      accent-color: #a78bfa;
+      width: 14px;
+      height: 14px;
+    }
+    input[type="radio"] {
+      accent-color: #a78bfa;
+    }
+
+    .ksize-row {
+      display: flex;
+      gap: 14px;
+    }
+    .ksize-row label {
+      flex-direction: row;
+      align-items: center;
+      gap: 5px;
+      color: #c0c0e0;
+      font-size: 0.82rem;
+      cursor: pointer;
+    }
+
+    /* ── Kernel grid ── */
+    #kernelGrid {
+      display: grid;
+      gap: 4px;
+    }
+    .kernel-cell {
+      background: #1e1e35;
+      border: 1px solid #333360;
+      border-radius: 4px;
+      color: #e0e0ff;
+      font-size: 0.78rem;
+      text-align: center;
+      padding: 4px 2px;
+      width: 100%;
+      outline: none;
+      -moz-appearance: textfield;
+    }
+    .kernel-cell:focus {
+      border-color: #a78bfa;
+      background: #252540;
+    }
+    .kernel-cell::-webkit-inner-spin-button,
+    .kernel-cell::-webkit-outer-spin-button { -webkit-appearance: none; }
+
+    .divisor-row {
+      display: flex;
+      gap: 10px;
+    }
+    .divisor-row label {
+      flex: 1;
+    }
+    .divisor-row input {
+      width: 100%;
+    }
+
+    /* ── Pixel info ── */
+    #pixelInfo {
+      font-size: 0.8rem;
+      color: #a0a0cc;
+      min-height: 1.2em;
+    }
+    .info-label { color: #ffd966; }
+    .out-val { color: #80d4a0; font-weight: 600; }
+
+    #productsDisplay {
+      margin-top: 4px;
+    }
+    .prod-grid {
+      display: grid;
+      gap: 3px;
+      margin-bottom: 5px;
+    }
+    .prod-cell {
+      font-size: 0.68rem;
+      text-align: center;
+      padding: 3px 2px;
+      border-radius: 3px;
+      color: #e0e0ff;
+      border: 1px solid rgba(255,255,255,0.06);
+    }
+    .prod-sum {
+      font-size: 0.78rem;
+      color: #a0c8ff;
+    }
+    .prod-sum b { color: #80d4a0; }
+
+    /* ── Canvas area ── */
+    .canvas-area {
+      flex: 1;
+      min-width: 300px;
+      display: flex;
+      flex-direction: column;
+      gap: 14px;
+    }
+
+    .canvases-row {
+      display: flex;
+      gap: 18px;
+      flex-wrap: wrap;
+    }
+
+    .canvas-wrap {
+      display: flex;
+      flex-direction: column;
+      gap: 6px;
+      align-items: center;
+    }
+
+    .canvas-label {
+      font-size: 0.78rem;
+      color: #7777a8;
+      text-transform: uppercase;
+      letter-spacing: 0.07em;
+      font-weight: 600;
+    }
+
+    canvas {
+      border: 1px solid #2e2e50;
+      border-radius: 6px;
+      cursor: crosshair;
+      image-rendering: pixelated;
+      width: 256px;
+      height: 256px;
+      display: block;
+    }
+
+    .canvas-hint {
+      font-size: 0.72rem;
+      color: #555580;
+      text-align: center;
+    }
+
+    /* ── Teaching panel ── */
+    .teaching-panel {
+      background: #14142a;
+      border: 1px solid #22224a;
+      border-radius: 8px;
+      padding: 12px 14px;
+      font-size: 0.8rem;
+      color: #8888b8;
+      line-height: 1.55;
+    }
+    .teaching-panel b { color: #c0b0f8; }
+
+    hr {
+      border: none;
+      border-top: 1px solid #1e1e38;
+      margin: 0;
+    }
+
+    /* scrollbar */
+    ::-webkit-scrollbar { width: 6px; height: 6px; }
+    ::-webkit-scrollbar-track { background: #0f0f1a; }
+    ::-webkit-scrollbar-thumb { background: #333355; border-radius: 3px; }
+  </style>
+</head>
+<body>
+
+<div class="header">
+  <h1>Image Convolution Kernel Playground</h1>
+  <p class="subtitle">Apply a 3×3 or 5×5 kernel to an image — edit values live, watch the sliding window multiply a neighborhood into a single output pixel.</p>
+</div>
+
+<div class="main-layout">
+
+  <!-- ── Controls ── -->
+  <div class="controls">
+
+    <div>
+      <div class="section-title">Image</div>
+      <label>Source
+        <select id="imageSel">
+          <option value="0">Gradient</option>
+          <option value="1">Checkerboard</option>
+          <option value="2">Shapes</option>
+          <option value="3">Text-like</option>
+          <option value="4">Synthetic Photo</option>
+        </select>
+      </label>
+      <label style="margin-top:7px">Upload image
+        <input type="file" id="fileInput" accept="image/*">
+      </label>
+    </div>
+
+    <hr>
+
+    <div>
+      <div class="section-title">Kernel Size</div>
+      <div class="ksize-row">
+        <label><input type="radio" name="ksize" value="3" checked> 3 × 3</label>
+        <label><input type="radio" name="ksize" value="5"> 5 × 5</label>
+      </div>
+    </div>
+
+    <div>
+      <div class="section-title">Preset</div>
+      <select id="presetSelect"></select>
+    </div>
+
+    <div>
+      <div class="section-title">Kernel Values</div>
+      <div id="kernelGrid"></div>
+    </div>
+
+    <div>
+      <div class="section-title">Divisor &amp; Offset</div>
+      <div class="divisor-row">
+        <label>Divisor
+          <input type="number" id="divisorInput" value="1" step="0.5">
+        </label>
+        <label>Offset
+          <input type="number" id="offsetInput" value="0" step="1">
+        </label>
+      </div>
+    </div>
+
+    <hr>
+
+    <div>
+      <div class="section-title">Display</div>
+      <label class="checkbox-label">
+        <input type="checkbox" id="grayscaleCb"> Grayscale mode
+      </label>
+      <label class="checkbox-label" style="margin-top:6px">
+        <input type="checkbox" id="showWindowCb" checked> Show sliding window
+      </label>
+      <label class="checkbox-label" style="margin-top:6px">
+        <input type="checkbox" id="animateCb" checked> Animate window
+      </label>
+    </div>
+
+    <hr>
+
+    <div>
+      <div class="section-title">Current Pixel</div>
+      <div id="pixelInfo"></div>
+      <div id="productsDisplay"></div>
+    </div>
+
+  </div>
+
+  <!-- ── Canvas area ── -->
+  <div class="canvas-area">
+
+    <div class="canvases-row">
+      <div class="canvas-wrap">
+        <div class="canvas-label">Input</div>
+        <canvas id="inputCanvas"></canvas>
+        <div class="canvas-hint">Click to position window</div>
+      </div>
+      <div class="canvas-wrap">
+        <div class="canvas-label">Output</div>
+        <canvas id="outputCanvas"></canvas>
+        <div class="canvas-hint">Convolved result</div>
+      </div>
+    </div>
+
+    <div class="teaching-panel">
+      <b>How it works:</b> For each output pixel at position (x, y), take the
+      <b>k×k neighborhood</b> in the input, multiply each input value by the
+      corresponding kernel weight, <b>sum</b> all products, divide by the
+      <b>divisor</b>, add the <b>offset</b>, then clamp to [0, 255].
+      The <b>yellow box</b> on the input shows the current neighborhood;
+      the <b>red dot</b> on the output shows the computed pixel.
+      The color-coded grid below the controls shows each product — green = positive,
+      red = negative.
+    </div>
+
+  </div>
+
+</div>
+
+<script src="bundleconv.js"></script>
+</body>
+</html>

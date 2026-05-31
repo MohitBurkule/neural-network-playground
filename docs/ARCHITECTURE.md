@@ -38,7 +38,31 @@ This document describes the module structure of the Neural Network Playground Ex
 │   ├── gp.ts                 Gaussian Process lab entry point
 │   ├── som.ts                Self-Organizing Map lab entry point
 │   ├── hopfield.ts           Hopfield Network lab entry point
-│   └── genetic.ts            Genetic Algorithm lab entry point
+│   ├── genetic.ts            Genetic Algorithm lab entry point
+│   ├── vae.ts                VAE lab entry point
+│   ├── rbm.ts                RBM lab entry point
+│   ├── pso.ts                PSO lab entry point
+│   ├── bandit.ts             Multi-Armed Bandit lab entry point
+│   ├── optviz.ts             Optimizer Visualizer lab entry point
+│   ├── markov.ts             Markov Chain lab entry point
+│   ├── mcmc.ts               MCMC lab entry point
+│   ├── ca.ts                 Cellular Automata lab entry point
+│   ├── nca.ts                Neural Cellular Automata lab entry point
+│   ├── rd.ts                 Reaction-Diffusion lab entry point
+│   ├── fourier.ts            Fourier lab entry point
+│   ├── kalman.ts             Kalman Filter lab entry point
+│   ├── snn.ts                Spiking NN lab entry point
+│   ├── boids.ts              Boids lab entry point
+│   ├── aco.ts                Ant Colony Optimization lab entry point
+│   ├── knn.ts                k-NN lab entry point
+│   ├── pathfind.ts           Pathfinding lab entry point
+│   ├── attractor.ts          Strange Attractors lab entry point
+│   ├── fractal.ts            Fractal Explorer lab entry point
+│   ├── actfn.ts              Activation Explorer lab entry point
+│   ├── perceptron.ts         Perceptron lab entry point
+│   ├── conv.ts               Conv Kernel Explorer lab entry point
+│   ├── esn.ts                Echo State Network lab entry point
+│   └── mdn.ts                Mixture Density Network lab entry point
 ├── labs/                     HTML templates for the standalone lab pages
 │   ├── cnn.html
 │   ├── transformer.html
@@ -58,6 +82,30 @@ This document describes the module structure of the Neural Network Playground Ex
 │   ├── som.html
 │   ├── hopfield.html
 │   ├── genetic.html
+│   ├── vae.html
+│   ├── rbm.html
+│   ├── pso.html
+│   ├── bandit.html
+│   ├── optviz.html
+│   ├── markov.html
+│   ├── mcmc.html
+│   ├── ca.html
+│   ├── nca.html
+│   ├── rd.html
+│   ├── fourier.html
+│   ├── kalman.html
+│   ├── snn.html
+│   ├── boids.html
+│   ├── aco.html
+│   ├── knn.html
+│   ├── pathfind.html
+│   ├── attractor.html
+│   ├── fractal.html
+│   ├── actfn.html
+│   ├── perceptron.html
+│   ├── conv.html
+│   ├── esn.html
+│   ├── mdn.html
 │   └── labs.html             Lab gallery (static, no bundle)
 ├── dist/                     Compiled output (not checked in to source)
 │   ├── bundle.js             Main playground JS bundle
@@ -83,6 +131,30 @@ This document describes the module structure of the Neural Network Playground Ex
 │   ├── bundlesom.js          Self-Organizing Map lab bundle
 │   ├── bundlehopfield.js     Hopfield Network lab bundle
 │   ├── bundlegenetic.js      Genetic Algorithm lab bundle
+│   ├── bundlevae.js          VAE lab bundle
+│   ├── bundlerbm.js          RBM lab bundle
+│   ├── bundlepso.js          PSO lab bundle
+│   ├── bundlebandit.js       Multi-Armed Bandit lab bundle
+│   ├── bundleoptviz.js       Optimizer Visualizer lab bundle
+│   ├── bundlemarkov.js       Markov Chain lab bundle
+│   ├── bundlemcmc.js         MCMC lab bundle
+│   ├── bundleca.js           Cellular Automata lab bundle
+│   ├── bundlenca.js          Neural Cellular Automata lab bundle
+│   ├── bundlerd.js           Reaction-Diffusion lab bundle
+│   ├── bundlefourier.js      Fourier lab bundle
+│   ├── bundlekalman.js       Kalman Filter lab bundle
+│   ├── bundlesnn.js          Spiking NN lab bundle
+│   ├── bundleboids.js        Boids lab bundle
+│   ├── bundleaco.js          Ant Colony Optimization lab bundle
+│   ├── bundleknn.js          k-NN lab bundle
+│   ├── bundlepathfind.js     Pathfinding lab bundle
+│   ├── bundleattractor.js    Strange Attractors lab bundle
+│   ├── bundlefractal.js      Fractal Explorer lab bundle
+│   ├── bundleactfn.js        Activation Explorer lab bundle
+│   ├── bundleperceptron.js   Perceptron lab bundle
+│   ├── bundleconv.js         Conv Kernel Explorer lab bundle
+│   ├── bundleesn.js          Echo State Network lab bundle
+│   ├── bundlemdn.js          Mixture Density Network lab bundle
 │   ├── index.html            Main page
 │   ├── labs.html             Lab gallery (copied from labs/labs.html; no bundle)
 │   └── *.html                One HTML file per lab (copied from labs/)
@@ -91,6 +163,11 @@ This document describes the module structure of the Neural Network Playground Ex
 ├── index.html                Main page template
 ├── styles.css                Light theme source
 ├── styles_dark.css           Dark theme source
+├── scripts/
+│   └── smoke-labs.js         Runtime smoke test: boots every lab HTML headlessly and checks for JS errors
+├── .github/
+│   └── workflows/
+│       └── ci.yml            CI pipeline: build-all + jest (unit) + test:labs (smoke) + test:e2e (Playwright)
 ├── package.json              Build scripts and npm dependencies
 ├── tsconfig.json             TypeScript compiler configuration
 └── playwright.config.ts      Playwright E2E configuration
@@ -156,12 +233,15 @@ concat styles.css > dist/styles.css
 | Script | What it does |
 |---|---|
 | `npm run build` | `prep` + `build-js` + `build-css` + `build-darkcss` + `build-lightcss` + `build-html` |
-| `npm run build-labs` | Builds all 18 lab bundles and copies `labs/*.html` (including `labs.html` gallery) into `dist/` |
+| `npm run build-labs` | Builds all 42 lab bundles and copies `labs/*.html` (including `labs.html` gallery) into `dist/` |
 | `npm run build-all` | `build` + `build-labs` (builds everything; use this for deployment) |
 | `npm run watch` | `prep` + concurrent `watch-js` + `watch-css` + `watch-html` (no lab watch) |
 | `npm run serve` | `npx serve dist/` on port 3000 |
 | `npm run serve-watch` | Concurrent `serve` + `watch` |
 | `npm run clean` | `rimraf dist` |
+| `npm test` | Jest unit test suite (445 tests across 11 files) |
+| `npm run test:labs` | Runtime smoke test via `scripts/smoke-labs.js` — boots all 42 lab pages headlessly |
+| `npm run test:e2e` | Playwright end-to-end tests (`e2e/`) |
 
 For Cloudflare Pages: build command `npm run build-all`, output directory `dist`, `NODE_VERSION=22`.
 
@@ -212,7 +292,7 @@ optimizers:          { [name: string]: nn.OptimizerType }           // 10 entrie
 lossFunctions:       { [name: string]: nn.ErrorFunction }           // 5 entries
 weightInits:         { [name: string]: nn.WeightInit }              // 6 entries
 lrSchedules:         { [name: string]: string }                     // 6 entries
-datasets:            { [name: string]: dataset.DataGenerator }      // 48+ entries
+datasets:            { [name: string]: dataset.DataGenerator }      // 88 entries
 regDatasets:         { [name: string]: dataset.DataGenerator }      // 17 entries
 regularizations:     { [name: string]: nn.RegularizationFunction }  // 3 entries
 weightQuantizations: { [name: string]: nn.WeightQuantizationFunction } // 5 entries
@@ -270,7 +350,7 @@ The browser entry point bundled as `dist/bundle.js`. It is the largest file in t
 
 Exports `Example2D = { x, y, label }` and `DataGenerator = (numSamples, noise) => Example2D[]`. All generators return labels in {−1, +1} (classification) or continuous values (regression). Uses `Math.seedrandom` for reproducibility.
 
-The file contains 48+ classification generators and 17 regression generators. All are registered in `state.ts`.
+The file contains 88 classification generators and 32 regression generators. All are registered in `state.ts`.
 
 ---
 
@@ -326,7 +406,7 @@ Pure utility functions with no DOM or network dependencies:
 
 ---
 
-### Lab entry points (`cnn.ts`, `transformer.ts`, `autoencoder.ts`, `rnn.ts`, `gan.ts`, `diffusion.ts`, `word2vec.ts`, `bayesnn.ts`, `clustering.ts`, `rl.ts`, `dtree.ts`, `dimred.ts`, `svm.ts`, `glm.ts`, `gp.ts`, `som.ts`, `hopfield.ts`, `genetic.ts`)
+### Lab entry points (42 labs: `perceptron.ts`, `cnn.ts`, `transformer.ts`, `autoencoder.ts`, `vae.ts`, `rnn.ts`, `gan.ts`, `diffusion.ts`, `word2vec.ts`, `bayesnn.ts`, `rbm.ts`, `snn.ts`, `mdn.ts`, `esn.ts`, `actfn.ts`, `clustering.ts`, `rl.ts`, `dtree.ts`, `dimred.ts`, `svm.ts`, `glm.ts`, `gp.ts`, `som.ts`, `knn.ts`, `conv.ts`, `hopfield.ts`, `genetic.ts`, `pso.ts`, `bandit.ts`, `optviz.ts`, `aco.ts`, `pathfind.ts`, `markov.ts`, `mcmc.ts`, `ca.ts`, `nca.ts`, `rd.ts`, `fourier.ts`, `kalman.ts`, `boids.ts`, `attractor.ts`, `fractal.ts`)
 
 Each lab is a self-contained TypeScript module with no shared state with `playground.ts`. They import D3 (via the same `d3` UMD alias from `package.json`) and implement their own algorithm, renderer, and event handling. They are compiled to separate bundles (`dist/bundle<name>.js`) and served from their own HTML pages (`dist/<name>.html`, copied from `labs/<name>.html`).
 
