@@ -87496,6 +87496,34 @@ exports.regressRosenbrockSlice = regressRosenbrockSlice;
 exports.regressCheckerboardSmooth = regressCheckerboardSmooth;
 exports.regressPeaks = regressPeaks;
 exports.regressMexicanHat = regressMexicanHat;
+exports.classifyTrefoil2D = classifyTrefoil2D;
+exports.classifyGear = classifyGear;
+exports.classifyStar6 = classifyStar6;
+exports.classifyCrescentMoons3 = classifyCrescentMoons3;
+exports.classifyBlobLattice16 = classifyBlobLattice16;
+exports.classifyNoisyChecker6 = classifyNoisyChecker6;
+exports.classifySpiral3ArmTight = classifySpiral3ArmTight;
+exports.classifyRingSegments = classifyRingSegments;
+exports.classifyPieSlices = classifyPieSlices;
+exports.classifyDroplet = classifyDroplet;
+exports.classifyInfinitySymbol = classifyInfinitySymbol;
+exports.classifyBowtie = classifyBowtie;
+exports.classifyParallelSines = classifyParallelSines;
+exports.classifyRadialGradientClass = classifyRadialGradientClass;
+exports.classifyConcentricArcs = classifyConcentricArcs;
+exports.classifyClusteredOutliers = classifyClusteredOutliers;
+exports.classifyTwoBlobsOverlap = classifyTwoBlobsOverlap;
+exports.classifyDiamondGrid = classifyDiamondGrid;
+exports.classifyWavyStripes = classifyWavyStripes;
+exports.classifyPlusMinusGrid = classifyPlusMinusGrid;
+exports.regressRipple2 = regressRipple2;
+exports.regressSaddle2 = regressSaddle2;
+exports.regressGaussianHill = regressGaussianHill;
+exports.regressSinProduct = regressSinProduct;
+exports.regressAbsDiff = regressAbsDiff;
+exports.regressLog = regressLog;
+exports.regressTanhWave = regressTanhWave;
+exports.regressCrossRidge = regressCrossRidge;
 var d3 = require("d3");
 function shuffle(array) {
     var counter = array.length;
@@ -88858,6 +88886,321 @@ function regressMexicanHat(numSamples, noise) {
     }
     return points;
 }
+function classifyTrefoil2D(numSamples, noise) {
+    var points = [];
+    for (var i = 0; i < numSamples; i++) {
+        var label = i % 2 === 0 ? 1 : -1;
+        var t = randUniform(0, 2 * Math.PI);
+        var r = label === 1 ? 4 : 4.5;
+        var x = Math.sin(t) + 2 * Math.sin(2 * t);
+        var y = Math.cos(t) - 2 * Math.cos(2 * t);
+        var s = label === 1 ? 1.1 : 1.6;
+        points.push({ x: x * s + normalRandom(0, noise), y: y * s + normalRandom(0, noise), label: label });
+    }
+    return points;
+}
+function classifyGear(numSamples, noise) {
+    var points = [];
+    for (var i = 0; i < numSamples; i++) {
+        var x = randUniform(-6, 6);
+        var y = randUniform(-6, 6);
+        var r = Math.sqrt(x * x + y * y);
+        var a = Math.atan2(y, x);
+        var teeth = 2 + Math.sin(a * 8);
+        var label = r < teeth * 1.6 ? 1 : -1;
+        points.push({ x: x + normalRandom(0, noise), y: y + normalRandom(0, noise), label: label });
+    }
+    return points;
+}
+function classifyStar6(numSamples, noise) {
+    var points = [];
+    for (var i = 0; i < numSamples; i++) {
+        var x = randUniform(-6, 6);
+        var y = randUniform(-6, 6);
+        var r = Math.sqrt(x * x + y * y);
+        var a = Math.atan2(y, x);
+        var edge = 3 + 1.8 * Math.cos(6 * a);
+        var label = r < edge ? 1 : -1;
+        points.push({ x: x + normalRandom(0, noise), y: y + normalRandom(0, noise), label: label });
+    }
+    return points;
+}
+function classifyCrescentMoons3(numSamples, noise) {
+    var points = [];
+    var centers = [{ x: -3, y: 0 }, { x: 0, y: 1.5 }, { x: 3, y: 0 }];
+    for (var i = 0; i < numSamples; i++) {
+        var g = i % 3;
+        var t = randUniform(0, Math.PI);
+        var x = centers[g].x + 3 * Math.cos(t);
+        var y = centers[g].y + 3 * Math.sin(t) * (g === 1 ? -1 : 1);
+        points.push({ x: x + normalRandom(0, noise), y: y + normalRandom(0, noise), label: g === 1 ? -1 : 1 });
+    }
+    return points;
+}
+function classifyBlobLattice16(numSamples, noise) {
+    var points = [];
+    for (var i = 0; i < numSamples; i++) {
+        var gx = Math.floor(randUniform(0, 4));
+        var gy = Math.floor(randUniform(0, 4));
+        var cx = -4.5 + gx * 3;
+        var cy = -4.5 + gy * 3;
+        var label = (gx + gy) % 2 === 0 ? 1 : -1;
+        points.push({ x: cx + normalRandom(0, 0.5 + noise), y: cy + normalRandom(0, 0.5 + noise), label: label });
+    }
+    return points;
+}
+function classifyNoisyChecker6(numSamples, noise) {
+    var points = [];
+    for (var i = 0; i < numSamples; i++) {
+        var x = randUniform(-6, 6);
+        var y = randUniform(-6, 6);
+        var cx = Math.floor((x + 6) / 2);
+        var cy = Math.floor((y + 6) / 2);
+        var label = (cx + cy) % 2 === 0 ? 1 : -1;
+        points.push({ x: x + normalRandom(0, noise), y: y + normalRandom(0, noise), label: label });
+    }
+    return points;
+}
+function classifySpiral3ArmTight(numSamples, noise) {
+    var points = [];
+    for (var i = 0; i < numSamples; i++) {
+        var arm = i % 3;
+        var r = randUniform(0.5, 6);
+        var t = 2.5 * r + arm * (2 * Math.PI / 3);
+        var x = r * Math.cos(t);
+        var y = r * Math.sin(t);
+        points.push({ x: x + normalRandom(0, noise), y: y + normalRandom(0, noise), label: arm === 0 ? 1 : -1 });
+    }
+    return points;
+}
+function classifyRingSegments(numSamples, noise) {
+    var points = [];
+    for (var i = 0; i < numSamples; i++) {
+        var t = randUniform(0, 2 * Math.PI);
+        var r = randUniform(3, 4.5);
+        var seg = Math.floor(t / (Math.PI / 3));
+        var label = seg % 2 === 0 ? 1 : -1;
+        points.push({ x: r * Math.cos(t) + normalRandom(0, noise), y: r * Math.sin(t) + normalRandom(0, noise), label: label });
+    }
+    return points;
+}
+function classifyPieSlices(numSamples, noise) {
+    var points = [];
+    for (var i = 0; i < numSamples; i++) {
+        var x = randUniform(-6, 6);
+        var y = randUniform(-6, 6);
+        var a = Math.atan2(y, x) + Math.PI;
+        var slice = Math.floor(a / (Math.PI / 4));
+        var label = slice % 2 === 0 ? 1 : -1;
+        points.push({ x: x + normalRandom(0, noise), y: y + normalRandom(0, noise), label: label });
+    }
+    return points;
+}
+function classifyDroplet(numSamples, noise) {
+    var points = [];
+    for (var i = 0; i < numSamples; i++) {
+        var x = randUniform(-6, 6);
+        var y = randUniform(-6, 6);
+        var edge = 3 * (1 - Math.sin(Math.atan2(y, x)));
+        var r = Math.sqrt(x * x + y * y);
+        var label = r < Math.abs(edge) + 0.5 ? 1 : -1;
+        points.push({ x: x + normalRandom(0, noise), y: y + normalRandom(0, noise), label: label });
+    }
+    return points;
+}
+function classifyInfinitySymbol(numSamples, noise) {
+    var points = [];
+    for (var i = 0; i < numSamples; i++) {
+        var label = i % 2 === 0 ? 1 : -1;
+        var t = randUniform(0, 2 * Math.PI);
+        var scale = label === 1 ? 4 : 5.2;
+        var x = scale * Math.cos(t);
+        var y = scale * Math.sin(t) * Math.cos(t);
+        points.push({ x: x + normalRandom(0, noise), y: y + normalRandom(0, noise), label: label });
+    }
+    return points;
+}
+function classifyBowtie(numSamples, noise) {
+    var points = [];
+    for (var i = 0; i < numSamples; i++) {
+        var x = randUniform(-6, 6);
+        var y = randUniform(-6, 6);
+        var label = Math.abs(y) < Math.abs(x) * 0.7 ? 1 : -1;
+        points.push({ x: x + normalRandom(0, noise), y: y + normalRandom(0, noise), label: label });
+    }
+    return points;
+}
+function classifyParallelSines(numSamples, noise) {
+    var points = [];
+    for (var i = 0; i < numSamples; i++) {
+        var x = randUniform(-6, 6);
+        var y = randUniform(-6, 6);
+        var band = Math.floor((y - 1.5 * Math.sin(x) + 6) / 2);
+        var label = band % 2 === 0 ? 1 : -1;
+        points.push({ x: x + normalRandom(0, noise), y: y + normalRandom(0, noise), label: label });
+    }
+    return points;
+}
+function classifyRadialGradientClass(numSamples, noise) {
+    var points = [];
+    for (var i = 0; i < numSamples; i++) {
+        var x = randUniform(-6, 6);
+        var y = randUniform(-6, 6);
+        var r = Math.sqrt(x * x + y * y);
+        var label = Math.sin(r * 1.5) > 0 ? 1 : -1;
+        points.push({ x: x + normalRandom(0, noise), y: y + normalRandom(0, noise), label: label });
+    }
+    return points;
+}
+function classifyConcentricArcs(numSamples, noise) {
+    var points = [];
+    for (var i = 0; i < numSamples; i++) {
+        var t = randUniform(-Math.PI / 2, Math.PI / 2);
+        var band = i % 4;
+        var r = 1.5 + band * 1.3;
+        var label = band % 2 === 0 ? 1 : -1;
+        points.push({ x: r * Math.cos(t) + normalRandom(0, noise), y: r * Math.sin(t) + normalRandom(0, noise), label: label });
+    }
+    return points;
+}
+function classifyClusteredOutliers(numSamples, noise) {
+    var points = [];
+    for (var i = 0; i < numSamples; i++) {
+        if (i % 5 === 0) {
+            points.push({ x: randUniform(-6, 6), y: randUniform(-6, 6), label: -1 });
+        }
+        else {
+            points.push({ x: normalRandom(0, 1 + noise), y: normalRandom(0, 1 + noise), label: 1 });
+        }
+    }
+    return points;
+}
+function classifyTwoBlobsOverlap(numSamples, noise) {
+    var points = [];
+    for (var i = 0; i < numSamples; i++) {
+        var label = i % 2 === 0 ? 1 : -1;
+        var cx = label === 1 ? -1.2 : 1.2;
+        points.push({ x: normalRandom(cx, 2 + noise), y: normalRandom(0, 2 + noise), label: label });
+    }
+    return points;
+}
+function classifyDiamondGrid(numSamples, noise) {
+    var points = [];
+    for (var i = 0; i < numSamples; i++) {
+        var x = randUniform(-6, 6);
+        var y = randUniform(-6, 6);
+        var u = Math.floor((x + y + 12) / 2);
+        var v = Math.floor((x - y + 12) / 2);
+        var label = (u + v) % 2 === 0 ? 1 : -1;
+        points.push({ x: x + normalRandom(0, noise), y: y + normalRandom(0, noise), label: label });
+    }
+    return points;
+}
+function classifyWavyStripes(numSamples, noise) {
+    var points = [];
+    for (var i = 0; i < numSamples; i++) {
+        var x = randUniform(-6, 6);
+        var y = randUniform(-6, 6);
+        var stripe = Math.floor((x + 1.5 * Math.sin(y) + 6) / 1.5);
+        var label = stripe % 2 === 0 ? 1 : -1;
+        points.push({ x: x + normalRandom(0, noise), y: y + normalRandom(0, noise), label: label });
+    }
+    return points;
+}
+function classifyPlusMinusGrid(numSamples, noise) {
+    var points = [];
+    for (var i = 0; i < numSamples; i++) {
+        var x = randUniform(-6, 6);
+        var y = randUniform(-6, 6);
+        var cx = Math.floor((x + 6) / 3);
+        var cy = Math.floor((y + 6) / 3);
+        var inCross = Math.abs((x % 3) - 1.5) < 0.6 || Math.abs((y % 3) - 1.5) < 0.6;
+        var label = inCross ? 1 : -1;
+        points.push({ x: x + normalRandom(0, noise), y: y + normalRandom(0, noise), label: label });
+    }
+    return points;
+}
+function regressRipple2(numSamples, noise) {
+    var points = [];
+    for (var i = 0; i < numSamples; i++) {
+        var x = randUniform(-6, 6);
+        var y = randUniform(-6, 6);
+        var r = Math.sqrt(x * x + y * y);
+        var label = Math.cos(r * 2) * Math.exp(-r / 6) + randUniform(-1, 1) * noise;
+        points.push({ x: x, y: y, label: label });
+    }
+    return points;
+}
+function regressSaddle2(numSamples, noise) {
+    var points = [];
+    for (var i = 0; i < numSamples; i++) {
+        var x = randUniform(-6, 6);
+        var y = randUniform(-6, 6);
+        var label = (x * x - y * y) / 18 + randUniform(-1, 1) * noise;
+        points.push({ x: x, y: y, label: label });
+    }
+    return points;
+}
+function regressGaussianHill(numSamples, noise) {
+    var points = [];
+    for (var i = 0; i < numSamples; i++) {
+        var x = randUniform(-6, 6);
+        var y = randUniform(-6, 6);
+        var label = Math.exp(-((x - 1) * (x - 1) + (y + 1) * (y + 1)) / 8) * 2 - 1 + randUniform(-1, 1) * noise;
+        points.push({ x: x, y: y, label: label });
+    }
+    return points;
+}
+function regressSinProduct(numSamples, noise) {
+    var points = [];
+    for (var i = 0; i < numSamples; i++) {
+        var x = randUniform(-6, 6);
+        var y = randUniform(-6, 6);
+        var label = Math.sin(x) * Math.sin(y) + randUniform(-1, 1) * noise;
+        points.push({ x: x, y: y, label: label });
+    }
+    return points;
+}
+function regressAbsDiff(numSamples, noise) {
+    var points = [];
+    for (var i = 0; i < numSamples; i++) {
+        var x = randUniform(-6, 6);
+        var y = randUniform(-6, 6);
+        var label = (Math.abs(x) - Math.abs(y)) / 6 + randUniform(-1, 1) * noise;
+        points.push({ x: x, y: y, label: label });
+    }
+    return points;
+}
+function regressLog(numSamples, noise) {
+    var points = [];
+    for (var i = 0; i < numSamples; i++) {
+        var x = randUniform(-6, 6);
+        var y = randUniform(-6, 6);
+        var label = Math.log(1 + x * x + y * y) / 4 - 1 + randUniform(-1, 1) * noise;
+        points.push({ x: x, y: y, label: label });
+    }
+    return points;
+}
+function regressTanhWave(numSamples, noise) {
+    var points = [];
+    for (var i = 0; i < numSamples; i++) {
+        var x = randUniform(-6, 6);
+        var y = randUniform(-6, 6);
+        var label = Math.tanh(x - Math.sin(y)) + randUniform(-1, 1) * noise;
+        points.push({ x: x, y: y, label: label });
+    }
+    return points;
+}
+function regressCrossRidge(numSamples, noise) {
+    var points = [];
+    for (var i = 0; i < numSamples; i++) {
+        var x = randUniform(-6, 6);
+        var y = randUniform(-6, 6);
+        var label = Math.exp(-x * x / 4) + Math.exp(-y * y / 4) - 1 + randUniform(-1, 1) * noise;
+        points.push({ x: x, y: y, label: label });
+    }
+    return points;
+}
 function randUniform(a, b) {
     return Math.random() * (b - a) + a;
 }
@@ -88907,6 +89250,16 @@ exports.classify3DMoons = classify3DMoons;
 exports.classifyOctahedronVsSphere = classifyOctahedronVsSphere;
 exports.classifyHelixPair = classifyHelixPair;
 exports.classifyPlaneStack5 = classifyPlaneStack5;
+exports.classifySphereSpiral = classifySphereSpiral;
+exports.classifyCubeLattice = classifyCubeLattice;
+exports.classifyTwoHelices = classifyTwoHelices;
+exports.classifyConeStack = classifyConeStack;
+exports.classifyTorusKnot2 = classifyTorusKnot2;
+exports.classifyPlaneVsBlob = classifyPlaneVsBlob;
+exports.classifyOctantSpheres = classifyOctantSpheres;
+exports.classifySwissRoll3Class = classifySwissRoll3Class;
+exports.classifySphericalShell2 = classifySphericalShell2;
+exports.classifyGridXor3D = classifyGridXor3D;
 function randNormal(mean, stddev) {
     var u = 0, v = 0;
     while (u === 0)
@@ -89387,6 +89740,167 @@ function classifyPlaneStack5(numSamples, noise) {
             });
         }
     });
+    return points;
+}
+function classifySphereSpiral(numSamples, noise) {
+    var points = [];
+    for (var i = 0; i < numSamples; i++) {
+        var t = (i / numSamples) * 12 * Math.PI;
+        var phi = Math.acos(1 - 2 * (i / numSamples));
+        var r = 4;
+        var x = r * Math.sin(phi) * Math.cos(t) + randNormal(0, noise);
+        var y = r * Math.sin(phi) * Math.sin(t) + randNormal(0, noise);
+        var z = r * Math.cos(phi) + randNormal(0, noise);
+        points.push({ x: x, y: y, z: z, label: i % 2 === 0 ? 1 : -1 });
+    }
+    return points;
+}
+function classifyCubeLattice(numSamples, noise) {
+    var points = [];
+    for (var i = 0; i < numSamples; i++) {
+        var gx = Math.floor(randUniform(0, 3));
+        var gy = Math.floor(randUniform(0, 3));
+        var gz = Math.floor(randUniform(0, 3));
+        var label = (gx + gy + gz) % 2 === 0 ? 1 : -1;
+        points.push({
+            x: -4 + gx * 4 + randNormal(0, 0.5 + noise),
+            y: -4 + gy * 4 + randNormal(0, 0.5 + noise),
+            z: -4 + gz * 4 + randNormal(0, 0.5 + noise),
+            label: label
+        });
+    }
+    return points;
+}
+function classifyTwoHelices(numSamples, noise) {
+    var points = [];
+    for (var i = 0; i < numSamples; i++) {
+        var label = i % 2 === 0 ? 1 : -1;
+        var t = randUniform(0, 4 * Math.PI);
+        var r = label === 1 ? 2 : 3.5;
+        points.push({
+            x: r * Math.cos(t) + randNormal(0, noise),
+            y: r * Math.sin(t) + randNormal(0, noise),
+            z: (t / (4 * Math.PI)) * 8 - 4 + randNormal(0, noise),
+            label: label
+        });
+    }
+    return points;
+}
+function classifyConeStack(numSamples, noise) {
+    var points = [];
+    for (var i = 0; i < numSamples; i++) {
+        var label = i % 2 === 0 ? 1 : -1;
+        var h = randUniform(-4, 4);
+        var radius = (label === 1 ? 0.5 : 1.5) * (4 - Math.abs(h)) / 4 + 0.3;
+        var t = randUniform(0, 2 * Math.PI);
+        points.push({
+            x: radius * 3 * Math.cos(t) + randNormal(0, noise),
+            y: radius * 3 * Math.sin(t) + randNormal(0, noise),
+            z: h + randNormal(0, noise),
+            label: label
+        });
+    }
+    return points;
+}
+function classifyTorusKnot2(numSamples, noise) {
+    var points = [];
+    for (var i = 0; i < numSamples; i++) {
+        var label = i % 2 === 0 ? 1 : -1;
+        var t = randUniform(0, 2 * Math.PI);
+        var p = 3, q = label === 1 ? 2 : 4;
+        var r = 2 + Math.cos(q * t);
+        points.push({
+            x: r * Math.cos(p * t) + randNormal(0, noise),
+            y: r * Math.sin(p * t) + randNormal(0, noise),
+            z: Math.sin(q * t) * 2 + randNormal(0, noise),
+            label: label
+        });
+    }
+    return points;
+}
+function classifyPlaneVsBlob(numSamples, noise) {
+    var points = [];
+    for (var i = 0; i < numSamples; i++) {
+        if (i % 2 === 0) {
+            points.push({
+                x: randUniform(-4, 4) + randNormal(0, noise),
+                y: randUniform(-4, 4) + randNormal(0, noise),
+                z: randNormal(0, 0.3 + noise),
+                label: 1
+            });
+        }
+        else {
+            points.push({
+                x: randNormal(0, 1 + noise),
+                y: randNormal(0, 1 + noise),
+                z: randNormal(3, 1 + noise),
+                label: -1
+            });
+        }
+    }
+    return points;
+}
+function classifyOctantSpheres(numSamples, noise) {
+    var points = [];
+    for (var i = 0; i < numSamples; i++) {
+        var ox = randUniform(-1, 1) >= 0 ? 1 : -1;
+        var oy = randUniform(-1, 1) >= 0 ? 1 : -1;
+        var oz = randUniform(-1, 1) >= 0 ? 1 : -1;
+        var theta = randUniform(0, 2 * Math.PI);
+        var phi = Math.acos(randUniform(-1, 1));
+        var r = randUniform(0, 1.3);
+        var label = ox * oy * oz > 0 ? 1 : -1;
+        points.push({
+            x: ox * 2.5 + r * Math.sin(phi) * Math.cos(theta) + randNormal(0, noise),
+            y: oy * 2.5 + r * Math.sin(phi) * Math.sin(theta) + randNormal(0, noise),
+            z: oz * 2.5 + r * Math.cos(phi) + randNormal(0, noise),
+            label: label
+        });
+    }
+    return points;
+}
+function classifySwissRoll3Class(numSamples, noise) {
+    var points = [];
+    for (var i = 0; i < numSamples; i++) {
+        var cls = i % 3;
+        var t = 1.5 * Math.PI * (1 + 2 * (cls / 3 + randUniform(0, 0.33)));
+        points.push({
+            x: t * Math.cos(t) * 0.4 + randNormal(0, noise),
+            y: randUniform(-4, 4) + randNormal(0, noise),
+            z: t * Math.sin(t) * 0.4 + randNormal(0, noise),
+            label: cls === 1 ? -1 : 1
+        });
+    }
+    return points;
+}
+function classifySphericalShell2(numSamples, noise) {
+    var points = [];
+    for (var i = 0; i < numSamples; i++) {
+        var label = i % 2 === 0 ? 1 : -1;
+        var theta = randUniform(0, 2 * Math.PI);
+        var phi = Math.acos(randUniform(-1, 1));
+        var r = label === 1 ? 2 : 4;
+        points.push({
+            x: r * Math.sin(phi) * Math.cos(theta) + randNormal(0, noise),
+            y: r * Math.sin(phi) * Math.sin(theta) + randNormal(0, noise),
+            z: r * Math.cos(phi) + randNormal(0, noise),
+            label: label
+        });
+    }
+    return points;
+}
+function classifyGridXor3D(numSamples, noise) {
+    var points = [];
+    for (var i = 0; i < numSamples; i++) {
+        var x = randUniform(-4, 4);
+        var y = randUniform(-4, 4);
+        var z = randUniform(-4, 4);
+        var cx = Math.floor((x + 4) / 2.67);
+        var cy = Math.floor((y + 4) / 2.67);
+        var cz = Math.floor((z + 4) / 2.67);
+        var label = (cx + cy + cz) % 2 === 0 ? 1 : -1;
+        points.push({ x: x + randNormal(0, noise), y: y + randNormal(0, noise), z: z + randNormal(0, noise), label: label });
+    }
     return points;
 }
 
@@ -91714,7 +92228,17 @@ var THREE_GENERATORS = {
     "3d-moons": dataset3d_1.classify3DMoons,
     "octahedron-vs-sphere": dataset3d_1.classifyOctahedronVsSphere,
     "helix-pair": dataset3d_1.classifyHelixPair,
-    "plane-stack-5": dataset3d_1.classifyPlaneStack5
+    "plane-stack-5": dataset3d_1.classifyPlaneStack5,
+    "sphere-spiral": dataset3d_1.classifySphereSpiral,
+    "cube-lattice": dataset3d_1.classifyCubeLattice,
+    "two-helices": dataset3d_1.classifyTwoHelices,
+    "cone-stack": dataset3d_1.classifyConeStack,
+    "torus-knot-2": dataset3d_1.classifyTorusKnot2,
+    "plane-vs-blob": dataset3d_1.classifyPlaneVsBlob,
+    "octant-spheres": dataset3d_1.classifyOctantSpheres,
+    "swiss-roll-3class": dataset3d_1.classifySwissRoll3Class,
+    "spherical-shell-2": dataset3d_1.classifySphericalShell2,
+    "3d-grid-xor": dataset3d_1.classifyGridXor3D
 };
 function construct3DInput(x, y, z) {
     return [x, y, z];
@@ -96016,7 +96540,27 @@ exports.datasets = {
     "target-3rings": dataset.classifyTarget3Rings,
     "double-spiral-tight": dataset.classifyDoubleSpiralTight,
     "quadrant-stripes": dataset.classifyQuadrantStripes,
-    "gaussian-ring": dataset.classifyGaussianRing
+    "gaussian-ring": dataset.classifyGaussianRing,
+    "trefoil-2d": dataset.classifyTrefoil2D,
+    "gear": dataset.classifyGear,
+    "star6": dataset.classifyStar6,
+    "crescent-moons-3": dataset.classifyCrescentMoons3,
+    "blob-lattice-16": dataset.classifyBlobLattice16,
+    "noisy-checker-6": dataset.classifyNoisyChecker6,
+    "spiral-3arm-tight": dataset.classifySpiral3ArmTight,
+    "ring-segments": dataset.classifyRingSegments,
+    "pie-slices": dataset.classifyPieSlices,
+    "droplet": dataset.classifyDroplet,
+    "infinity-symbol": dataset.classifyInfinitySymbol,
+    "bowtie": dataset.classifyBowtie,
+    "parallel-sines": dataset.classifyParallelSines,
+    "radial-gradient-class": dataset.classifyRadialGradientClass,
+    "concentric-arcs": dataset.classifyConcentricArcs,
+    "clustered-outliers": dataset.classifyClusteredOutliers,
+    "two-blobs-overlap": dataset.classifyTwoBlobsOverlap,
+    "diamond-grid": dataset.classifyDiamondGrid,
+    "wavy-stripes": dataset.classifyWavyStripes,
+    "plus-minus-grid": dataset.classifyPlusMinusGrid
 };
 exports.regDatasets = {
     "reg-maximum": dataset.regressMaximum,
@@ -96042,7 +96586,15 @@ exports.regDatasets = {
     "reg-rosenbrock-slice": dataset.regressRosenbrockSlice,
     "reg-checkerboard-smooth": dataset.regressCheckerboardSmooth,
     "reg-peaks": dataset.regressPeaks,
-    "reg-mexican-hat": dataset.regressMexicanHat
+    "reg-mexican-hat": dataset.regressMexicanHat,
+    "reg-ripple2": dataset.regressRipple2,
+    "reg-saddle2": dataset.regressSaddle2,
+    "reg-gaussian-hill": dataset.regressGaussianHill,
+    "reg-sin-product": dataset.regressSinProduct,
+    "reg-abs-diff": dataset.regressAbsDiff,
+    "reg-log": dataset.regressLog,
+    "reg-tanh-wave": dataset.regressTanhWave,
+    "reg-cross-ridge": dataset.regressCrossRidge
 };
 function getKeyFromValue(obj, value) {
     for (var key in obj) {

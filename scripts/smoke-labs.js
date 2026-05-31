@@ -20,7 +20,7 @@ const LABS = [
   'bayesnn', 'dtree', 'svm', 'glm', 'gp', 'clustering', 'dimred', 'som',
   'rl', 'hopfield', 'genetic', 'bandit', 'optviz', 'markov', 'mcmc',
   'ca', 'fourier', 'kalman', 'rbm', 'vae', 'pso', 'snn', 'rd',
-  'boids', 'aco', 'nca', 'knn'
+  'boids', 'aco', 'nca', 'knn', 'pathfind', 'attractor', 'fractal', 'actfn'
 ];
 
 function makeCtx() {

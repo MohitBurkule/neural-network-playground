@@ -578,3 +578,173 @@ export function classifyPlaneStack5(numSamples: number, noise: number): Example3
   });
   return points;
 }
+
+export function classifySphereSpiral(numSamples: number, noise: number): Example3D[] {
+  const points: Example3D[] = [];
+  for (let i = 0; i < numSamples; i++) {
+    const t = (i / numSamples) * 12 * Math.PI;
+    const phi = Math.acos(1 - 2 * (i / numSamples));
+    const r = 4;
+    const x = r * Math.sin(phi) * Math.cos(t) + randNormal(0, noise);
+    const y = r * Math.sin(phi) * Math.sin(t) + randNormal(0, noise);
+    const z = r * Math.cos(phi) + randNormal(0, noise);
+    points.push({x, y, z, label: i % 2 === 0 ? 1 : -1});
+  }
+  return points;
+}
+
+export function classifyCubeLattice(numSamples: number, noise: number): Example3D[] {
+  const points: Example3D[] = [];
+  for (let i = 0; i < numSamples; i++) {
+    const gx = Math.floor(randUniform(0, 3));
+    const gy = Math.floor(randUniform(0, 3));
+    const gz = Math.floor(randUniform(0, 3));
+    const label = (gx + gy + gz) % 2 === 0 ? 1 : -1;
+    points.push({
+      x: -4 + gx * 4 + randNormal(0, 0.5 + noise),
+      y: -4 + gy * 4 + randNormal(0, 0.5 + noise),
+      z: -4 + gz * 4 + randNormal(0, 0.5 + noise),
+      label
+    });
+  }
+  return points;
+}
+
+export function classifyTwoHelices(numSamples: number, noise: number): Example3D[] {
+  const points: Example3D[] = [];
+  for (let i = 0; i < numSamples; i++) {
+    const label = i % 2 === 0 ? 1 : -1;
+    const t = randUniform(0, 4 * Math.PI);
+    const r = label === 1 ? 2 : 3.5;
+    points.push({
+      x: r * Math.cos(t) + randNormal(0, noise),
+      y: r * Math.sin(t) + randNormal(0, noise),
+      z: (t / (4 * Math.PI)) * 8 - 4 + randNormal(0, noise),
+      label
+    });
+  }
+  return points;
+}
+
+export function classifyConeStack(numSamples: number, noise: number): Example3D[] {
+  const points: Example3D[] = [];
+  for (let i = 0; i < numSamples; i++) {
+    const label = i % 2 === 0 ? 1 : -1;
+    const h = randUniform(-4, 4);
+    const radius = (label === 1 ? 0.5 : 1.5) * (4 - Math.abs(h)) / 4 + 0.3;
+    const t = randUniform(0, 2 * Math.PI);
+    points.push({
+      x: radius * 3 * Math.cos(t) + randNormal(0, noise),
+      y: radius * 3 * Math.sin(t) + randNormal(0, noise),
+      z: h + randNormal(0, noise),
+      label
+    });
+  }
+  return points;
+}
+
+export function classifyTorusKnot2(numSamples: number, noise: number): Example3D[] {
+  const points: Example3D[] = [];
+  for (let i = 0; i < numSamples; i++) {
+    const label = i % 2 === 0 ? 1 : -1;
+    const t = randUniform(0, 2 * Math.PI);
+    const p = 3, q = label === 1 ? 2 : 4;
+    const r = 2 + Math.cos(q * t);
+    points.push({
+      x: r * Math.cos(p * t) + randNormal(0, noise),
+      y: r * Math.sin(p * t) + randNormal(0, noise),
+      z: Math.sin(q * t) * 2 + randNormal(0, noise),
+      label
+    });
+  }
+  return points;
+}
+
+export function classifyPlaneVsBlob(numSamples: number, noise: number): Example3D[] {
+  const points: Example3D[] = [];
+  for (let i = 0; i < numSamples; i++) {
+    if (i % 2 === 0) {
+      points.push({
+        x: randUniform(-4, 4) + randNormal(0, noise),
+        y: randUniform(-4, 4) + randNormal(0, noise),
+        z: randNormal(0, 0.3 + noise),
+        label: 1
+      });
+    } else {
+      points.push({
+        x: randNormal(0, 1 + noise),
+        y: randNormal(0, 1 + noise),
+        z: randNormal(3, 1 + noise),
+        label: -1
+      });
+    }
+  }
+  return points;
+}
+
+export function classifyOctantSpheres(numSamples: number, noise: number): Example3D[] {
+  const points: Example3D[] = [];
+  for (let i = 0; i < numSamples; i++) {
+    const ox = randUniform(-1, 1) >= 0 ? 1 : -1;
+    const oy = randUniform(-1, 1) >= 0 ? 1 : -1;
+    const oz = randUniform(-1, 1) >= 0 ? 1 : -1;
+    const theta = randUniform(0, 2 * Math.PI);
+    const phi = Math.acos(randUniform(-1, 1));
+    const r = randUniform(0, 1.3);
+    const label = ox * oy * oz > 0 ? 1 : -1;
+    points.push({
+      x: ox * 2.5 + r * Math.sin(phi) * Math.cos(theta) + randNormal(0, noise),
+      y: oy * 2.5 + r * Math.sin(phi) * Math.sin(theta) + randNormal(0, noise),
+      z: oz * 2.5 + r * Math.cos(phi) + randNormal(0, noise),
+      label
+    });
+  }
+  return points;
+}
+
+export function classifySwissRoll3Class(numSamples: number, noise: number): Example3D[] {
+  const points: Example3D[] = [];
+  for (let i = 0; i < numSamples; i++) {
+    const cls = i % 3;
+    const t = 1.5 * Math.PI * (1 + 2 * (cls / 3 + randUniform(0, 0.33)));
+    points.push({
+      x: t * Math.cos(t) * 0.4 + randNormal(0, noise),
+      y: randUniform(-4, 4) + randNormal(0, noise),
+      z: t * Math.sin(t) * 0.4 + randNormal(0, noise),
+      label: cls === 1 ? -1 : 1
+    });
+  }
+  return points;
+}
+
+export function classifySphericalShell2(numSamples: number, noise: number): Example3D[] {
+  const points: Example3D[] = [];
+  for (let i = 0; i < numSamples; i++) {
+    const label = i % 2 === 0 ? 1 : -1;
+    const theta = randUniform(0, 2 * Math.PI);
+    const phi = Math.acos(randUniform(-1, 1));
+    const r = label === 1 ? 2 : 4;
+    points.push({
+      x: r * Math.sin(phi) * Math.cos(theta) + randNormal(0, noise),
+      y: r * Math.sin(phi) * Math.sin(theta) + randNormal(0, noise),
+      z: r * Math.cos(phi) + randNormal(0, noise),
+      label
+    });
+  }
+  return points;
+}
+
+export function classifyGridXor3D(numSamples: number, noise: number): Example3D[] {
+  const points: Example3D[] = [];
+  for (let i = 0; i < numSamples; i++) {
+    const x = randUniform(-4, 4);
+    const y = randUniform(-4, 4);
+    const z = randUniform(-4, 4);
+    const cx = Math.floor((x + 4) / 2.67);
+    const cy = Math.floor((y + 4) / 2.67);
+    const cz = Math.floor((z + 4) / 2.67);
+    const label = (cx + cy + cz) % 2 === 0 ? 1 : -1;
+    points.push({x: x + randNormal(0, noise), y: y + randNormal(0, noise), z: z + randNormal(0, noise), label});
+  }
+  return points;
+}

@@ -1,0 +1,341 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Activation Function Explorer</title>
+  <style>
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+    body {
+      font-family: 'Segoe UI', Arial, sans-serif;
+      background: #0f0f1a;
+      color: #d4d4e8;
+      min-height: 100vh;
+      padding: 16px;
+      font-size: 13px;
+    }
+
+    /* ── Header ── */
+    .header {
+      margin-bottom: 16px;
+    }
+
+    .header h1 {
+      font-size: 1.65rem;
+      font-weight: 700;
+      color: #a78bfa;
+      letter-spacing: 0.4px;
+      margin-bottom: 4px;
+    }
+
+    .header .subtitle {
+      font-size: 0.82rem;
+      color: #7777a0;
+    }
+
+    /* ── Layout ── */
+    .main-layout {
+      display: flex;
+      gap: 18px;
+      align-items: flex-start;
+    }
+
+    .sidebar {
+      width: 220px;
+      flex-shrink: 0;
+      background: #15152a;
+      border: 1px solid #2a2a4a;
+      border-radius: 10px;
+      padding: 12px 10px;
+      max-height: 90vh;
+      overflow-y: auto;
+      scrollbar-width: thin;
+      scrollbar-color: #3a3a6a #15152a;
+    }
+
+    .content {
+      flex: 1;
+      min-width: 0;
+      display: flex;
+      flex-direction: column;
+      gap: 16px;
+    }
+
+    /* ── Controls ── */
+    .ctrl-section {
+      margin-bottom: 12px;
+    }
+
+    .ctrl-label {
+      font-size: 0.72rem;
+      font-weight: 700;
+      text-transform: uppercase;
+      letter-spacing: 0.8px;
+      color: #8888bb;
+      margin-bottom: 6px;
+    }
+
+    .ctrl-row {
+      display: flex;
+      align-items: center;
+      gap: 6px;
+      margin-bottom: 5px;
+      flex-wrap: wrap;
+    }
+
+    .ctrl-row label {
+      font-size: 0.78rem;
+      color: #9999bb;
+      min-width: 36px;
+    }
+
+    .ctrl-row input[type="range"] {
+      flex: 1;
+      min-width: 60px;
+      accent-color: #a78bfa;
+      cursor: pointer;
+    }
+
+    .ctrl-row span {
+      font-size: 0.75rem;
+      color: #c4c4e8;
+      min-width: 28px;
+      text-align: right;
+    }
+
+    .toggle-row {
+      gap: 8px;
+    }
+
+    .toggle-row input[type="checkbox"] {
+      accent-color: #a78bfa;
+      width: 14px; height: 14px;
+      cursor: pointer;
+    }
+
+    .toggle-row label {
+      font-size: 0.8rem;
+      cursor: pointer;
+      color: #c0c0de;
+    }
+
+    /* ── Function groups ── */
+    .fn-group {
+      margin-bottom: 10px;
+    }
+
+    .fn-group-label {
+      font-size: 0.68rem;
+      font-weight: 700;
+      text-transform: uppercase;
+      letter-spacing: 0.6px;
+      color: #6666aa;
+      margin-bottom: 3px;
+      border-bottom: 1px solid #2a2a4a;
+      padding-bottom: 2px;
+    }
+
+    .fn-checkbox-row {
+      display: flex;
+      align-items: center;
+      gap: 5px;
+      padding: 2px 0;
+    }
+
+    .fn-checkbox-row input[type="checkbox"] {
+      accent-color: #a78bfa;
+      width: 13px; height: 13px;
+      cursor: pointer;
+    }
+
+    .fn-checkbox-row label {
+      font-size: 0.78rem;
+      cursor: pointer;
+      color: #c8c8e8;
+      flex: 1;
+    }
+
+    .color-swatch {
+      display: inline-block;
+      width: 10px; height: 10px;
+      border-radius: 2px;
+      flex-shrink: 0;
+    }
+
+    /* ── Chart area ── */
+    .chart-area {
+      background: #15152a;
+      border: 1px solid #2a2a4a;
+      border-radius: 10px;
+      padding: 12px;
+      overflow-x: auto;
+    }
+
+    .chart-svg {
+      display: block;
+    }
+
+    /* SVG styles */
+    .axis text {
+      fill: #8888bb;
+      font-size: 10px;
+    }
+
+    .axis path, .axis line {
+      stroke: #3a3a6a;
+    }
+
+    .zero-line {
+      stroke: #4a4a7a;
+      stroke-width: 1;
+      stroke-dasharray: 4,3;
+    }
+
+    .grid-line {
+      stroke: #1e1e38;
+      stroke-width: 1;
+    }
+
+    .axis-label {
+      fill: #6666aa;
+      font-size: 11px;
+    }
+
+    .hover-line {
+      stroke: #ffffff;
+      stroke-width: 1;
+      stroke-dasharray: 3,3;
+      opacity: 0.4;
+      pointer-events: none;
+    }
+
+    /* ── Hover info ── */
+    .hover-info {
+      background: #15152a;
+      border: 1px solid #2a2a4a;
+      border-radius: 8px;
+      padding: 8px 12px;
+      font-size: 0.75rem;
+      color: #9999cc;
+      min-height: 34px;
+      line-height: 1.6;
+      white-space: pre-wrap;
+      word-break: break-all;
+    }
+
+    /* ── Gradient view ── */
+    .grad-area {
+      background: #15152a;
+      border: 1px solid #2a2a4a;
+      border-radius: 10px;
+      padding: 12px;
+      overflow-x: auto;
+    }
+
+    .panel-title {
+      font-size: 0.82rem;
+      font-weight: 700;
+      color: #a78bfa;
+      margin-bottom: 4px;
+      letter-spacing: 0.4px;
+    }
+
+    .grad-subtitle {
+      font-size: 0.73rem;
+      color: #6666aa;
+      margin-bottom: 8px;
+    }
+
+    .vanish-band {
+      fill: #f8717120;
+    }
+
+    .vanish-label {
+      font-size: 9.5px;
+    }
+
+    /* ── Table ── */
+    .table-area {
+      background: #15152a;
+      border: 1px solid #2a2a4a;
+      border-radius: 10px;
+      padding: 12px;
+    }
+
+    .table-wrap {
+      overflow-x: auto;
+      margin-top: 8px;
+    }
+
+    .props-table {
+      width: 100%;
+      border-collapse: collapse;
+      font-size: 0.78rem;
+    }
+
+    .props-table thead tr {
+      background: #1e1e38;
+    }
+
+    .props-table th {
+      padding: 7px 10px;
+      text-align: left;
+      color: #9090cc;
+      font-weight: 600;
+      font-size: 0.73rem;
+      text-transform: uppercase;
+      letter-spacing: 0.5px;
+      border-bottom: 1px solid #2a2a4a;
+      white-space: nowrap;
+    }
+
+    .props-table td {
+      padding: 6px 10px;
+      border-bottom: 1px solid #1e1e38;
+      color: #c4c4e0;
+      vertical-align: middle;
+    }
+
+    .props-table td:first-child {
+      display: flex;
+      align-items: center;
+      gap: 6px;
+      white-space: nowrap;
+    }
+
+    .props-table tbody tr:hover {
+      background: #1e1e38;
+    }
+
+    .empty-row {
+      text-align: center;
+      color: #555580;
+      padding: 20px !important;
+    }
+
+    /* ── Badges ── */
+    .badge {
+      display: inline-block;
+      padding: 2px 7px;
+      border-radius: 4px;
+      font-size: 0.7rem;
+      font-weight: 600;
+    }
+
+    .badge-yes  { background: #16401e; color: #4ade80; }
+    .badge-no   { background: #1e1e38; color: #6666aa; }
+    .badge-ok   { background: #16401e; color: #4ade80; }
+    .badge-danger { background: #3a1010; color: #f87171; }
+
+    /* ── Scrollbar ── */
+    ::-webkit-scrollbar { width: 6px; height: 6px; }
+    ::-webkit-scrollbar-track { background: #0f0f1a; }
+    ::-webkit-scrollbar-thumb { background: #3a3a6a; border-radius: 3px; }
+  </style>
+</head>
+<body>
+  <div id="app"></div>
+  <script src="bundleactfn.js"></script>
+</body>
+</html>

@@ -4,658 +4,775 @@
 
 },{}],2:[function(require,module,exports){
 "use strict";
-var __spreadArray = (this && this.__spreadArray) || function (to, from, pack) {
-    if (pack || arguments.length === 2) for (var i = 0, l = from.length, ar; i < l; i++) {
-        if (ar || !(i in from)) {
-            if (!ar) ar = Array.prototype.slice.call(from, 0, i);
-            ar[i] = from[i];
-        }
-    }
-    return to.concat(ar || Array.prototype.slice.call(from));
-};
 Object.defineProperty(exports, "__esModule", { value: true });
 var d3 = require("d3");
-function randn() {
-    var u = 0, v = 0;
-    while (u === 0)
-        u = Math.random();
-    while (v === 0)
-        v = Math.random();
-    return Math.sqrt(-2.0 * Math.log(u)) * Math.cos(2.0 * Math.PI * v);
+function sigmoid(x) {
+    return 1 / (1 + Math.exp(-x));
 }
-function randMatrix(rows, cols, scale) {
-    if (scale === void 0) { scale = 0.1; }
-    return Array.from({ length: rows }, function () {
-        return Array.from({ length: cols }, function () { return randn() * scale; });
-    });
+function erf(x) {
+    var t = 1 / (1 + 0.3275911 * Math.abs(x));
+    var poly = t * (0.254829592 + t * (-0.284496736 + t * (1.421413741 + t * (-1.453152027 + t * 1.061405429))));
+    var val = 1 - poly * Math.exp(-x * x);
+    return x >= 0 ? val : -val;
 }
-function zeroMatrix(rows, cols) {
-    return Array.from({ length: rows }, function () { return new Array(cols).fill(0); });
+function gelu(x) {
+    return 0.5 * x * (1 + erf(x / Math.SQRT2));
 }
-function zeroVec(n) {
-    return new Array(n).fill(0);
+function geluD(x) {
+    var phi = Math.exp(-0.5 * x * x) / Math.sqrt(2 * Math.PI);
+    var Phi = 0.5 * (1 + erf(x / Math.SQRT2));
+    return Phi + x * phi;
 }
-function matmul(A, B) {
-    var m = A.length, k = A[0].length, n = B[0].length;
-    var C = zeroMatrix(m, n);
-    for (var i = 0; i < m; i++)
-        for (var j = 0; j < n; j++)
-            for (var p = 0; p < k; p++)
-                C[i][j] += A[i][p] * B[p][j];
-    return C;
+function mish(x) {
+    var sp = Math.log(1 + Math.exp(x));
+    return x * Math.tanh(sp);
 }
-function transpose(A) {
-    var m = A.length, n = A[0].length;
-    var T = zeroMatrix(n, m);
-    for (var i = 0; i < m; i++)
-        for (var j = 0; j < n; j++)
-            T[j][i] = A[i][j];
-    return T;
+function mishD(x) {
+    var ex = Math.exp(x);
+    var sp = Math.log(1 + ex);
+    var th = Math.tanh(sp);
+    var sech2 = 1 - th * th;
+    return th + x * sech2 * (ex / (1 + ex));
 }
-function softmax(logits) {
-    var mx = Math.max.apply(Math, logits);
-    var exp = logits.map(function (x) { return Math.exp(x - mx); });
-    var sum = exp.reduce(function (a, b) { return a + b; }, 0);
-    return exp.map(function (x) { return x / sum; });
+function sinc(x) {
+    if (Math.abs(x) < 1e-9)
+        return 1;
+    return Math.sin(x) / x;
 }
-function relu(x) { return x > 0 ? x : 0; }
-function reluDer(x) { return x > 0 ? 1 : 0; }
-function crossEntropyLoss(logits, targets) {
-    var loss = 0;
-    for (var t = 0; t < targets.length; t++) {
-        var probs = softmax(logits[t]);
-        loss -= Math.log(Math.max(probs[targets[t]], 1e-9));
-    }
-    return loss / targets.length;
+function sincD(x) {
+    if (Math.abs(x) < 1e-9)
+        return 0;
+    return (Math.cos(x) * x - Math.sin(x)) / (x * x);
 }
-var VOCAB_SIZE = 8;
-var SEQ_LEN = 6;
-var D_MODEL = 16;
-var D_HEAD = 8;
-var D_FF = 32;
-var N_HEADS = 2;
-function initParams() {
-    var scale = 0.1;
-    var heads = N_HEADS;
-    return {
-        E: randMatrix(VOCAB_SIZE, D_MODEL, scale),
-        dE: zeroMatrix(VOCAB_SIZE, D_MODEL),
-        PE: randMatrix(SEQ_LEN, D_MODEL, scale),
-        dPE: zeroMatrix(SEQ_LEN, D_MODEL),
-        Wq: Array.from({ length: heads }, function () { return randMatrix(D_MODEL, D_HEAD, scale); }),
-        dWq: Array.from({ length: heads }, function () { return zeroMatrix(D_MODEL, D_HEAD); }),
-        Wk: Array.from({ length: heads }, function () { return randMatrix(D_MODEL, D_HEAD, scale); }),
-        dWk: Array.from({ length: heads }, function () { return zeroMatrix(D_MODEL, D_HEAD); }),
-        Wv: Array.from({ length: heads }, function () { return randMatrix(D_MODEL, D_HEAD, scale); }),
-        dWv: Array.from({ length: heads }, function () { return zeroMatrix(D_MODEL, D_HEAD); }),
-        Wo: randMatrix(heads * D_HEAD, D_MODEL, scale),
-        dWo: zeroMatrix(heads * D_HEAD, D_MODEL),
-        W1: randMatrix(D_MODEL, D_FF, scale),
-        dW1: zeroMatrix(D_MODEL, D_FF),
-        b1: zeroVec(D_FF),
-        db1: zeroVec(D_FF),
-        W2: randMatrix(D_FF, D_MODEL, scale),
-        dW2: zeroMatrix(D_FF, D_MODEL),
-        b2: zeroVec(D_MODEL),
-        db2: zeroVec(D_MODEL),
-        Wout: randMatrix(D_MODEL, VOCAB_SIZE, scale),
-        dWout: zeroMatrix(D_MODEL, VOCAB_SIZE),
-        bout: zeroVec(VOCAB_SIZE),
-        dbout: zeroVec(VOCAB_SIZE)
-    };
+function gaussian(x) {
+    return Math.exp(-x * x);
 }
-function zeroGrads(p) {
-    var zero2d = function (m) { return m.forEach(function (r) { return r.fill(0); }); };
-    var zero3d = function (t) { return t.forEach(function (m) { return m.forEach(function (r) { return r.fill(0); }); }); };
-    zero2d(p.dE);
-    zero2d(p.dPE);
-    zero3d(p.dWq);
-    zero3d(p.dWk);
-    zero3d(p.dWv);
-    zero2d(p.dWo);
-    zero2d(p.dW1);
-    p.db1.fill(0);
-    zero2d(p.dW2);
-    p.db2.fill(0);
-    zero2d(p.dWout);
-    p.dbout.fill(0);
+function gaussianD(x) {
+    return -2 * x * Math.exp(-x * x);
 }
-function sgdStep(p, lr) {
-    var upd2d = function (W, dW) {
-        for (var i = 0; i < W.length; i++)
-            for (var j = 0; j < W[0].length; j++)
-                W[i][j] -= lr * dW[i][j];
-    };
-    var upd3d = function (T, dT) { return T.forEach(function (W, h) { return upd2d(W, dT[h]); }); };
-    var upd1d = function (b, db) { return b.forEach(function (_, i) { return b[i] -= lr * db[i]; }); };
-    upd2d(p.E, p.dE);
-    upd2d(p.PE, p.dPE);
-    upd3d(p.Wq, p.dWq);
-    upd3d(p.Wk, p.dWk);
-    upd3d(p.Wv, p.dWv);
-    upd2d(p.Wo, p.dWo);
-    upd2d(p.W1, p.dW1);
-    upd1d(p.b1, p.db1);
-    upd2d(p.W2, p.dW2);
-    upd1d(p.b2, p.db2);
-    upd2d(p.Wout, p.dWout);
-    upd1d(p.bout, p.dbout);
+function snake(x) {
+    return x + Math.sin(x) * Math.sin(x);
 }
-function forward(tokens, p) {
-    var T = tokens.length;
-    var X = tokens.map(function (tok, pos) {
-        return p.E[tok].map(function (e, d) { return e + p.PE[pos][d]; });
-    });
-    var Q = [], K = [], V = [];
-    var scores = [], attnW = [], attnOut = [];
-    for (var h = 0; h < N_HEADS; h++) {
-        Q.push(matmul(X, p.Wq[h]));
-        K.push(matmul(X, p.Wk[h]));
-        V.push(matmul(X, p.Wv[h]));
-        var scale = 1.0 / Math.sqrt(D_HEAD);
-        var sc = matmul(Q[h], transpose(K[h]));
-        for (var i = 0; i < T; i++)
-            for (var j = 0; j < T; j++)
-                sc[i][j] *= scale;
-        scores.push(sc);
-        var aw = sc.map(function (row) { return softmax(row); });
-        attnW.push(aw);
-        attnOut.push(matmul(aw, V[h]));
-    }
-    var concat = Array.from({ length: T }, function (_, i) {
-        var row = [];
-        for (var h = 0; h < N_HEADS; h++)
-            row.push.apply(row, attnOut[h][i]);
-        return row;
-    });
-    var attnProj = matmul(concat, p.Wo);
-    var res1 = X.map(function (row, i) { return row.map(function (x, d) { return x + attnProj[i][d]; }); });
-    var ffn1pre = matmul(res1, p.W1);
-    for (var i = 0; i < T; i++)
-        for (var j = 0; j < D_FF; j++)
-            ffn1pre[i][j] += p.b1[j];
-    var ffn1 = ffn1pre.map(function (row) { return row.map(relu); });
-    var ffn2 = matmul(ffn1, p.W2);
-    for (var i = 0; i < T; i++)
-        for (var j = 0; j < D_MODEL; j++)
-            ffn2[i][j] += p.b2[j];
-    var res2 = res1.map(function (row, i) { return row.map(function (x, d) { return x + ffn2[i][d]; }); });
-    var logits = matmul(res2, p.Wout);
-    for (var i = 0; i < T; i++)
-        for (var j = 0; j < VOCAB_SIZE; j++)
-            logits[i][j] += p.bout[j];
-    return { tokens: tokens, X: X, Q: Q, K: K, V: V, scores: scores, attnW: attnW, attnOut: attnOut, concat: concat, attnProj: attnProj, res1: res1, ffn1pre: ffn1pre, ffn1: ffn1, ffn2: ffn2, res2: res2, logits: logits };
+function snakeD(x) {
+    return 1 + Math.sin(2 * x);
 }
-function backward(cache, targets, p) {
-    var T = SEQ_LEN;
-    var dLogits = cache.logits.map(function (row, i) {
-        var probs = softmax(row);
-        return probs.map(function (pr, j) { return (pr - (j === targets[i] ? 1 : 0)) / T; });
-    });
-    for (var i = 0; i < T; i++)
-        for (var j = 0; j < VOCAB_SIZE; j++)
-            p.dbout[j] += dLogits[i][j];
-    var dWout_contrib = matmul(transpose(cache.res2), dLogits);
-    for (var d = 0; d < D_MODEL; d++)
-        for (var j = 0; j < VOCAB_SIZE; j++)
-            p.dWout[d][j] += dWout_contrib[d][j];
-    var dRes2 = matmul(dLogits, transpose(p.Wout));
-    var dFfn2 = dRes2.map(function (r) { return __spreadArray([], r, true); });
-    var dRes1_from_ffn = dRes2.map(function (r) { return __spreadArray([], r, true); });
-    for (var i = 0; i < T; i++)
-        for (var j = 0; j < D_MODEL; j++)
-            p.db2[j] += dFfn2[i][j];
-    var dW2_c = matmul(transpose(cache.ffn1), dFfn2);
-    for (var d = 0; d < D_FF; d++)
-        for (var j = 0; j < D_MODEL; j++)
-            p.dW2[d][j] += dW2_c[d][j];
-    var dFfn1 = matmul(dFfn2, transpose(p.W2));
-    var dFfn1pre = dFfn1.map(function (row, i) {
-        return row.map(function (g, j) { return g * reluDer(cache.ffn1pre[i][j]); });
-    });
-    for (var i = 0; i < T; i++)
-        for (var j = 0; j < D_FF; j++)
-            p.db1[j] += dFfn1pre[i][j];
-    var dW1_c = matmul(transpose(cache.res1), dFfn1pre);
-    for (var d = 0; d < D_MODEL; d++)
-        for (var j = 0; j < D_FF; j++)
-            p.dW1[d][j] += dW1_c[d][j];
-    var dRes1_from_w1 = matmul(dFfn1pre, transpose(p.W1));
-    var dRes1 = dRes1_from_ffn.map(function (row, i) {
-        return row.map(function (g, d) { return g + dRes1_from_w1[i][d]; });
-    });
-    var dAttnProj = dRes1.map(function (r) { return __spreadArray([], r, true); });
-    var dX = dRes1.map(function (r) { return __spreadArray([], r, true); });
-    var dWo_c = matmul(transpose(cache.concat), dAttnProj);
-    for (var d = 0; d < N_HEADS * D_HEAD; d++)
-        for (var j = 0; j < D_MODEL; j++)
-            p.dWo[d][j] += dWo_c[d][j];
-    var dConcat = matmul(dAttnProj, transpose(p.Wo));
-    var _loop_1 = function (h) {
-        var start = h * D_HEAD;
-        var dAttnOut_h = dConcat.map(function (row) { return row.slice(start, start + D_HEAD); });
-        var dV_h = matmul(transpose(cache.attnW[h]), dAttnOut_h);
-        var dAttnW_h = matmul(dAttnOut_h, transpose(cache.V[h]));
-        var dWv_c = matmul(transpose(cache.X), dV_h);
-        for (var d = 0; d < D_MODEL; d++)
-            for (var j = 0; j < D_HEAD; j++)
-                p.dWv[h][d][j] += dWv_c[d][j];
-        var scale = 1.0 / Math.sqrt(D_HEAD);
-        var dScores_h = dAttnW_h.map(function (row, i) {
-            var aw = cache.attnW[h][i];
-            var dotProduct = row.reduce(function (s, g, j) { return s + g * aw[j]; }, 0);
-            return aw.map(function (a, j) { return scale * a * (row[j] - dotProduct); });
-        });
-        var dQ_h = matmul(dScores_h, cache.K[h]);
-        var dK_h = matmul(transpose(dScores_h), cache.Q[h]);
-        var dWq_c = matmul(transpose(cache.X), dQ_h);
-        var dWk_c = matmul(transpose(cache.X), dK_h);
-        for (var d = 0; d < D_MODEL; d++)
-            for (var j = 0; j < D_HEAD; j++) {
-                p.dWq[h][d][j] += dWq_c[d][j];
-                p.dWk[h][d][j] += dWk_c[d][j];
-            }
-        var dX_h_q = matmul(dQ_h, transpose(p.Wq[h]));
-        var dX_h_k = matmul(dK_h, transpose(p.Wk[h]));
-        var dX_h_v = matmul(dV_h, transpose(p.Wv[h]));
-        for (var i = 0; i < T; i++)
-            for (var d = 0; d < D_MODEL; d++)
-                dX[i][d] += dX_h_q[i][d] + dX_h_k[i][d] + dX_h_v[i][d];
-    };
-    for (var h = 0; h < N_HEADS; h++) {
-        _loop_1(h);
-    }
-    for (var i = 0; i < T; i++) {
-        var tok = cache.tokens[i];
-        for (var d = 0; d < D_MODEL; d++) {
-            p.dE[tok][d] += dX[i][d];
-            p.dPE[i][d] += dX[i][d];
+function bentIdentity(x) {
+    return (Math.sqrt(x * x + 1) - 1) / 2 + x;
+}
+function bentIdentityD(x) {
+    return x / (2 * Math.sqrt(x * x + 1)) + 1;
+}
+function softplus(x) {
+    if (x > 20)
+        return x;
+    return Math.log(1 + Math.exp(x));
+}
+function softplusD(x) {
+    return sigmoid(x);
+}
+function softsign(x) {
+    return x / (1 + Math.abs(x));
+}
+function softsignD(x) {
+    var d = 1 + Math.abs(x);
+    return 1 / (d * d);
+}
+function logSigmoid(x) {
+    if (x >= 0)
+        return -Math.log(1 + Math.exp(-x));
+    return x - Math.log(1 + Math.exp(x));
+}
+function logSigmoidD(x) {
+    return 1 - sigmoid(x);
+}
+function hardSigmoid(x) {
+    if (x <= -3)
+        return 0;
+    if (x >= 3)
+        return 1;
+    return x / 6 + 0.5;
+}
+function hardSigmoidD(x) {
+    if (x <= -3 || x >= 3)
+        return 0;
+    return 1 / 6;
+}
+function hardTanh(x) {
+    if (x < -1)
+        return -1;
+    if (x > 1)
+        return 1;
+    return x;
+}
+function hardTanhD(x) {
+    if (x < -1 || x > 1)
+        return 0;
+    return 1;
+}
+function hardSwish(x) {
+    if (x <= -3)
+        return 0;
+    if (x >= 3)
+        return x;
+    return x * (x + 3) / 6;
+}
+function hardSwishD(x) {
+    if (x <= -3)
+        return 0;
+    if (x >= 3)
+        return 1;
+    return (2 * x + 3) / 6;
+}
+function relu6(x) {
+    return Math.min(Math.max(0, x), 6);
+}
+function relu6D(x) {
+    if (x <= 0 || x >= 6)
+        return 0;
+    return 1;
+}
+function tanhshrink(x) {
+    return x - Math.tanh(x);
+}
+function tanhshrinkD(x) {
+    var t = Math.tanh(x);
+    return 1 - (1 - t * t);
+}
+function arctan(x) {
+    return Math.atan(x);
+}
+function arctanD(x) {
+    return 1 / (1 + x * x);
+}
+function bipolarSigmoid(x) {
+    var ex = Math.exp(-x);
+    return (1 - ex) / (1 + ex);
+}
+function bipolarSigmoidD(x) {
+    var s = bipolarSigmoid(x);
+    return 0.5 * (1 - s * s);
+}
+function celu(x, alpha) {
+    if (x >= 0)
+        return x;
+    return alpha * (Math.exp(x / alpha) - 1);
+}
+function celuD(x, alpha) {
+    if (x >= 0)
+        return 1;
+    return Math.exp(x / alpha);
+}
+var SELU_LAMBDA = 1.0507009873554804934193349852946;
+var SELU_ALPHA = 1.6732632423543772848170429916717;
+function selu(x) {
+    if (x >= 0)
+        return SELU_LAMBDA * x;
+    return SELU_LAMBDA * SELU_ALPHA * (Math.exp(x) - 1);
+}
+function seluD(x) {
+    if (x >= 0)
+        return SELU_LAMBDA;
+    return SELU_LAMBDA * SELU_ALPHA * Math.exp(x);
+}
+var ACTIVATION_FUNCTIONS = [
+    {
+        name: "ReLU", group: "ReLU family", color: "#f97316",
+        fn: function (x) { return Math.max(0, x); },
+        dfn: function (x) { return x > 0 ? 1 : 0; }
+    },
+    {
+        name: "Leaky ReLU", group: "ReLU family", color: "#fb923c",
+        fn: function (x, p) { return x >= 0 ? x : 0.01 * x; },
+        dfn: function (x) { return x >= 0 ? 1 : 0.01; }
+    },
+    {
+        name: "PReLU", group: "ReLU family", color: "#fdba74",
+        fn: function (x, p) { return x >= 0 ? x : p.preluAlpha * x; },
+        dfn: function (x, p) { return x >= 0 ? 1 : p.preluAlpha; }
+    },
+    {
+        name: "ELU", group: "ReLU family", color: "#a78bfa",
+        fn: function (x, p) { return x >= 0 ? x : p.eluAlpha * (Math.exp(x) - 1); },
+        dfn: function (x, p) { return x >= 0 ? 1 : p.eluAlpha * Math.exp(x); }
+    },
+    {
+        name: "SELU", group: "ReLU family", color: "#c4b5fd",
+        fn: function (x) { return selu(x); },
+        dfn: function (x) { return seluD(x); }
+    },
+    {
+        name: "CELU", group: "ReLU family", color: "#ddd6fe",
+        fn: function (x, p) { return celu(x, p.eluAlpha); },
+        dfn: function (x, p) { return celuD(x, p.eluAlpha); }
+    },
+    {
+        name: "ReLU6", group: "ReLU family", color: "#ea580c",
+        fn: function (x) { return relu6(x); },
+        dfn: function (x) { return relu6D(x); }
+    },
+    {
+        name: "GELU", group: "Smooth", color: "#22d3ee",
+        fn: function (x) { return gelu(x); },
+        dfn: function (x) { return geluD(x); }
+    },
+    {
+        name: "Swish/SiLU", group: "Smooth", color: "#06b6d4",
+        fn: function (x, p) { return x * sigmoid(p.swishBeta * x); },
+        dfn: function (x, p) {
+            var s = sigmoid(p.swishBeta * x);
+            return s + p.swishBeta * x * s * (1 - s);
         }
-    }
-}
-function makeExample(task) {
-    var input = Array.from({ length: SEQ_LEN }, function () {
-        return 1 + Math.floor(Math.random() * (VOCAB_SIZE - 1));
-    });
-    var target;
-    if (task === 'copy') {
-        target = __spreadArray([], input, true);
-    }
-    else if (task === 'reverse') {
-        target = __spreadArray([], input, true).reverse();
-    }
-    else {
-        target = input.slice(1).concat([input[0]]);
-    }
-    return { input: input, target: target };
-}
-var params = initParams();
-var task = 'copy';
-var learningRate = 0.003;
-var isPlaying = false;
-var stepCount = 0;
-var lossHistory = [];
-var currentCache = null;
-var currentTarget = [];
-var animFrameId = null;
-var COLORS = {
-    bg: '#1a1a2e',
-    panel: '#16213e',
-    accent: '#0f3460',
-    hot: '#e94560',
-    cold: '#4fc3f7',
-    text: '#e0e0e0',
-    muted: '#888',
-    green: '#69f0ae',
-    yellow: '#ffeb3b'
+    },
+    {
+        name: "Mish", group: "Smooth", color: "#0ea5e9",
+        fn: function (x) { return mish(x); },
+        dfn: function (x) { return mishD(x); }
+    },
+    {
+        name: "Softplus", group: "Smooth", color: "#38bdf8",
+        fn: function (x) { return softplus(x); },
+        dfn: function (x) { return softplusD(x); }
+    },
+    {
+        name: "Softsign", group: "Smooth", color: "#7dd3fc",
+        fn: function (x) { return softsign(x); },
+        dfn: function (x) { return softsignD(x); }
+    },
+    {
+        name: "Sigmoid", group: "Saturating", color: "#4ade80",
+        fn: function (x) { return sigmoid(x); },
+        dfn: function (x) { var s = sigmoid(x); return s * (1 - s); }
+    },
+    {
+        name: "Tanh", group: "Saturating", color: "#22c55e",
+        fn: function (x) { return Math.tanh(x); },
+        dfn: function (x) { var t = Math.tanh(x); return 1 - t * t; }
+    },
+    {
+        name: "Hard Sigmoid", group: "Saturating", color: "#86efac",
+        fn: function (x) { return hardSigmoid(x); },
+        dfn: function (x) { return hardSigmoidD(x); }
+    },
+    {
+        name: "Hard Tanh", group: "Saturating", color: "#bbf7d0",
+        fn: function (x) { return hardTanh(x); },
+        dfn: function (x) { return hardTanhD(x); }
+    },
+    {
+        name: "Hard Swish", group: "Saturating", color: "#6ee7b7",
+        fn: function (x) { return hardSwish(x); },
+        dfn: function (x) { return hardSwishD(x); }
+    },
+    {
+        name: "Bipolar Sigmoid", group: "Saturating", color: "#34d399",
+        fn: function (x) { return bipolarSigmoid(x); },
+        dfn: function (x) { return bipolarSigmoidD(x); }
+    },
+    {
+        name: "LogSigmoid", group: "Saturating", color: "#a7f3d0",
+        fn: function (x) { return logSigmoid(x); },
+        dfn: function (x) { return logSigmoidD(x); }
+    },
+    {
+        name: "ArcTan", group: "Saturating", color: "#059669",
+        fn: function (x) { return arctan(x); },
+        dfn: function (x) { return arctanD(x); }
+    },
+    {
+        name: "Sine", group: "Oscillatory", color: "#f43f5e",
+        fn: function (x) { return Math.sin(x); },
+        dfn: function (x) { return Math.cos(x); }
+    },
+    {
+        name: "Sinc", group: "Oscillatory", color: "#fb7185",
+        fn: function (x) { return sinc(x); },
+        dfn: function (x) { return sincD(x); }
+    },
+    {
+        name: "Gaussian", group: "Oscillatory", color: "#fda4af",
+        fn: function (x) { return gaussian(x); },
+        dfn: function (x) { return gaussianD(x); }
+    },
+    {
+        name: "Snake", group: "Oscillatory", color: "#e11d48",
+        fn: function (x) { return snake(x); },
+        dfn: function (x) { return snakeD(x); }
+    },
+    {
+        name: "Bent Identity", group: "Smooth", color: "#fbbf24",
+        fn: function (x) { return bentIdentity(x); },
+        dfn: function (x) { return bentIdentityD(x); }
+    },
+    {
+        name: "Tanhshrink", group: "Smooth", color: "#f59e0b",
+        fn: function (x) { return tanhshrink(x); },
+        dfn: function (x) { return tanhshrinkD(x); }
+    },
+];
+var PROPERTIES = {
+    "ReLU": { range: "[0, ∞)", monotonic: true, saturating: false, zeroCentered: false, smooth: false, deadReLU: true },
+    "Leaky ReLU": { range: "(-∞, ∞)", monotonic: true, saturating: false, zeroCentered: false, smooth: false, deadReLU: false },
+    "PReLU": { range: "(-∞, ∞)", monotonic: true, saturating: false, zeroCentered: false, smooth: false, deadReLU: false },
+    "ELU": { range: "(-α, ∞)", monotonic: true, saturating: false, zeroCentered: false, smooth: false, deadReLU: false },
+    "SELU": { range: "(-λα, ∞)", monotonic: true, saturating: false, zeroCentered: false, smooth: false, deadReLU: false },
+    "CELU": { range: "(-α, ∞)", monotonic: true, saturating: false, zeroCentered: false, smooth: false, deadReLU: false },
+    "ReLU6": { range: "[0, 6]", monotonic: true, saturating: true, zeroCentered: false, smooth: false, deadReLU: true },
+    "GELU": { range: "≈(-0.17,∞)", monotonic: false, saturating: false, zeroCentered: false, smooth: true, deadReLU: false },
+    "Swish/SiLU": { range: "≈(-0.28,∞)", monotonic: false, saturating: false, zeroCentered: false, smooth: true, deadReLU: false },
+    "Mish": { range: "≈(-0.31,∞)", monotonic: false, saturating: false, zeroCentered: false, smooth: true, deadReLU: false },
+    "Softplus": { range: "(0, ∞)", monotonic: true, saturating: false, zeroCentered: false, smooth: true, deadReLU: false },
+    "Softsign": { range: "(-1, 1)", monotonic: true, saturating: true, zeroCentered: true, smooth: true, deadReLU: false },
+    "Sigmoid": { range: "(0, 1)", monotonic: true, saturating: true, zeroCentered: false, smooth: true, deadReLU: false },
+    "Tanh": { range: "(-1, 1)", monotonic: true, saturating: true, zeroCentered: true, smooth: true, deadReLU: false },
+    "Hard Sigmoid": { range: "[0, 1]", monotonic: true, saturating: true, zeroCentered: false, smooth: false, deadReLU: false },
+    "Hard Tanh": { range: "[-1, 1]", monotonic: true, saturating: true, zeroCentered: true, smooth: false, deadReLU: false },
+    "Hard Swish": { range: "[0, ∞)", monotonic: false, saturating: false, zeroCentered: false, smooth: false, deadReLU: false },
+    "Bipolar Sigmoid": { range: "(-1, 1)", monotonic: true, saturating: true, zeroCentered: true, smooth: true, deadReLU: false },
+    "LogSigmoid": { range: "(-∞, 0)", monotonic: true, saturating: true, zeroCentered: false, smooth: true, deadReLU: false },
+    "ArcTan": { range: "(-π/2,π/2)", monotonic: true, saturating: true, zeroCentered: true, smooth: true, deadReLU: false },
+    "Sine": { range: "[-1, 1]", monotonic: false, saturating: true, zeroCentered: true, smooth: true, deadReLU: false },
+    "Sinc": { range: "[-0.22,1]", monotonic: false, saturating: true, zeroCentered: false, smooth: true, deadReLU: false },
+    "Gaussian": { range: "(0, 1]", monotonic: false, saturating: true, zeroCentered: false, smooth: true, deadReLU: false },
+    "Snake": { range: "(-∞, ∞)", monotonic: false, saturating: false, zeroCentered: true, smooth: true, deadReLU: false },
+    "Bent Identity": { range: "(-∞, ∞)", monotonic: true, saturating: false, zeroCentered: true, smooth: true, deadReLU: false },
+    "Tanhshrink": { range: "(-∞, ∞)", monotonic: true, saturating: false, zeroCentered: true, smooth: true, deadReLU: false }
 };
-var TOKEN_LABELS = ['·', 'A', 'B', 'C', 'D', 'E', 'F', 'G'];
-var attnColor = d3.scaleSequential(d3.interpolateYlOrRd).domain([0, 1]);
-var embColor = d3.scaleDiverging(d3.interpolateRdBu).domain([-1, 0, 1]);
-var ATTN_CELL = 46;
-var ATTN_PAD = 4;
-var TOK_W = 50, TOK_H = 34;
-var EMB_CELL_H = 12;
-var LOSS_W = 300, LOSS_H = 130;
-function buildLayout() {
-    d3.select('#btn-play').on('click', togglePlay);
-    d3.select('#btn-step').on('click', function () { if (!isPlaying)
-        trainStep(); });
-    d3.select('#btn-reset').on('click', resetAll);
-    var lrDisplay = d3.select('#lr-display');
-    d3.select('#lr-slider').on('input', function () {
-        learningRate = Math.pow(10, +this.value);
-        lrDisplay.text(learningRate.toFixed(4));
-    });
-    var sliderEl = document.getElementById('lr-slider');
-    if (sliderEl) {
-        learningRate = Math.pow(10, +sliderEl.value);
-        lrDisplay.text(learningRate.toFixed(4));
-    }
-    d3.select('#task-select').on('change', function () {
-        task = this.value;
-        resetAll();
-    });
+var state = {
+    selected: new Set(["ReLU", "Sigmoid", "Tanh", "GELU"]),
+    showDerivatives: true,
+    xMin: -5,
+    xMax: 5,
+    params: { preluAlpha: 0.25, swishBeta: 1.0, eluAlpha: 1.0 },
+    hoverX: null,
+    gradientView: false
+};
+var MARGIN = { top: 30, right: 30, bottom: 50, left: 60 };
+var PLOT_W = 620;
+var PLOT_H = 420;
+var W = PLOT_W + MARGIN.left + MARGIN.right;
+var H = PLOT_H + MARGIN.top + MARGIN.bottom;
+var N_POINTS = 400;
+function buildUI() {
+    var app = d3.select("#app");
+    var header = app.append("div").attr("class", "header");
+    header.append("h1").text("Activation Function Explorer");
+    header.append("p").attr("class", "subtitle")
+        .text("Compare 26 activation functions, their derivatives, and learn their properties.");
+    var main = app.append("div").attr("class", "main-layout");
+    var sidebar = main.append("div").attr("class", "sidebar");
+    var content = main.append("div").attr("class", "content");
+    buildControls(sidebar);
+    var chartArea = content.append("div").attr("class", "chart-area");
+    buildChart(chartArea);
+    content.append("div").attr("id", "hover-info").attr("class", "hover-info")
+        .text("Hover over the chart to read values");
+    var gradArea = content.append("div").attr("class", "grad-area");
+    gradArea.append("div").attr("class", "panel-title").text("Gradient Magnitude View");
+    gradArea.append("div").attr("class", "grad-subtitle")
+        .text("Shows |f′(x)| — near zero means vanishing gradients.");
+    buildGradChart(gradArea);
+    var tableArea = content.append("div").attr("class", "table-area");
+    tableArea.append("div").attr("class", "panel-title").text("Function Properties");
+    buildTable(tableArea);
 }
-function renderAttn() {
-    if (!currentCache)
-        return;
-    var container = d3.select('#attn-heatmaps');
-    container.selectAll('*').remove();
-    var cellSize = ATTN_CELL;
-    var pad = ATTN_PAD;
-    var n = SEQ_LEN;
-    var gridSize = n * cellSize + (n - 1) * pad;
-    var labelOff = 30;
-    var svgW = gridSize + labelOff + 10;
-    var svgH = gridSize + labelOff + 10;
-    for (var h = 0; h < N_HEADS; h++) {
-        var wrap = container.append('div')
-            .style('display', 'inline-block')
-            .style('margin-right', '24px')
-            .style('vertical-align', 'top');
-        wrap.append('div')
-            .style('color', COLORS.muted)
-            .style('font-size', '.76rem')
-            .style('margin-bottom', '6px')
-            .text("Head ".concat(h + 1));
-        var svg = wrap.append('svg')
-            .attr('width', svgW)
-            .attr('height', svgH)
-            .style('font-family', 'monospace');
-        var g = svg.append('g').attr('transform', "translate(".concat(labelOff, ",").concat(labelOff, ")"));
-        var attnW = currentCache.attnW[h];
-        for (var qi = 0; qi < n; qi++) {
-            for (var ki = 0; ki < n; ki++) {
-                var x = ki * (cellSize + pad);
-                var y = qi * (cellSize + pad);
-                var w = attnW[qi][ki];
-                g.append('rect')
-                    .attr('x', x).attr('y', y)
-                    .attr('width', cellSize).attr('height', cellSize)
-                    .attr('rx', 4)
-                    .attr('fill', attnColor(w))
-                    .append('title').text("q=".concat(qi, " k=").concat(ki, ": ").concat(w.toFixed(3)));
-                if (w >= 0.07) {
-                    g.append('text')
-                        .attr('x', x + cellSize / 2)
-                        .attr('y', y + cellSize / 2 + 5)
-                        .attr('text-anchor', 'middle')
-                        .attr('font-size', '10px')
-                        .attr('fill', w > 0.5 ? '#222' : '#eee')
-                        .text(w.toFixed(2));
+function buildControls(parent) {
+    var rangeSection = parent.append("div").attr("class", "ctrl-section");
+    rangeSection.append("div").attr("class", "ctrl-label").text("X Range");
+    var rangeRow = rangeSection.append("div").attr("class", "ctrl-row");
+    rangeRow.append("label").text("Min");
+    var xMinInput = rangeRow.append("input")
+        .attr("type", "range").attr("min", -10).attr("max", -1).attr("step", 0.5)
+        .attr("value", state.xMin).attr("id", "xmin-slider");
+    rangeRow.append("span").attr("id", "xmin-val").text(state.xMin.toString());
+    var rangeRow2 = rangeSection.append("div").attr("class", "ctrl-row");
+    rangeRow2.append("label").text("Max");
+    var xMaxInput = rangeRow2.append("input")
+        .attr("type", "range").attr("min", 1).attr("max", 10).attr("step", 0.5)
+        .attr("value", state.xMax).attr("id", "xmax-slider");
+    rangeRow2.append("span").attr("id", "xmax-val").text(state.xMax.toString());
+    xMinInput.on("input", function () {
+        state.xMin = +(this.value);
+        d3.select("#xmin-val").text(state.xMin.toString());
+        render();
+    });
+    xMaxInput.on("input", function () {
+        state.xMax = +(this.value);
+        d3.select("#xmax-val").text(state.xMax.toString());
+        render();
+    });
+    var paramSection = parent.append("div").attr("class", "ctrl-section");
+    paramSection.append("div").attr("class", "ctrl-label").text("Parameters");
+    function makeParamSlider(label, id, min, max, step, init, onChange) {
+        var row = paramSection.append("div").attr("class", "ctrl-row");
+        row.append("label").text(label);
+        row.append("input")
+            .attr("type", "range").attr("min", min).attr("max", max).attr("step", step)
+            .attr("value", init).attr("id", id)
+            .on("input", function () {
+            var v = +(this.value);
+            d3.select("#" + id + "-val").text(v.toFixed(2));
+            onChange(v);
+            render();
+        });
+        row.append("span").attr("id", id + "-val").text(init.toFixed(2));
+    }
+    makeParamSlider("PReLU α", "prelu-alpha", 0.01, 1, 0.01, state.params.preluAlpha, function (v) { state.params.preluAlpha = v; });
+    makeParamSlider("Swish β", "swish-beta", 0.1, 5, 0.1, state.params.swishBeta, function (v) { state.params.swishBeta = v; });
+    makeParamSlider("ELU/CELU α", "elu-alpha", 0.1, 3, 0.1, state.params.eluAlpha, function (v) { state.params.eluAlpha = v; });
+    var toggleSection = parent.append("div").attr("class", "ctrl-section");
+    var derivRow = toggleSection.append("div").attr("class", "ctrl-row toggle-row");
+    var derivCb = derivRow.append("input").attr("type", "checkbox").attr("id", "deriv-toggle");
+    derivCb.node().checked = state.showDerivatives;
+    derivRow.append("label").attr("for", "deriv-toggle").text("Show Derivatives (dashed)");
+    derivCb.on("change", function () {
+        state.showDerivatives = this.checked;
+        render();
+    });
+    parent.append("div").attr("class", "ctrl-label").style("margin-top", "14px").text("Functions");
+    var groups = Array.from(new Set(ACTIVATION_FUNCTIONS.map(function (a) { return a.group; })));
+    var _loop_1 = function (grp) {
+        var grpDiv = parent.append("div").attr("class", "fn-group");
+        grpDiv.append("div").attr("class", "fn-group-label").text(grp);
+        var fns = ACTIVATION_FUNCTIONS.filter(function (a) { return a.group === grp; });
+        var _loop_2 = function (fn) {
+            var row = grpDiv.append("div").attr("class", "fn-checkbox-row");
+            var cb = row.append("input")
+                .attr("type", "checkbox")
+                .attr("id", "cb-" + fn.name.replace(/[\s/]/g, "-"))
+                .attr("class", "fn-cb");
+            cb.node().checked = state.selected.has(fn.name);
+            row.append("span").attr("class", "color-swatch")
+                .style("background", fn.color);
+            row.append("label")
+                .attr("for", "cb-" + fn.name.replace(/[\s/]/g, "-"))
+                .text(fn.name);
+            cb.on("change", function () {
+                if (this.checked) {
+                    state.selected.add(fn.name);
+                }
+                else {
+                    state.selected.delete(fn.name);
+                }
+                render();
+                updateTable();
+            });
+        };
+        for (var _a = 0, fns_1 = fns; _a < fns_1.length; _a++) {
+            var fn = fns_1[_a];
+            _loop_2(fn);
+        }
+    };
+    for (var _i = 0, groups_1 = groups; _i < groups_1.length; _i++) {
+        var grp = groups_1[_i];
+        _loop_1(grp);
+    }
+}
+var svgSel;
+var plotG;
+var xScale;
+var yScale;
+var xAxisG;
+var yAxisG;
+var hoverLine;
+var hoverDots;
+function buildChart(parent) {
+    svgSel = parent.append("svg")
+        .attr("width", W).attr("height", H)
+        .attr("class", "chart-svg");
+    plotG = svgSel.append("g")
+        .attr("transform", "translate(".concat(MARGIN.left, ",").concat(MARGIN.top, ")"));
+    plotG.append("g").attr("class", "grid-lines");
+    xAxisG = plotG.append("g").attr("class", "axis x-axis")
+        .attr("transform", "translate(0,".concat(PLOT_H, ")"));
+    yAxisG = plotG.append("g").attr("class", "axis y-axis");
+    plotG.append("line").attr("class", "zero-line h-zero")
+        .attr("x1", 0).attr("x2", PLOT_W);
+    plotG.append("line").attr("class", "zero-line v-zero")
+        .attr("y1", 0).attr("y2", PLOT_H);
+    plotG.append("g").attr("class", "paths-group");
+    hoverLine = plotG.append("line")
+        .attr("class", "hover-line")
+        .attr("y1", 0).attr("y2", PLOT_H)
+        .style("display", "none");
+    hoverDots = plotG.append("g").attr("class", "hover-dots");
+    plotG.append("rect")
+        .attr("width", PLOT_W).attr("height", PLOT_H)
+        .attr("fill", "transparent")
+        .on("mousemove", onMouseMove)
+        .on("mouseleave", onMouseLeave);
+    svgSel.append("text").attr("class", "axis-label")
+        .attr("x", MARGIN.left + PLOT_W / 2).attr("y", H - 4)
+        .attr("text-anchor", "middle").text("x");
+    svgSel.append("text").attr("class", "axis-label")
+        .attr("transform", "rotate(-90)")
+        .attr("x", -(MARGIN.top + PLOT_H / 2)).attr("y", 14)
+        .attr("text-anchor", "middle").text("f(x)");
+    xScale = d3.scaleLinear().range([0, PLOT_W]);
+    yScale = d3.scaleLinear().range([PLOT_H, 0]);
+    render();
+}
+function sampleFn(fn) {
+    var pts = [];
+    for (var i = 0; i <= N_POINTS; i++) {
+        var x = state.xMin + (i / N_POINTS) * (state.xMax - state.xMin);
+        var y = fn.fn(x, state.params);
+        pts.push([x, isFinite(y) ? y : NaN]);
+    }
+    return pts;
+}
+function sampleDfn(fn) {
+    var pts = [];
+    for (var i = 0; i <= N_POINTS; i++) {
+        var x = state.xMin + (i / N_POINTS) * (state.xMax - state.xMin);
+        var y = fn.dfn(x, state.params);
+        pts.push([x, isFinite(y) ? y : NaN]);
+    }
+    return pts;
+}
+function render() {
+    var selectedFns = ACTIVATION_FUNCTIONS.filter(function (f) { return state.selected.has(f.name); });
+    var yMin = -2, yMax = 2;
+    for (var _i = 0, selectedFns_1 = selectedFns; _i < selectedFns_1.length; _i++) {
+        var fn = selectedFns_1[_i];
+        var pts = sampleFn(fn);
+        for (var _a = 0, pts_1 = pts; _a < pts_1.length; _a++) {
+            var _b = pts_1[_a], y = _b[1];
+            if (isFinite(y)) {
+                yMin = Math.min(yMin, y);
+                yMax = Math.max(yMax, y);
+            }
+        }
+        if (state.showDerivatives) {
+            var dpts = sampleDfn(fn);
+            for (var _c = 0, dpts_1 = dpts; _c < dpts_1.length; _c++) {
+                var _d = dpts_1[_c], y = _d[1];
+                if (isFinite(y)) {
+                    yMin = Math.min(yMin, y);
+                    yMax = Math.max(yMax, y);
                 }
             }
         }
-        for (var i = 0; i < n; i++) {
-            var y = i * (cellSize + pad) + cellSize / 2;
-            var tok = currentCache.tokens[i];
-            svg.append('text')
-                .attr('x', labelOff - 6)
-                .attr('y', labelOff + y + 4)
-                .attr('text-anchor', 'end')
-                .attr('font-size', '12px')
-                .attr('fill', COLORS.text)
-                .text(TOKEN_LABELS[tok]);
-        }
-        for (var j = 0; j < n; j++) {
-            var x = j * (cellSize + pad) + cellSize / 2;
-            var tok = currentCache.tokens[j];
-            svg.append('text')
-                .attr('x', labelOff + x)
-                .attr('y', labelOff - 6)
-                .attr('text-anchor', 'middle')
-                .attr('font-size', '12px')
-                .attr('fill', COLORS.text)
-                .text(TOKEN_LABELS[tok]);
-        }
-        svg.append('text').attr('x', 4).attr('y', labelOff + gridSize / 2)
-            .attr('text-anchor', 'middle')
-            .attr('font-size', '10px')
-            .attr('fill', COLORS.muted)
-            .attr('transform', "rotate(-90, 10, ".concat(labelOff + gridSize / 2, ")"))
-            .text('Query →');
-        svg.append('text').attr('x', labelOff + gridSize / 2).attr('y', 10)
-            .attr('text-anchor', 'middle')
-            .attr('font-size', '10px')
-            .attr('fill', COLORS.muted)
-            .text('Key →');
     }
-}
-function renderPredictions() {
-    if (!currentCache)
-        return;
-    var container = d3.select('#token-display');
-    container.selectAll('*').remove();
-    var svg = container.append('svg')
-        .attr('width', SEQ_LEN * (TOK_W + 10) + 160)
-        .attr('height', 4 * (TOK_H + 12) + 20)
-        .style('font-family', 'monospace, sans-serif');
-    var rowLabels = ['Input', 'Predicted', 'Target', 'Correct?'];
-    var rowColors = [COLORS.cold, COLORS.yellow, COLORS.text, COLORS.green];
-    rowLabels.forEach(function (label, row) {
-        var y = row * (TOK_H + 12) + 10;
-        svg.append('text')
-            .attr('x', 75)
-            .attr('y', y + TOK_H / 2 + 5)
-            .attr('text-anchor', 'end')
-            .attr('font-size', '12px')
-            .attr('fill', rowColors[row])
-            .text(label);
-        for (var i = 0; i < SEQ_LEN; i++) {
-            var x = 90 + i * (TOK_W + 10);
-            var text = '';
-            var fillColor = COLORS.accent;
-            if (row === 0) {
-                text = TOKEN_LABELS[currentCache.tokens[i]];
-                fillColor = COLORS.accent;
-            }
-            else if (row === 1) {
-                var pred = argmax(softmax(currentCache.logits[i]));
-                text = TOKEN_LABELS[pred];
-                fillColor = pred === currentTarget[i] ? '#1a5c38' : '#5c1a1a';
-            }
-            else if (row === 2) {
-                text = TOKEN_LABELS[currentTarget[i]];
-                fillColor = COLORS.accent;
-            }
-            else {
-                var pred = argmax(softmax(currentCache.logits[i]));
-                text = pred === currentTarget[i] ? '✓' : '✗';
-                fillColor = pred === currentTarget[i] ? '#1a5c38' : '#5c1a1a';
-            }
-            svg.append('rect')
-                .attr('x', x).attr('y', y)
-                .attr('width', TOK_W).attr('height', TOK_H)
-                .attr('rx', 6)
-                .attr('fill', fillColor)
-                .attr('stroke', COLORS.muted)
-                .attr('stroke-width', 1);
-            svg.append('text')
-                .attr('x', x + TOK_W / 2)
-                .attr('y', y + TOK_H / 2 + 5)
-                .attr('text-anchor', 'middle')
-                .attr('font-size', row === 3 ? '16px' : '14px')
-                .attr('fill', rowColors[row])
-                .text(text);
-        }
+    var yPad = (yMax - yMin) * 0.08;
+    yMin -= yPad;
+    yMax += yPad;
+    yMin = Math.max(yMin, -12);
+    yMax = Math.min(yMax, 12);
+    xScale.domain([state.xMin, state.xMax]);
+    yScale.domain([yMin, yMax]);
+    xAxisG.call(d3.axisBottom(xScale).ticks(10));
+    yAxisG.call(d3.axisLeft(yScale).ticks(8));
+    plotG.select(".h-zero")
+        .attr("y1", yScale(0)).attr("y2", yScale(0));
+    plotG.select(".v-zero")
+        .attr("x1", xScale(0)).attr("x2", xScale(0));
+    var gridG = plotG.select(".grid-lines");
+    gridG.selectAll("*").remove();
+    var xTicks = xScale.ticks(10);
+    var yTicks = yScale.ticks(8);
+    xTicks.forEach(function (t) {
+        gridG.append("line").attr("class", "grid-line")
+            .attr("x1", xScale(t)).attr("x2", xScale(t))
+            .attr("y1", 0).attr("y2", PLOT_H);
     });
-    var probG = svg.append('g').attr('transform', "translate(90, ".concat(4 * (TOK_H + 12) + 30, ")"));
-}
-function argmax(arr) {
-    var best = 0;
-    for (var i = 1; i < arr.length; i++)
-        if (arr[i] > arr[best])
-            best = i;
-    return best;
-}
-function renderQKV() {
-    if (!currentCache)
-        return;
-    var container = d3.select('#qkv-display');
-    container.selectAll('*').remove();
-    var cellW = 8;
-    var cellH = EMB_CELL_H;
-    var gap = 6;
-    var n = SEQ_LEN;
-    var d = D_HEAD;
-    var matrices = [
-        { label: 'Q', data: currentCache.Q[0] },
-        { label: 'K', data: currentCache.K[0] },
-        { label: 'V', data: currentCache.V[0] },
-    ];
-    var totalW = matrices.length * (d * cellW + 30) + 10;
-    var totalH = n * cellH + n * 2 + 40;
-    var svg = container.append('svg')
-        .attr('width', totalW)
-        .attr('height', totalH + 20)
-        .style('font-family', 'monospace');
-    var xOff = 10;
-    matrices.forEach(function (_a) {
-        var label = _a.label, data = _a.data;
-        svg.append('text')
-            .attr('x', xOff + (d * cellW) / 2)
-            .attr('y', 14)
-            .attr('text-anchor', 'middle')
-            .attr('font-size', '13px')
-            .attr('fill', COLORS.cold)
-            .text(label);
-        for (var i = 0; i < n; i++) {
-            var tok = currentCache.tokens[i];
-            svg.append('text')
-                .attr('x', xOff - 4)
-                .attr('y', 24 + i * (cellH + 2) + cellH / 2 + 3)
-                .attr('text-anchor', 'end')
-                .attr('font-size', '10px')
-                .attr('fill', COLORS.muted)
-                .text(TOKEN_LABELS[tok]);
-            for (var j = 0; j < d; j++) {
-                var v = data[i][j];
-                svg.append('rect')
-                    .attr('x', xOff + j * cellW)
-                    .attr('y', 20 + i * (cellH + 2))
-                    .attr('width', cellW - 1)
-                    .attr('height', cellH)
-                    .attr('fill', embColor(Math.max(-1, Math.min(1, v))))
-                    .append('title').text("".concat(label, "[").concat(i, "][").concat(j, "] = ").concat(v.toFixed(3)));
-            }
-        }
-        xOff += d * cellW + 30;
+    yTicks.forEach(function (t) {
+        gridG.append("line").attr("class", "grid-line")
+            .attr("x1", 0).attr("x2", PLOT_W)
+            .attr("y1", yScale(t)).attr("y2", yScale(t));
     });
-}
-function renderLoss() {
-    var _a;
-    var container = d3.select('#loss-chart');
-    container.selectAll('*').remove();
-    var margin = { top: 10, right: 10, bottom: 24, left: 36 };
-    var w = LOSS_W - margin.left - margin.right;
-    var h = LOSS_H - margin.top - margin.bottom;
-    var svg = container.append('svg')
-        .attr('width', LOSS_W)
-        .attr('height', LOSS_H);
-    var g = svg.append('g').attr('transform', "translate(".concat(margin.left, ",").concat(margin.top, ")"));
-    var data = lossHistory.slice(-300);
-    if (data.length < 2)
-        return;
-    var xScale = d3.scaleLinear().domain([0, data.length - 1]).range([0, w]);
-    var yScale = d3.scaleLinear()
-        .domain([0, Math.max((_a = d3.max(data)) !== null && _a !== void 0 ? _a : 1, 0.1)])
-        .range([h, 0]);
-    g.append('g').attr('class', 'grid')
-        .attr('opacity', 0.2)
-        .call(d3.axisLeft(yScale).ticks(4).tickSize(-w).tickFormat(function () { return ''; }));
     var line = d3.line()
-        .x(function (_, i) { return xScale(i); })
-        .y(function (d) { return yScale(d); })
-        .curve(d3.curveBasis);
-    g.append('path')
-        .datum(data)
-        .attr('fill', 'none')
-        .attr('stroke', COLORS.hot)
-        .attr('stroke-width', 2)
-        .attr('d', line);
-    g.append('g').attr('transform', "translate(0,".concat(h, ")"))
-        .call(d3.axisBottom(xScale).ticks(4))
-        .selectAll('text').attr('fill', COLORS.muted).attr('font-size', '10px');
-    g.append('g')
-        .call(d3.axisLeft(yScale).ticks(4))
-        .selectAll('text').attr('fill', COLORS.muted).attr('font-size', '10px');
-    svg.selectAll('.domain, .tick line').attr('stroke', COLORS.muted);
-    var latest = data[data.length - 1];
-    g.append('text')
-        .attr('x', w - 4)
-        .attr('y', yScale(latest) - 6)
-        .attr('text-anchor', 'end')
-        .attr('font-size', '11px')
-        .attr('fill', COLORS.yellow)
-        .text(latest.toFixed(3));
-}
-function trainStep() {
-    var ex = makeExample(task);
-    var cache = forward(ex.input, params);
-    var loss = crossEntropyLoss(cache.logits, ex.target);
-    zeroGrads(params);
-    backward(cache, ex.target, params);
-    sgdStep(params, learningRate);
-    currentCache = cache;
-    currentTarget = ex.target;
-    stepCount++;
-    lossHistory.push(loss);
-    if (lossHistory.length > 500)
-        lossHistory.shift();
-    d3.select('#step-counter').text("Step: ".concat(stepCount));
-    d3.select('#loss-display').text("Loss: ".concat(loss.toFixed(4)));
-    var correct = 0;
-    for (var i = 0; i < SEQ_LEN; i++) {
-        if (argmax(softmax(cache.logits[i])) === ex.target[i])
-            correct++;
+        .defined(function (d) { return isFinite(d[1]); })
+        .x(function (d) { return xScale(d[0]); })
+        .y(function (d) { return yScale(d[1]); });
+    var pathsG = plotG.select(".paths-group");
+    pathsG.selectAll("*").remove();
+    for (var _e = 0, selectedFns_2 = selectedFns; _e < selectedFns_2.length; _e++) {
+        var fn = selectedFns_2[_e];
+        var pts = sampleFn(fn);
+        pathsG.append("path")
+            .datum(pts)
+            .attr("class", "fn-path")
+            .attr("d", line)
+            .attr("stroke", fn.color)
+            .attr("fill", "none")
+            .attr("stroke-width", 2.2)
+            .attr("stroke-linejoin", "round");
+        if (state.showDerivatives) {
+            var dpts = sampleDfn(fn);
+            pathsG.append("path")
+                .datum(dpts)
+                .attr("class", "fn-path deriv-path")
+                .attr("d", line)
+                .attr("stroke", fn.color)
+                .attr("fill", "none")
+                .attr("stroke-width", 1.5)
+                .attr("stroke-dasharray", "5,4")
+                .attr("stroke-linejoin", "round")
+                .attr("opacity", 0.7);
+        }
     }
-    var accPct = (correct / SEQ_LEN * 100).toFixed(0);
-    d3.select('#acc-bar').style('width', "".concat(accPct, "%"));
-    d3.select('#acc-label').text("".concat(correct, " / ").concat(SEQ_LEN, " correct"));
-    renderAttn();
-    renderPredictions();
-    renderQKV();
-    renderLoss();
+    renderGradChart();
+    if (state.hoverX !== null)
+        renderHover(state.hoverX);
 }
-var STEPS_PER_FRAME = 5;
-function trainingLoop() {
-    if (!isPlaying)
+function onMouseMove(event) {
+    var mx = d3.pointer(event)[0];
+    var x = xScale.invert(mx);
+    state.hoverX = x;
+    renderHover(x);
+}
+function renderHover(x) {
+    var px = xScale(x);
+    hoverLine
+        .attr("x1", px).attr("x2", px)
+        .style("display", null);
+    hoverDots.selectAll("*").remove();
+    var selectedFns = ACTIVATION_FUNCTIONS.filter(function (f) { return state.selected.has(f.name); });
+    var infoLines = ["x = ".concat(x.toFixed(3))];
+    for (var _i = 0, selectedFns_3 = selectedFns; _i < selectedFns_3.length; _i++) {
+        var fn = selectedFns_3[_i];
+        var y = fn.fn(x, state.params);
+        var dy = fn.dfn(x, state.params);
+        if (isFinite(y) && yScale(y) >= 0 && yScale(y) <= PLOT_H) {
+            hoverDots.append("circle")
+                .attr("cx", px).attr("cy", yScale(y))
+                .attr("r", 4).attr("fill", fn.color)
+                .attr("stroke", "#1a1a2e").attr("stroke-width", 1.5);
+        }
+        infoLines.push("".concat(fn.name, ": f=").concat(y.toFixed(4), ", f\u2032=").concat(dy.toFixed(4)));
+    }
+    d3.select("#hover-info").html(infoLines.join("&ensp;|&ensp;"));
+}
+function onMouseLeave() {
+    state.hoverX = null;
+    hoverLine.style("display", "none");
+    hoverDots.selectAll("*").remove();
+    d3.select("#hover-info").text("Hover over the chart to read values");
+}
+var GRAD_H = 120;
+var GRAD_W = PLOT_W;
+var gradSvg;
+var gradG;
+var gxScale;
+var gyScale;
+var gxAxisG;
+function buildGradChart(parent) {
+    var GM = { top: 10, right: 30, bottom: 36, left: 60 };
+    gradSvg = parent.append("svg")
+        .attr("width", GRAD_W + GM.left + GM.right)
+        .attr("height", GRAD_H + GM.top + GM.bottom)
+        .attr("class", "chart-svg");
+    gradG = gradSvg.append("g").attr("transform", "translate(".concat(GM.left, ",").concat(GM.top, ")"));
+    gradG.append("g").attr("class", "grad-paths");
+    gxAxisG = gradG.append("g").attr("class", "axis x-axis")
+        .attr("transform", "translate(0,".concat(GRAD_H, ")"));
+    gradG.append("g").attr("class", "axis y-axis grad-y-axis");
+    gxScale = d3.scaleLinear().range([0, GRAD_W]);
+    gyScale = d3.scaleLinear().domain([0, 2]).range([GRAD_H, 0]);
+    gradSvg.append("text").attr("class", "axis-label")
+        .attr("x", GM.left + GRAD_W / 2).attr("y", GRAD_H + GM.top + GM.bottom - 2)
+        .attr("text-anchor", "middle").text("x");
+    gradSvg.append("text").attr("class", "axis-label")
+        .attr("transform", "rotate(-90)")
+        .attr("x", -(GM.top + GRAD_H / 2)).attr("y", 14)
+        .attr("text-anchor", "middle").text("|f′(x)|");
+    gradG.append("rect").attr("class", "vanish-band")
+        .attr("x", 0).attr("width", GRAD_W)
+        .attr("y", gyScale(0.1)).attr("height", gyScale(0) - gyScale(0.1));
+}
+function renderGradChart() {
+    gxScale.domain([state.xMin, state.xMax]);
+    gxAxisG.call(d3.axisBottom(gxScale).ticks(10));
+    gradG.select(".grad-y-axis").call(d3.axisLeft(gyScale).ticks(4));
+    var line = d3.line()
+        .defined(function (d) { return isFinite(d[1]); })
+        .x(function (d) { return gxScale(d[0]); })
+        .y(function (d) { return gyScale(Math.min(d[1], gyScale.domain()[1])); });
+    var pathsG = gradG.select(".grad-paths");
+    pathsG.selectAll("*").remove();
+    var selectedFns = ACTIVATION_FUNCTIONS.filter(function (f) { return state.selected.has(f.name); });
+    var maxG = 0.1;
+    for (var _i = 0, selectedFns_4 = selectedFns; _i < selectedFns_4.length; _i++) {
+        var fn = selectedFns_4[_i];
+        for (var i = 0; i <= N_POINTS; i++) {
+            var x = state.xMin + (i / N_POINTS) * (state.xMax - state.xMin);
+            var dy = Math.abs(fn.dfn(x, state.params));
+            if (isFinite(dy))
+                maxG = Math.max(maxG, dy);
+        }
+    }
+    gyScale.domain([0, Math.min(maxG * 1.1, 5)]);
+    gradG.select(".grad-y-axis").call(d3.axisLeft(gyScale).ticks(4));
+    gradG.select(".vanish-band")
+        .attr("y", gyScale(0.1))
+        .attr("height", Math.max(0, gyScale(0) - gyScale(0.1)));
+    for (var _a = 0, selectedFns_5 = selectedFns; _a < selectedFns_5.length; _a++) {
+        var fn = selectedFns_5[_a];
+        var pts = [];
+        for (var i = 0; i <= N_POINTS; i++) {
+            var x = state.xMin + (i / N_POINTS) * (state.xMax - state.xMin);
+            var dy = Math.abs(fn.dfn(x, state.params));
+            pts.push([x, isFinite(dy) ? dy : NaN]);
+        }
+        pathsG.append("path")
+            .datum(pts)
+            .attr("d", line)
+            .attr("stroke", fn.color)
+            .attr("fill", "none")
+            .attr("stroke-width", 2);
+    }
+    var existing = gradG.select(".vanish-label");
+    if (existing.empty()) {
+        gradG.append("text").attr("class", "vanish-label")
+            .attr("x", 4).attr("fill", "#f87171").attr("font-size", 10);
+    }
+    gradG.select(".vanish-label")
+        .attr("y", gyScale(0.05) - 2)
+        .text("vanishing zone (|f′|<0.1)");
+}
+function buildTable(parent) {
+    var wrap = parent.append("div").attr("class", "table-wrap");
+    var tbl = wrap.append("table").attr("id", "props-table").attr("class", "props-table");
+    var thead = tbl.append("thead");
+    var hr = thead.append("tr");
+    ["Function", "Range", "Monotonic", "Saturating", "Zero-Centered", "Smooth", "Dead-ReLU Risk"]
+        .forEach(function (h) { return hr.append("th").text(h); });
+    tbl.append("tbody").attr("id", "props-tbody");
+    updateTable();
+}
+function yesNo(v, danger) {
+    if (danger)
+        return v ? "<span class=\"badge badge-danger\">Yes</span>" : "<span class=\"badge badge-ok\">No</span>";
+    return v ? "<span class=\"badge badge-yes\">Yes</span>" : "<span class=\"badge badge-no\">No</span>";
+}
+function updateTable() {
+    var tbody = d3.select("#props-tbody");
+    tbody.selectAll("*").remove();
+    var selectedFns = ACTIVATION_FUNCTIONS.filter(function (f) { return state.selected.has(f.name); });
+    if (selectedFns.length === 0) {
+        tbody.append("tr").append("td").attr("colspan", 7)
+            .attr("class", "empty-row").text("No functions selected");
         return;
-    for (var i = 0; i < STEPS_PER_FRAME; i++)
-        trainStep();
-    animFrameId = requestAnimationFrame(trainingLoop);
+    }
+    for (var _i = 0, selectedFns_6 = selectedFns; _i < selectedFns_6.length; _i++) {
+        var fn = selectedFns_6[_i];
+        var p = PROPERTIES[fn.name];
+        if (!p)
+            continue;
+        var tr = tbody.append("tr");
+        var nameTd = tr.append("td");
+        nameTd.append("span").attr("class", "color-swatch").style("background", fn.color);
+        nameTd.append("span").text(fn.name);
+        tr.append("td").text(p.range);
+        tr.append("td").html(yesNo(p.monotonic));
+        tr.append("td").html(yesNo(p.saturating));
+        tr.append("td").html(yesNo(p.zeroCentered));
+        tr.append("td").html(yesNo(p.smooth));
+        tr.append("td").html(yesNo(p.deadReLU, true));
+    }
 }
-function togglePlay() {
-    isPlaying = !isPlaying;
-    d3.select('#btn-play').text(isPlaying ? '⏸' : '▶');
-    if (isPlaying)
-        trainingLoop();
-}
-function resetAll() {
-    isPlaying = false;
-    if (animFrameId !== null)
-        cancelAnimationFrame(animFrameId);
-    animFrameId = null;
-    d3.select('#btn-play').text('▶');
-    params = initParams();
-    stepCount = 0;
-    lossHistory = [];
-    currentCache = null;
-    currentTarget = [];
-    d3.select('#step-counter').text('Step: 0');
-    d3.select('#loss-display').text('Loss: —');
-    var ex = makeExample(task);
-    currentCache = forward(ex.input, params);
-    currentTarget = ex.target;
-    renderAttn();
-    renderPredictions();
-    renderQKV();
-    renderLoss();
-}
-document.addEventListener('DOMContentLoaded', function () {
-    buildLayout();
-    resetAll();
+window.addEventListener("DOMContentLoaded", function () {
+    buildUI();
 });
 
 },{"d3":1}]},{},[2]);

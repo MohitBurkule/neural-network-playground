@@ -202,6 +202,26 @@ export let datasets: {[key: string]: dataset.DataGenerator} = {
   "double-spiral-tight": dataset.classifyDoubleSpiralTight,
   "quadrant-stripes": dataset.classifyQuadrantStripes,
   "gaussian-ring": dataset.classifyGaussianRing,
+  "trefoil-2d": dataset.classifyTrefoil2D,
+  "gear": dataset.classifyGear,
+  "star6": dataset.classifyStar6,
+  "crescent-moons-3": dataset.classifyCrescentMoons3,
+  "blob-lattice-16": dataset.classifyBlobLattice16,
+  "noisy-checker-6": dataset.classifyNoisyChecker6,
+  "spiral-3arm-tight": dataset.classifySpiral3ArmTight,
+  "ring-segments": dataset.classifyRingSegments,
+  "pie-slices": dataset.classifyPieSlices,
+  "droplet": dataset.classifyDroplet,
+  "infinity-symbol": dataset.classifyInfinitySymbol,
+  "bowtie": dataset.classifyBowtie,
+  "parallel-sines": dataset.classifyParallelSines,
+  "radial-gradient-class": dataset.classifyRadialGradientClass,
+  "concentric-arcs": dataset.classifyConcentricArcs,
+  "clustered-outliers": dataset.classifyClusteredOutliers,
+  "two-blobs-overlap": dataset.classifyTwoBlobsOverlap,
+  "diamond-grid": dataset.classifyDiamondGrid,
+  "wavy-stripes": dataset.classifyWavyStripes,
+  "plus-minus-grid": dataset.classifyPlusMinusGrid,
 };
 
 /** A map between dataset names and functions that generate regression data. */
@@ -229,7 +249,15 @@ export let regDatasets: {[key: string]: dataset.DataGenerator} = {
   "reg-rosenbrock-slice": dataset.regressRosenbrockSlice,
   "reg-checkerboard-smooth": dataset.regressCheckerboardSmooth,
   "reg-peaks": dataset.regressPeaks,
-  "reg-mexican-hat": dataset.regressMexicanHat
+  "reg-mexican-hat": dataset.regressMexicanHat,
+  "reg-ripple2": dataset.regressRipple2,
+  "reg-saddle2": dataset.regressSaddle2,
+  "reg-gaussian-hill": dataset.regressGaussianHill,
+  "reg-sin-product": dataset.regressSinProduct,
+  "reg-abs-diff": dataset.regressAbsDiff,
+  "reg-log": dataset.regressLog,
+  "reg-tanh-wave": dataset.regressTanhWave,
+  "reg-cross-ridge": dataset.regressCrossRidge
 };
 
 export function getKeyFromValue(obj: any, value: any): string {

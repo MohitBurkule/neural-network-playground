@@ -59,7 +59,17 @@ import {
   classify3DMoons,
   classifyOctahedronVsSphere,
   classifyHelixPair,
-  classifyPlaneStack5
+  classifyPlaneStack5,
+  classifySphereSpiral,
+  classifyCubeLattice,
+  classifyTwoHelices,
+  classifyConeStack,
+  classifyTorusKnot2,
+  classifyPlaneVsBlob,
+  classifyOctantSpheres,
+  classifySwissRoll3Class,
+  classifySphericalShell2,
+  classifyGridXor3D
 } from "./dataset3d";
 import {parseCSV} from "./customdataset";
 import {
@@ -1432,7 +1442,17 @@ const THREE_GENERATORS: {[k: string]: (n: number, noise: number) => Example3D[]}
   "3d-moons": classify3DMoons,
   "octahedron-vs-sphere": classifyOctahedronVsSphere,
   "helix-pair": classifyHelixPair,
-  "plane-stack-5": classifyPlaneStack5
+  "plane-stack-5": classifyPlaneStack5,
+  "sphere-spiral": classifySphereSpiral,
+  "cube-lattice": classifyCubeLattice,
+  "two-helices": classifyTwoHelices,
+  "cone-stack": classifyConeStack,
+  "torus-knot-2": classifyTorusKnot2,
+  "plane-vs-blob": classifyPlaneVsBlob,
+  "octant-spheres": classifyOctantSpheres,
+  "swiss-roll-3class": classifySwissRoll3Class,
+  "spherical-shell-2": classifySphericalShell2,
+  "3d-grid-xor": classifyGridXor3D
 };
 
 function construct3DInput(x: number, y: number, z: number): number[] {

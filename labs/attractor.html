@@ -1,0 +1,123 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8"/>
+  <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+  <title>Strange Attractors · Chaos Lab</title>
+  <style>
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+    html, body {
+      width: 100%; height: 100%;
+      background: #0a0a0f;
+      color: #ccc;
+      font-family: 'Segoe UI', system-ui, sans-serif;
+      font-size: 13px;
+      overflow: hidden;
+    }
+
+    #app {
+      display: flex;
+      width: 100%; height: 100vh;
+    }
+
+    #sidebar {
+      width: 220px;
+      min-width: 220px;
+      background: #111118;
+      border-right: 1px solid #222;
+      padding: 14px 12px;
+      display: flex;
+      flex-direction: column;
+      gap: 6px;
+      overflow-y: auto;
+    }
+
+    #sidebar h2 {
+      font-size: 14px;
+      font-weight: 700;
+      color: #7af;
+      margin-bottom: 4px;
+      letter-spacing: 0.03em;
+    }
+
+    #sidebar label {
+      font-size: 12px;
+      color: #aaa;
+      display: block;
+      margin-top: 4px;
+    }
+
+    #sidebar label.row {
+      display: flex;
+      align-items: center;
+      gap: 6px;
+      cursor: pointer;
+    }
+
+    #sidebar select,
+    #sidebar input[type=range] {
+      width: 100%;
+      margin-top: 2px;
+      accent-color: #5af;
+      cursor: pointer;
+    }
+
+    #sidebar select {
+      background: #1a1a2e;
+      color: #ccc;
+      border: 1px solid #334;
+      border-radius: 4px;
+      padding: 3px 5px;
+    }
+
+    #sidebar hr {
+      border: none;
+      border-top: 1px solid #222;
+      margin: 4px 0;
+    }
+
+    #sidebar button {
+      background: #1e2a3a;
+      color: #7af;
+      border: 1px solid #2a4060;
+      border-radius: 5px;
+      padding: 6px 10px;
+      cursor: pointer;
+      font-size: 12px;
+      transition: background 0.15s;
+    }
+
+    #sidebar button:hover { background: #243348; }
+
+    #info {
+      margin-top: auto;
+      padding-top: 8px;
+      color: #555;
+      line-height: 1.5;
+    }
+
+    #info small { font-size: 11px; }
+
+    #statsLine { color: #7af; }
+
+    #canvas {
+      flex: 1;
+      display: block;
+      background: #0a0a0f;
+      cursor: grab;
+    }
+
+    #canvas:active { cursor: grabbing; }
+
+    #paramSliders label span:last-child {
+      float: right;
+      color: #7af;
+    }
+  </style>
+</head>
+<body>
+  <div id="app"></div>
+  <script src="bundleattractor.js"></script>
+</body>
+</html>

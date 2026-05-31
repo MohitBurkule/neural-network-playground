@@ -1623,6 +1623,348 @@ export function regressMexicanHat(numSamples: number, noise: number): Example2D[
   return points;
 }
 
+export function classifyTrefoil2D(numSamples: number, noise: number): Example2D[] {
+  let points: Example2D[] = [];
+  for (let i = 0; i < numSamples; i++) {
+    let label = i % 2 === 0 ? 1 : -1;
+    let t = randUniform(0, 2 * Math.PI);
+    let r = label === 1 ? 4 : 4.5;
+    let x = Math.sin(t) + 2 * Math.sin(2 * t);
+    let y = Math.cos(t) - 2 * Math.cos(2 * t);
+    let s = label === 1 ? 1.1 : 1.6;
+    points.push({x: x * s + normalRandom(0, noise), y: y * s + normalRandom(0, noise), label});
+  }
+  return points;
+}
+
+export function classifyGear(numSamples: number, noise: number): Example2D[] {
+  let points: Example2D[] = [];
+  for (let i = 0; i < numSamples; i++) {
+    let x = randUniform(-6, 6);
+    let y = randUniform(-6, 6);
+    let r = Math.sqrt(x * x + y * y);
+    let a = Math.atan2(y, x);
+    let teeth = 2 + Math.sin(a * 8);
+    let label = r < teeth * 1.6 ? 1 : -1;
+    points.push({x: x + normalRandom(0, noise), y: y + normalRandom(0, noise), label});
+  }
+  return points;
+}
+
+export function classifyStar6(numSamples: number, noise: number): Example2D[] {
+  let points: Example2D[] = [];
+  for (let i = 0; i < numSamples; i++) {
+    let x = randUniform(-6, 6);
+    let y = randUniform(-6, 6);
+    let r = Math.sqrt(x * x + y * y);
+    let a = Math.atan2(y, x);
+    let edge = 3 + 1.8 * Math.cos(6 * a);
+    let label = r < edge ? 1 : -1;
+    points.push({x: x + normalRandom(0, noise), y: y + normalRandom(0, noise), label});
+  }
+  return points;
+}
+
+export function classifyCrescentMoons3(numSamples: number, noise: number): Example2D[] {
+  let points: Example2D[] = [];
+  let centers = [{x: -3, y: 0}, {x: 0, y: 1.5}, {x: 3, y: 0}];
+  for (let i = 0; i < numSamples; i++) {
+    let g = i % 3;
+    let t = randUniform(0, Math.PI);
+    let x = centers[g].x + 3 * Math.cos(t);
+    let y = centers[g].y + 3 * Math.sin(t) * (g === 1 ? -1 : 1);
+    points.push({x: x + normalRandom(0, noise), y: y + normalRandom(0, noise), label: g === 1 ? -1 : 1});
+  }
+  return points;
+}
+
+export function classifyBlobLattice16(numSamples: number, noise: number): Example2D[] {
+  let points: Example2D[] = [];
+  for (let i = 0; i < numSamples; i++) {
+    let gx = Math.floor(randUniform(0, 4));
+    let gy = Math.floor(randUniform(0, 4));
+    let cx = -4.5 + gx * 3;
+    let cy = -4.5 + gy * 3;
+    let label = (gx + gy) % 2 === 0 ? 1 : -1;
+    points.push({x: cx + normalRandom(0, 0.5 + noise), y: cy + normalRandom(0, 0.5 + noise), label});
+  }
+  return points;
+}
+
+export function classifyNoisyChecker6(numSamples: number, noise: number): Example2D[] {
+  let points: Example2D[] = [];
+  for (let i = 0; i < numSamples; i++) {
+    let x = randUniform(-6, 6);
+    let y = randUniform(-6, 6);
+    let cx = Math.floor((x + 6) / 2);
+    let cy = Math.floor((y + 6) / 2);
+    let label = (cx + cy) % 2 === 0 ? 1 : -1;
+    points.push({x: x + normalRandom(0, noise), y: y + normalRandom(0, noise), label});
+  }
+  return points;
+}
+
+export function classifySpiral3ArmTight(numSamples: number, noise: number): Example2D[] {
+  let points: Example2D[] = [];
+  for (let i = 0; i < numSamples; i++) {
+    let arm = i % 3;
+    let r = randUniform(0.5, 6);
+    let t = 2.5 * r + arm * (2 * Math.PI / 3);
+    let x = r * Math.cos(t);
+    let y = r * Math.sin(t);
+    points.push({x: x + normalRandom(0, noise), y: y + normalRandom(0, noise), label: arm === 0 ? 1 : -1});
+  }
+  return points;
+}
+
+export function classifyRingSegments(numSamples: number, noise: number): Example2D[] {
+  let points: Example2D[] = [];
+  for (let i = 0; i < numSamples; i++) {
+    let t = randUniform(0, 2 * Math.PI);
+    let r = randUniform(3, 4.5);
+    let seg = Math.floor(t / (Math.PI / 3));
+    let label = seg % 2 === 0 ? 1 : -1;
+    points.push({x: r * Math.cos(t) + normalRandom(0, noise), y: r * Math.sin(t) + normalRandom(0, noise), label});
+  }
+  return points;
+}
+
+export function classifyPieSlices(numSamples: number, noise: number): Example2D[] {
+  let points: Example2D[] = [];
+  for (let i = 0; i < numSamples; i++) {
+    let x = randUniform(-6, 6);
+    let y = randUniform(-6, 6);
+    let a = Math.atan2(y, x) + Math.PI;
+    let slice = Math.floor(a / (Math.PI / 4));
+    let label = slice % 2 === 0 ? 1 : -1;
+    points.push({x: x + normalRandom(0, noise), y: y + normalRandom(0, noise), label});
+  }
+  return points;
+}
+
+export function classifyDroplet(numSamples: number, noise: number): Example2D[] {
+  let points: Example2D[] = [];
+  for (let i = 0; i < numSamples; i++) {
+    let x = randUniform(-6, 6);
+    let y = randUniform(-6, 6);
+    let edge = 3 * (1 - Math.sin(Math.atan2(y, x)));
+    let r = Math.sqrt(x * x + y * y);
+    let label = r < Math.abs(edge) + 0.5 ? 1 : -1;
+    points.push({x: x + normalRandom(0, noise), y: y + normalRandom(0, noise), label});
+  }
+  return points;
+}
+
+export function classifyInfinitySymbol(numSamples: number, noise: number): Example2D[] {
+  let points: Example2D[] = [];
+  for (let i = 0; i < numSamples; i++) {
+    let label = i % 2 === 0 ? 1 : -1;
+    let t = randUniform(0, 2 * Math.PI);
+    let scale = label === 1 ? 4 : 5.2;
+    let x = scale * Math.cos(t);
+    let y = scale * Math.sin(t) * Math.cos(t);
+    points.push({x: x + normalRandom(0, noise), y: y + normalRandom(0, noise), label});
+  }
+  return points;
+}
+
+export function classifyBowtie(numSamples: number, noise: number): Example2D[] {
+  let points: Example2D[] = [];
+  for (let i = 0; i < numSamples; i++) {
+    let x = randUniform(-6, 6);
+    let y = randUniform(-6, 6);
+    let label = Math.abs(y) < Math.abs(x) * 0.7 ? 1 : -1;
+    points.push({x: x + normalRandom(0, noise), y: y + normalRandom(0, noise), label});
+  }
+  return points;
+}
+
+export function classifyParallelSines(numSamples: number, noise: number): Example2D[] {
+  let points: Example2D[] = [];
+  for (let i = 0; i < numSamples; i++) {
+    let x = randUniform(-6, 6);
+    let y = randUniform(-6, 6);
+    let band = Math.floor((y - 1.5 * Math.sin(x) + 6) / 2);
+    let label = band % 2 === 0 ? 1 : -1;
+    points.push({x: x + normalRandom(0, noise), y: y + normalRandom(0, noise), label});
+  }
+  return points;
+}
+
+export function classifyRadialGradientClass(numSamples: number, noise: number): Example2D[] {
+  let points: Example2D[] = [];
+  for (let i = 0; i < numSamples; i++) {
+    let x = randUniform(-6, 6);
+    let y = randUniform(-6, 6);
+    let r = Math.sqrt(x * x + y * y);
+    let label = Math.sin(r * 1.5) > 0 ? 1 : -1;
+    points.push({x: x + normalRandom(0, noise), y: y + normalRandom(0, noise), label});
+  }
+  return points;
+}
+
+export function classifyConcentricArcs(numSamples: number, noise: number): Example2D[] {
+  let points: Example2D[] = [];
+  for (let i = 0; i < numSamples; i++) {
+    let t = randUniform(-Math.PI / 2, Math.PI / 2);
+    let band = i % 4;
+    let r = 1.5 + band * 1.3;
+    let label = band % 2 === 0 ? 1 : -1;
+    points.push({x: r * Math.cos(t) + normalRandom(0, noise), y: r * Math.sin(t) + normalRandom(0, noise), label});
+  }
+  return points;
+}
+
+export function classifyClusteredOutliers(numSamples: number, noise: number): Example2D[] {
+  let points: Example2D[] = [];
+  for (let i = 0; i < numSamples; i++) {
+    if (i % 5 === 0) {
+      points.push({x: randUniform(-6, 6), y: randUniform(-6, 6), label: -1});
+    } else {
+      points.push({x: normalRandom(0, 1 + noise), y: normalRandom(0, 1 + noise), label: 1});
+    }
+  }
+  return points;
+}
+
+export function classifyTwoBlobsOverlap(numSamples: number, noise: number): Example2D[] {
+  let points: Example2D[] = [];
+  for (let i = 0; i < numSamples; i++) {
+    let label = i % 2 === 0 ? 1 : -1;
+    let cx = label === 1 ? -1.2 : 1.2;
+    points.push({x: normalRandom(cx, 2 + noise), y: normalRandom(0, 2 + noise), label});
+  }
+  return points;
+}
+
+export function classifyDiamondGrid(numSamples: number, noise: number): Example2D[] {
+  let points: Example2D[] = [];
+  for (let i = 0; i < numSamples; i++) {
+    let x = randUniform(-6, 6);
+    let y = randUniform(-6, 6);
+    let u = Math.floor((x + y + 12) / 2);
+    let v = Math.floor((x - y + 12) / 2);
+    let label = (u + v) % 2 === 0 ? 1 : -1;
+    points.push({x: x + normalRandom(0, noise), y: y + normalRandom(0, noise), label});
+  }
+  return points;
+}
+
+export function classifyWavyStripes(numSamples: number, noise: number): Example2D[] {
+  let points: Example2D[] = [];
+  for (let i = 0; i < numSamples; i++) {
+    let x = randUniform(-6, 6);
+    let y = randUniform(-6, 6);
+    let stripe = Math.floor((x + 1.5 * Math.sin(y) + 6) / 1.5);
+    let label = stripe % 2 === 0 ? 1 : -1;
+    points.push({x: x + normalRandom(0, noise), y: y + normalRandom(0, noise), label});
+  }
+  return points;
+}
+
+export function classifyPlusMinusGrid(numSamples: number, noise: number): Example2D[] {
+  let points: Example2D[] = [];
+  for (let i = 0; i < numSamples; i++) {
+    let x = randUniform(-6, 6);
+    let y = randUniform(-6, 6);
+    let cx = Math.floor((x + 6) / 3);
+    let cy = Math.floor((y + 6) / 3);
+    let inCross = Math.abs((x % 3) - 1.5) < 0.6 || Math.abs((y % 3) - 1.5) < 0.6;
+    let label = inCross ? 1 : -1;
+    points.push({x: x + normalRandom(0, noise), y: y + normalRandom(0, noise), label});
+  }
+  return points;
+}
+
+export function regressRipple2(numSamples: number, noise: number): Example2D[] {
+  let points: Example2D[] = [];
+  for (let i = 0; i < numSamples; i++) {
+    let x = randUniform(-6, 6);
+    let y = randUniform(-6, 6);
+    let r = Math.sqrt(x * x + y * y);
+    let label = Math.cos(r * 2) * Math.exp(-r / 6) + randUniform(-1, 1) * noise;
+    points.push({x, y, label});
+  }
+  return points;
+}
+
+export function regressSaddle2(numSamples: number, noise: number): Example2D[] {
+  let points: Example2D[] = [];
+  for (let i = 0; i < numSamples; i++) {
+    let x = randUniform(-6, 6);
+    let y = randUniform(-6, 6);
+    let label = (x * x - y * y) / 18 + randUniform(-1, 1) * noise;
+    points.push({x, y, label});
+  }
+  return points;
+}
+
+export function regressGaussianHill(numSamples: number, noise: number): Example2D[] {
+  let points: Example2D[] = [];
+  for (let i = 0; i < numSamples; i++) {
+    let x = randUniform(-6, 6);
+    let y = randUniform(-6, 6);
+    let label = Math.exp(-((x - 1) * (x - 1) + (y + 1) * (y + 1)) / 8) * 2 - 1 + randUniform(-1, 1) * noise;
+    points.push({x, y, label});
+  }
+  return points;
+}
+
+export function regressSinProduct(numSamples: number, noise: number): Example2D[] {
+  let points: Example2D[] = [];
+  for (let i = 0; i < numSamples; i++) {
+    let x = randUniform(-6, 6);
+    let y = randUniform(-6, 6);
+    let label = Math.sin(x) * Math.sin(y) + randUniform(-1, 1) * noise;
+    points.push({x, y, label});
+  }
+  return points;
+}
+
+export function regressAbsDiff(numSamples: number, noise: number): Example2D[] {
+  let points: Example2D[] = [];
+  for (let i = 0; i < numSamples; i++) {
+    let x = randUniform(-6, 6);
+    let y = randUniform(-6, 6);
+    let label = (Math.abs(x) - Math.abs(y)) / 6 + randUniform(-1, 1) * noise;
+    points.push({x, y, label});
+  }
+  return points;
+}
+
+export function regressLog(numSamples: number, noise: number): Example2D[] {
+  let points: Example2D[] = [];
+  for (let i = 0; i < numSamples; i++) {
+    let x = randUniform(-6, 6);
+    let y = randUniform(-6, 6);
+    let label = Math.log(1 + x * x + y * y) / 4 - 1 + randUniform(-1, 1) * noise;
+    points.push({x, y, label});
+  }
+  return points;
+}
+
+export function regressTanhWave(numSamples: number, noise: number): Example2D[] {
+  let points: Example2D[] = [];
+  for (let i = 0; i < numSamples; i++) {
+    let x = randUniform(-6, 6);
+    let y = randUniform(-6, 6);
+    let label = Math.tanh(x - Math.sin(y)) + randUniform(-1, 1) * noise;
+    points.push({x, y, label});
+  }
+  return points;
+}
+
+export function regressCrossRidge(numSamples: number, noise: number): Example2D[] {
+  let points: Example2D[] = [];
+  for (let i = 0; i < numSamples; i++) {
+    let x = randUniform(-6, 6);
+    let y = randUniform(-6, 6);
+    let label = Math.exp(-x * x / 4) + Math.exp(-y * y / 4) - 1 + randUniform(-1, 1) * noise;
+    points.push({x, y, label});
+  }
+  return points;
+}
+
 /**
  * Returns a sample from a uniform [a, b] distribution.
  * Uses the seedrandom library as the random generator.
