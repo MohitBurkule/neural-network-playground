@@ -620,6 +620,99 @@ Modified by David Cato
                     <div class="dataset" title="Regression: waves">
                         <canvas class="data-thumbnail" data-regDataset="reg-waves"></canvas>
                     </div>
+                    <div class="dataset" title="Nested squares">
+                        <canvas class="data-thumbnail" data-dataset="nested-squares"></canvas>
+                    </div>
+                    <div class="dataset" title="Polygon boundary">
+                        <canvas class="data-thumbnail" data-dataset="polygon-boundary"></canvas>
+                    </div>
+                    <div class="dataset" title="Voronoi regions">
+                        <canvas class="data-thumbnail" data-dataset="voronoi-regions"></canvas>
+                    </div>
+                    <div class="dataset" title="Gaussian grid 9">
+                        <canvas class="data-thumbnail" data-dataset="gaussian-grid-9"></canvas>
+                    </div>
+                    <div class="dataset" title="Two rings XOR">
+                        <canvas class="data-thumbnail" data-dataset="two-rings-xor"></canvas>
+                    </div>
+                    <div class="dataset" title="Checker 4">
+                        <canvas class="data-thumbnail" data-dataset="checker4"></canvas>
+                    </div>
+                    <div class="dataset" title="Radial petals">
+                        <canvas class="data-thumbnail" data-dataset="radial-petals"></canvas>
+                    </div>
+                    <div class="dataset" title="Heart shape">
+                        <canvas class="data-thumbnail" data-dataset="heart-shape"></canvas>
+                    </div>
+                    <div class="dataset" title="Wave interference">
+                        <canvas class="data-thumbnail" data-dataset="wave-interference"></canvas>
+                    </div>
+                    <div class="dataset" title="Gradient blobs">
+                        <canvas class="data-thumbnail" data-dataset="gradient-blobs"></canvas>
+                    </div>
+                    <div class="dataset" title="Three classes (binary)">
+                        <canvas class="data-thumbnail" data-dataset="three-class-binary"></canvas>
+                    </div>
+                    <div class="dataset" title="Noisy concentric 3">
+                        <canvas class="data-thumbnail" data-dataset="noisy-concentric-3"></canvas>
+                    </div>
+                    <div class="dataset" title="Diagonal bands 5">
+                        <canvas class="data-thumbnail" data-dataset="diagonal-bands-5"></canvas>
+                    </div>
+                    <div class="dataset" title="Blob constellation">
+                        <canvas class="data-thumbnail" data-dataset="blob-constellation"></canvas>
+                    </div>
+                    <div class="dataset" title="Sparse vs dense">
+                        <canvas class="data-thumbnail" data-dataset="sparse-vs-dense"></canvas>
+                    </div>
+                    <div class="dataset" title="Half plane noisy">
+                        <canvas class="data-thumbnail" data-dataset="half-plane-noisy"></canvas>
+                    </div>
+                    <div class="dataset" title="Lens">
+                        <canvas class="data-thumbnail" data-dataset="lens"></canvas>
+                    </div>
+                    <div class="dataset" title="Hourglass">
+                        <canvas class="data-thumbnail" data-dataset="hourglass"></canvas>
+                    </div>
+                    <div class="dataset" title="Zigzag boundary">
+                        <canvas class="data-thumbnail" data-dataset="zigzag-boundary"></canvas>
+                    </div>
+                    <div class="dataset" title="Comb teeth">
+                        <canvas class="data-thumbnail" data-dataset="comb-teeth"></canvas>
+                    </div>
+                    <div class="dataset" title="Target 3 rings">
+                        <canvas class="data-thumbnail" data-dataset="target-3rings"></canvas>
+                    </div>
+                    <div class="dataset" title="Double spiral tight">
+                        <canvas class="data-thumbnail" data-dataset="double-spiral-tight"></canvas>
+                    </div>
+                    <div class="dataset" title="Quadrant stripes">
+                        <canvas class="data-thumbnail" data-dataset="quadrant-stripes"></canvas>
+                    </div>
+                    <div class="dataset" title="Gaussian ring">
+                        <canvas class="data-thumbnail" data-dataset="gaussian-ring"></canvas>
+                    </div>
+                    <div class="dataset" title="Regression: sin 2D">
+                        <canvas class="data-thumbnail" data-regDataset="reg-sin2d"></canvas>
+                    </div>
+                    <div class="dataset" title="Regression: product">
+                        <canvas class="data-thumbnail" data-regDataset="reg-product"></canvas>
+                    </div>
+                    <div class="dataset" title="Regression: distance">
+                        <canvas class="data-thumbnail" data-regDataset="reg-distance"></canvas>
+                    </div>
+                    <div class="dataset" title="Regression: Rosenbrock slice">
+                        <canvas class="data-thumbnail" data-regDataset="reg-rosenbrock-slice"></canvas>
+                    </div>
+                    <div class="dataset" title="Regression: checkerboard smooth">
+                        <canvas class="data-thumbnail" data-regDataset="reg-checkerboard-smooth"></canvas>
+                    </div>
+                    <div class="dataset" title="Regression: peaks">
+                        <canvas class="data-thumbnail" data-regDataset="reg-peaks"></canvas>
+                    </div>
+                    <div class="dataset" title="Regression: Mexican hat">
+                        <canvas class="data-thumbnail" data-regDataset="reg-mexican-hat"></canvas>
+                    </div>
                 </div>
             </div>
             <div>
@@ -668,6 +761,15 @@ Modified by David Cato
                         <option value="spiral-tower">3D Spiral Tower</option>
                         <option value="octant-checker">Octant Checker</option>
                         <option value="sphere-grid">Sphere Grid</option>
+                        <option value="nested-cubes">Nested Cubes</option>
+                        <option value="cube-shell">Cube Shell</option>
+                        <option value="double-torus">Double Torus</option>
+                        <option value="spiral-cone">Spiral Cone</option>
+                        <option value="lattice-points">Lattice Points</option>
+                        <option value="3d-moons">3D Moons</option>
+                        <option value="octahedron-vs-sphere">Octahedron vs Sphere</option>
+                        <option value="helix-pair">Helix Pair</option>
+                        <option value="plane-stack-5">Plane Stack (5)</option>
                     </select>
                 </div>
             </div>
@@ -819,7 +921,7 @@ Modified by David Cato
                     </label>
                 </div>
                 <div class="adv-labs-link" style="margin-top:10px;font-size:12px;opacity:.8;">
-                    🧪 <b>26 interactive labs</b> — CNN, Transformer, RNN, Autoencoder, GAN, Diffusion, Word2Vec, Bayesian NN, Decision Tree, SVM, GLM, Gaussian Process, Clustering, PCA/t-SNE, SOM, RL, Hopfield, Genetic Algorithm, Multi-Armed Bandit, Optimizer Visualizer, Markov Chains, MCMC, Cellular Automata, Fourier, Kalman Filter, RBM &nbsp;→&nbsp; <a href="labs.html"><b>Browse the lab gallery</b></a>
+                    🧪 <b>30 interactive labs</b> — CNN, Transformer, RNN, Autoencoder, VAE, GAN, Diffusion, Word2Vec, Bayesian NN, Decision Tree, SVM, GLM, Gaussian Process, Clustering, PCA/t-SNE, SOM, RBM, RL, Hopfield, Genetic Algorithm, PSO, Multi-Armed Bandit, Optimizer Visualizer, Markov Chains, MCMC, Cellular Automata, Reaction-Diffusion, Fourier, Kalman Filter, Spiking NN &nbsp;→&nbsp; <a href="labs.html"><b>Browse the lab gallery</b></a>
                 </div>
             </div>
         </div>

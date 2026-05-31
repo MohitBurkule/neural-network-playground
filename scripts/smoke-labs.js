@@ -19,7 +19,7 @@ const LABS = [
   'cnn', 'transformer', 'rnn', 'autoencoder', 'gan', 'diffusion', 'word2vec',
   'bayesnn', 'dtree', 'svm', 'glm', 'gp', 'clustering', 'dimred', 'som',
   'rl', 'hopfield', 'genetic', 'bandit', 'optviz', 'markov', 'mcmc',
-  'ca', 'fourier', 'kalman', 'rbm'
+  'ca', 'fourier', 'kalman', 'rbm', 'vae', 'pso', 'snn', 'rd'
 ];
 
 function makeCtx() {

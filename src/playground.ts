@@ -50,7 +50,16 @@ import {
   classifyStackedPlanes,
   classifySpiralTower,
   classifyOctantChecker,
-  classifySphereGrid
+  classifySphereGrid,
+  classifyNestedCubes,
+  classifyCubeShell,
+  classifyDoubleTorus,
+  classifySpiralCone,
+  classifyLatticePoints,
+  classify3DMoons,
+  classifyOctahedronVsSphere,
+  classifyHelixPair,
+  classifyPlaneStack5
 } from "./dataset3d";
 import {parseCSV} from "./customdataset";
 import {
@@ -1414,7 +1423,16 @@ const THREE_GENERATORS: {[k: string]: (n: number, noise: number) => Example3D[]}
   "stacked-planes": classifyStackedPlanes,
   "spiral-tower": classifySpiralTower,
   "octant-checker": classifyOctantChecker,
-  "sphere-grid": classifySphereGrid
+  "sphere-grid": classifySphereGrid,
+  "nested-cubes": classifyNestedCubes,
+  "cube-shell": classifyCubeShell,
+  "double-torus": classifyDoubleTorus,
+  "spiral-cone": classifySpiralCone,
+  "lattice-points": classifyLatticePoints,
+  "3d-moons": classify3DMoons,
+  "octahedron-vs-sphere": classifyOctahedronVsSphere,
+  "helix-pair": classifyHelixPair,
+  "plane-stack-5": classifyPlaneStack5
 };
 
 function construct3DInput(x: number, y: number, z: number): number[] {

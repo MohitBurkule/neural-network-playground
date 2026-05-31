@@ -376,3 +376,205 @@ export function classifySphereGrid(numSamples: number, noise: number): Example3D
   }
   return points;
 }
+
+/** Nested cubes: alternating shells by Chebyshev distance. */
+export function classifyNestedCubes(numSamples: number, noise: number): Example3D[] {
+  const points: Example3D[] = [];
+  for (let i = 0; i < numSamples; i++) {
+    const x = randUniform(-4.5, 4.5);
+    const y = randUniform(-4.5, 4.5);
+    const z = randUniform(-4.5, 4.5);
+    const m = Math.max(Math.abs(x + randNormal(0, noise)),
+      Math.abs(y + randNormal(0, noise)), Math.abs(z + randNormal(0, noise)));
+    const band = Math.floor(m / 1.5);
+    points.push({ x, y, z, label: band % 2 === 0 ? 1 : -1 });
+  }
+  return points;
+}
+
+/** Cube shell vs interior. */
+export function classifyCubeShell(numSamples: number, noise: number): Example3D[] {
+  const points: Example3D[] = [];
+  for (let i = 0; i < numSamples; i++) {
+    const isShell = i % 2 === 0;
+    let x: number, y: number, z: number;
+    if (isShell) {
+      // Point on the surface of a cube of half-size 4.
+      const face = Math.floor(randUniform(0, 3));
+      const s = randUniform(-1, 1) >= 0 ? 4 : -4;
+      const a = randUniform(-4, 4);
+      const b = randUniform(-4, 4);
+      if (face === 0) { x = s; y = a; z = b; }
+      else if (face === 1) { x = a; y = s; z = b; }
+      else { x = a; y = b; z = s; }
+    } else {
+      x = randUniform(-1.5, 1.5);
+      y = randUniform(-1.5, 1.5);
+      z = randUniform(-1.5, 1.5);
+    }
+    points.push({
+      x: x + randNormal(0, noise),
+      y: y + randNormal(0, noise),
+      z: z + randNormal(0, noise),
+      label: isShell ? 1 : -1
+    });
+  }
+  return points;
+}
+
+/** Double torus: two tori, labelled by which one. */
+export function classifyDoubleTorus(numSamples: number, noise: number): Example3D[] {
+  const points: Example3D[] = [];
+  const half = Math.floor(numSamples / 2);
+  function genTorus(cx: number, R: number, r: number, label: number, n: number) {
+    for (let i = 0; i < n; i++) {
+      const u = randUniform(0, 2 * Math.PI);
+      const v = randUniform(0, 2 * Math.PI);
+      points.push({
+        x: cx + (R + r * Math.cos(v)) * Math.cos(u) + randNormal(0, noise),
+        y: (R + r * Math.cos(v)) * Math.sin(u) + randNormal(0, noise),
+        z: r * Math.sin(v) + randNormal(0, noise),
+        label
+      });
+    }
+  }
+  genTorus(-2, 2.5, 0.8, 1, half);
+  genTorus(2, 2.5, 0.8, -1, numSamples - half);
+  return points;
+}
+
+/** Spiral cone: a helix whose radius grows with height. */
+export function classifySpiralCone(numSamples: number, noise: number): Example3D[] {
+  const points: Example3D[] = [];
+  for (let i = 0; i < numSamples; i++) {
+    const t = (i / numSamples) * 6 * Math.PI;
+    const h = (i / numSamples) * 8 - 4;
+    const r = (h + 4) / 8 * 4;
+    points.push({
+      x: r * Math.cos(t) + randNormal(0, noise),
+      y: h + randNormal(0, noise),
+      z: r * Math.sin(t) + randNormal(0, noise),
+      label: Math.floor(t / Math.PI) % 2 === 0 ? 1 : -1
+    });
+  }
+  return points;
+}
+
+/** Lattice points: 3D grid of blobs labelled by parity. */
+export function classifyLatticePoints(numSamples: number, noise: number): Example3D[] {
+  const points: Example3D[] = [];
+  const coords = [-3, 0, 3];
+  const centers: number[][] = [];
+  for (const cx of coords)
+    for (const cy of coords)
+      for (const cz of coords) {
+        const parity = ((cx + cy + cz) / 3) ;
+        centers.push([cx, cy, cz, Math.round(parity) % 2 === 0 ? 1 : -1]);
+      }
+  const per = Math.max(1, Math.floor(numSamples / centers.length));
+  centers.forEach(([cx, cy, cz, label]) => {
+    for (let i = 0; i < per; i++) {
+      points.push({
+        x: cx + randNormal(0, 0.4 + noise),
+        y: cy + randNormal(0, 0.4 + noise),
+        z: cz + randNormal(0, 0.4 + noise),
+        label
+      });
+    }
+  });
+  return points;
+}
+
+/** 3D moons: two interleaving half-shells. */
+export function classify3DMoons(numSamples: number, noise: number): Example3D[] {
+  const points: Example3D[] = [];
+  const half = Math.floor(numSamples / 2);
+  for (let i = 0; i < half; i++) {
+    const t = randUniform(0, Math.PI);
+    const p = randUniform(0, Math.PI);
+    points.push({
+      x: 3 * Math.sin(p) * Math.cos(t) + randNormal(0, noise),
+      y: 3 * Math.cos(p) + randNormal(0, noise),
+      z: 3 * Math.sin(p) * Math.sin(t) + randNormal(0, noise),
+      label: 1
+    });
+  }
+  for (let i = half; i < numSamples; i++) {
+    const t = randUniform(0, Math.PI);
+    const p = randUniform(0, Math.PI);
+    points.push({
+      x: 3 - 3 * Math.sin(p) * Math.cos(t) + randNormal(0, noise),
+      y: -3 * Math.cos(p) + 1.5 + randNormal(0, noise),
+      z: 3 * Math.sin(p) * Math.sin(t) + randNormal(0, noise),
+      label: -1
+    });
+  }
+  return points;
+}
+
+/** Octahedron region vs surrounding sphere. */
+export function classifyOctahedronVsSphere(numSamples: number, noise: number): Example3D[] {
+  const points: Example3D[] = [];
+  for (let i = 0; i < numSamples; i++) {
+    const inOcta = i % 2 === 0;
+    let x: number, y: number, z: number;
+    if (inOcta) {
+      do {
+        x = randUniform(-3, 3); y = randUniform(-3, 3); z = randUniform(-3, 3);
+      } while (Math.abs(x) + Math.abs(y) + Math.abs(z) > 3);
+    } else {
+      const theta = randUniform(0, 2 * Math.PI);
+      const phi = Math.acos(randUniform(-1, 1));
+      const r = 4.5;
+      x = r * Math.sin(phi) * Math.cos(theta);
+      y = r * Math.sin(phi) * Math.sin(theta);
+      z = r * Math.cos(phi);
+    }
+    points.push({
+      x: x + randNormal(0, noise),
+      y: y + randNormal(0, noise),
+      z: z + randNormal(0, noise),
+      label: inOcta ? 1 : -1
+    });
+  }
+  return points;
+}
+
+/** Helix pair offset along z, labelled by helix. */
+export function classifyHelixPair(numSamples: number, noise: number): Example3D[] {
+  const points: Example3D[] = [];
+  const half = Math.floor(numSamples / 2);
+  function genHelix(zOff: number, label: number, n: number) {
+    for (let i = 0; i < n; i++) {
+      const t = (i / n) * 5 * Math.PI;
+      points.push({
+        x: 3 * Math.cos(t) + randNormal(0, noise),
+        y: (t / (5 * Math.PI)) * 8 - 4 + randNormal(0, noise),
+        z: 3 * Math.sin(t) + zOff + randNormal(0, noise),
+        label
+      });
+    }
+  }
+  genHelix(1.5, 1, half);
+  genHelix(-1.5, -1, numSamples - half);
+  return points;
+}
+
+/** Five stacked planes (more levels than stacked-planes). */
+export function classifyPlaneStack5(numSamples: number, noise: number): Example3D[] {
+  const points: Example3D[] = [];
+  const levels = [-4, -2, 0, 2, 4];
+  const per = Math.floor(numSamples / levels.length);
+  levels.forEach((h, idx) => {
+    const label = idx % 2 === 0 ? 1 : -1;
+    for (let i = 0; i < per; i++) {
+      points.push({
+        x: randUniform(-4, 4) + randNormal(0, noise),
+        y: h + randNormal(0, noise),
+        z: randUniform(-4, 4) + randNormal(0, noise),
+        label
+      });
+    }
+  });
+  return points;
+}

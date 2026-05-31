@@ -1,0 +1,377 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Spiking Neural Network — LIF Lab</title>
+  <style>
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+    body {
+      background: #0a0a1a;
+      color: #d0d0e8;
+      font-family: 'Segoe UI', system-ui, sans-serif;
+      font-size: 14px;
+      min-height: 100vh;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      padding: 20px 12px 48px;
+    }
+
+    h1 {
+      font-size: 1.5rem;
+      font-weight: 700;
+      color: #c084fc;
+      margin-bottom: 4px;
+      letter-spacing: 0.04em;
+    }
+
+    .subtitle {
+      color: #6b7280;
+      font-size: 0.82rem;
+      margin-bottom: 20px;
+      text-align: center;
+      max-width: 700px;
+    }
+
+    .main-row {
+      display: flex;
+      gap: 16px;
+      align-items: flex-start;
+      flex-wrap: wrap;
+      justify-content: center;
+      width: 100%;
+      max-width: 1200px;
+    }
+
+    .left-col {
+      display: flex;
+      flex-direction: column;
+      gap: 12px;
+    }
+
+    .panel {
+      background: #0d0d1f;
+      border: 1px solid #2a2a4a;
+      border-radius: 10px;
+      padding: 12px 14px;
+    }
+
+    .panel-title {
+      font-size: 0.70rem;
+      color: #5a5a8a;
+      text-transform: uppercase;
+      letter-spacing: 0.08em;
+      margin-bottom: 8px;
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+    }
+
+    .panel-title span.clock {
+      color: #c084fc;
+      font-variant-numeric: tabular-nums;
+      font-size: 0.78rem;
+      text-transform: none;
+    }
+
+    svg {
+      display: block;
+      overflow: visible;
+    }
+
+    /* ---- controls ---- */
+    .controls-col {
+      background: #10102a;
+      border: 1px solid #2a2a4a;
+      border-radius: 10px;
+      padding: 18px;
+      width: 230px;
+      min-width: 200px;
+      display: flex;
+      flex-direction: column;
+      gap: 12px;
+    }
+
+    .section-title {
+      font-size: 0.70rem;
+      color: #5a5a8a;
+      text-transform: uppercase;
+      letter-spacing: 0.08em;
+      border-bottom: 1px solid #22224a;
+      padding-bottom: 4px;
+    }
+
+    .ctrl-group {
+      display: flex;
+      flex-direction: column;
+      gap: 4px;
+    }
+
+    .ctrl-group label {
+      font-size: 0.75rem;
+      color: #8888bb;
+      text-transform: uppercase;
+      letter-spacing: 0.05em;
+    }
+
+    select, input[type=range] {
+      width: 100%;
+      background: #1a1a38;
+      border: 1px solid #3a3a5c;
+      border-radius: 5px;
+      color: #d0d0e8;
+      padding: 4px 6px;
+      font-size: 0.85rem;
+      cursor: pointer;
+    }
+
+    input[type=range] {
+      padding: 0;
+      accent-color: #c084fc;
+      height: 18px;
+    }
+
+    .range-row {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      gap: 6px;
+    }
+
+    .range-row span {
+      min-width: 32px;
+      text-align: right;
+      font-size: 0.82rem;
+      color: #c0c0e0;
+      font-variant-numeric: tabular-nums;
+    }
+
+    .toggle-row {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+    }
+
+    .toggle-row input[type=checkbox] {
+      width: auto;
+      accent-color: #c084fc;
+    }
+
+    .toggle-row label {
+      text-transform: none;
+      letter-spacing: 0;
+      font-size: 0.80rem;
+      color: #8888bb;
+    }
+
+    .btn-row {
+      display: flex;
+      gap: 5px;
+      flex-wrap: wrap;
+    }
+
+    button {
+      flex: 1;
+      padding: 7px 4px;
+      border: none;
+      border-radius: 6px;
+      cursor: pointer;
+      font-size: 0.80rem;
+      font-weight: 600;
+      transition: opacity 0.12s;
+      white-space: nowrap;
+    }
+
+    button:hover { opacity: 0.82; }
+
+    #playBtn  { background: #5b21b6; color: #e9d5ff; flex: 2; }
+    #stepBtn  { background: #1e3a5f; color: #7dd3fc; }
+    #resetBtn { background: #3b1f1f; color: #fca5a5; }
+
+    .legend-row {
+      display: flex;
+      gap: 12px;
+      flex-wrap: wrap;
+      font-size: 0.72rem;
+      color: #6b6b9a;
+    }
+
+    .legend-dot {
+      display: inline-block;
+      width: 8px;
+      height: 8px;
+      border-radius: 50%;
+      margin-right: 4px;
+      vertical-align: middle;
+    }
+
+    .theory-box {
+      background: #0d0d22;
+      border-left: 3px solid #7c3aed;
+      border-radius: 0 6px 6px 0;
+      padding: 8px 12px;
+      font-size: 0.74rem;
+      color: #7070a0;
+      line-height: 1.6;
+    }
+
+    .theory-box code {
+      color: #c4b5fd;
+      font-family: monospace;
+    }
+  </style>
+</head>
+<body>
+  <h1>Spiking Neural Network</h1>
+  <p class="subtitle">
+    Leaky Integrate-and-Fire neurons driven by Poisson input spike trains.
+    Watch spikes propagate through the network in real time — raster plot, membrane voltage traces, and per-neuron firing rates.
+  </p>
+
+  <div class="main-row">
+
+    <!-- ===== Left column: visualisations ===== -->
+    <div class="left-col">
+
+      <!-- Raster plot -->
+      <div class="panel">
+        <div class="panel-title">
+          <span>Raster Plot — spike times (blue = input, pink = LIF)</span>
+          <span class="clock" id="simClock">t = 0 ms</span>
+        </div>
+        <div class="legend-row" style="margin-bottom:6px;">
+          <span><span class="legend-dot" style="background:#38bdf8;"></span>Input (Poisson)</span>
+          <span><span class="legend-dot" style="background:#f472b6;"></span>LIF neurons</span>
+          <span style="color:#5a5a8a;font-style:italic;">Dashed line separates layers</span>
+        </div>
+        <svg id="rasterSvg"></svg>
+      </div>
+
+      <!-- Voltage traces + firing rates (side by side) -->
+      <div style="display:flex;gap:12px;flex-wrap:wrap;">
+
+        <div class="panel">
+          <div class="panel-title">
+            Membrane Voltage — first 4 LIF neurons
+            <span style="color:#fbbf24;font-size:0.70rem;">— threshold</span>
+          </div>
+          <svg id="voltSvg"></svg>
+        </div>
+
+        <div class="panel">
+          <div class="panel-title">Firing Rate (last 200 ms)</div>
+          <svg id="rateSvg"></svg>
+        </div>
+
+      </div>
+    </div>
+
+    <!-- ===== Right column: controls ===== -->
+    <div class="controls-col">
+
+      <div class="section-title">Playback</div>
+
+      <div class="btn-row">
+        <button id="playBtn">⏸ Pause</button>
+        <button id="stepBtn">Step</button>
+        <button id="resetBtn">Reset</button>
+      </div>
+
+      <div class="ctrl-group">
+        <label>Speed (sim ms / real ms)</label>
+        <div class="range-row">
+          <input type="range" id="speedSlider" min="1" max="20" step="1" value="5" />
+          <span id="speedSliderVal">5</span>
+        </div>
+      </div>
+
+      <div class="section-title">Network</div>
+
+      <div class="ctrl-group">
+        <label># Input Neurons</label>
+        <select id="nInputSelect">
+          <option value="4">4</option>
+          <option value="8" selected>8</option>
+          <option value="12">12</option>
+          <option value="16">16</option>
+        </select>
+      </div>
+
+      <div class="ctrl-group">
+        <label># LIF Neurons</label>
+        <select id="nLIFSelect">
+          <option value="4">4</option>
+          <option value="6" selected>6</option>
+          <option value="8">8</option>
+          <option value="12">12</option>
+        </select>
+      </div>
+
+      <div class="section-title">Input</div>
+
+      <div class="ctrl-group">
+        <label>Input Rate (Hz)</label>
+        <div class="range-row">
+          <input type="range" id="inputRateSlider" min="5" max="120" step="5" value="40" />
+          <span id="inputRateSliderVal">40</span>
+        </div>
+      </div>
+
+      <div class="section-title">LIF Parameters</div>
+
+      <div class="ctrl-group">
+        <label>Threshold V_th</label>
+        <div class="range-row">
+          <input type="range" id="threshSlider" min="0.3" max="2.0" step="0.1" value="1.0" />
+          <span id="threshSliderVal">1</span>
+        </div>
+      </div>
+
+      <div class="ctrl-group">
+        <label>Membrane τ (ms)</label>
+        <div class="range-row">
+          <input type="range" id="tauSlider" min="5" max="50" step="5" value="20" />
+          <span id="tauSliderVal">20</span>
+        </div>
+      </div>
+
+      <div class="ctrl-group">
+        <label>Refractory (ms)</label>
+        <div class="range-row">
+          <input type="range" id="refracSlider" min="1" max="20" step="1" value="5" />
+          <span id="refracSliderVal">5</span>
+        </div>
+      </div>
+
+      <div class="ctrl-group">
+        <label>Weight Scale</label>
+        <div class="range-row">
+          <input type="range" id="weightSlider" min="0.1" max="2.0" step="0.1" value="0.8" />
+          <span id="weightSliderVal">0.8</span>
+        </div>
+      </div>
+
+      <div class="section-title">Learning</div>
+
+      <div class="toggle-row">
+        <input type="checkbox" id="stdpToggle" />
+        <label for="stdpToggle">STDP (spike-timing-dependent plasticity)</label>
+      </div>
+
+      <div class="section-title">Theory</div>
+      <div class="theory-box">
+        <strong>LIF:</strong> <code>τ dV/dt = −V + I</code><br/>
+        spike when <code>V ≥ V_th</code> → reset to 0, refractory<br/><br/>
+        <strong>Poisson input:</strong> each tick <code>P(spike) = r·dt</code><br/><br/>
+        <strong>STDP:</strong> <code>Δw = A₊e^(−|Δt|/τ)</code> (LTP)<br/>
+        &nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;<code>Δw = −A₋e^(−|Δt|/τ)</code> (LTD)
+      </div>
+
+    </div>
+  </div>
+
+  <script src="bundlesnn.js"></script>
+</body>
+</html>

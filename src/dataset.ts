@@ -1144,6 +1144,485 @@ export function regressWaves(numSamples: number, noise: number): Example2D[] {
   return points;
 }
 
+/** Nested squares: inside small square=1, ring between=-1, outside=1. */
+export function classifyNestedSquares(numSamples: number, noise: number): Example2D[] {
+  let points: Example2D[] = [];
+  for (let i = 0; i < numSamples; i++) {
+    let x = randUniform(-6, 6);
+    let y = randUniform(-6, 6);
+    let nx = randUniform(-1, 1) * noise;
+    let ny = randUniform(-1, 1) * noise;
+    let m = Math.max(Math.abs(x + nx), Math.abs(y + ny));
+    let band = Math.floor(m / 2);
+    points.push({x, y, label: band % 2 === 0 ? 1 : -1});
+  }
+  return points;
+}
+
+/** Polygon boundary: inside a regular pentagon vs outside. */
+export function classifyPolygonBoundary(numSamples: number, noise: number): Example2D[] {
+  let points: Example2D[] = [];
+  let sides = 5;
+  let R = 4;
+  function inPoly(x: number, y: number): boolean {
+    let ang = Math.atan2(y, x);
+    let r = Math.sqrt(x * x + y * y);
+    let sector = 2 * Math.PI / sides;
+    let a = ((ang % sector) + sector) % sector - sector / 2;
+    let bound = R * Math.cos(sector / 2) / Math.cos(a);
+    return r < bound;
+  }
+  for (let i = 0; i < numSamples; i++) {
+    let x = randUniform(-6, 6);
+    let y = randUniform(-6, 6);
+    let nx = randUniform(-1, 1) * noise;
+    let ny = randUniform(-1, 1) * noise;
+    points.push({x, y, label: inPoly(x + nx, y + ny) ? 1 : -1});
+  }
+  return points;
+}
+
+/** Voronoi regions: label by parity of nearest seed. */
+export function classifyVoronoiRegions(numSamples: number, noise: number): Example2D[] {
+  let points: Example2D[] = [];
+  let seeds = [
+    [-4, -3, 1], [3, -4, -1], [4, 3, 1], [-3, 4, -1],
+    [0, 0, 1], [-5, 1, -1], [2, 1, -1], [1, -2, 1]
+  ];
+  for (let i = 0; i < numSamples; i++) {
+    let x = randUniform(-6, 6);
+    let y = randUniform(-6, 6);
+    let nx = randUniform(-1, 1) * noise;
+    let ny = randUniform(-1, 1) * noise;
+    let best = Infinity;
+    let label = 1;
+    seeds.forEach(([sx, sy, l]) => {
+      let d = dist({x: x + nx, y: y + ny}, {x: sx, y: sy});
+      if (d < best) { best = d; label = l; }
+    });
+    points.push({x, y, label});
+  }
+  return points;
+}
+
+/** 3x3 grid of gaussian blobs, labelled by parity. */
+export function classifyGaussianGrid9(numSamples: number, noise: number): Example2D[] {
+  let points: Example2D[] = [];
+  let variance = 0.2 + noise * 0.5;
+  let centers: number[][] = [];
+  for (let i = 0; i < 3; i++) {
+    for (let j = 0; j < 3; j++) {
+      centers.push([-4 + i * 4, -4 + j * 4, (i + j) % 2 === 0 ? 1 : -1]);
+    }
+  }
+  let per = numSamples / centers.length;
+  centers.forEach(([cx, cy, lbl]) => {
+    for (let i = 0; i < per; i++) {
+      points.push({x: normalRandom(cx, variance), y: normalRandom(cy, variance), label: lbl});
+    }
+  });
+  return points;
+}
+
+/** Two rings arranged in an XOR pattern. */
+export function classifyTwoRingsXor(numSamples: number, noise: number): Example2D[] {
+  let points: Example2D[] = [];
+  let centers = [[-2.5, -2.5, 1], [2.5, 2.5, 1], [-2.5, 2.5, -1], [2.5, -2.5, -1]];
+  let per = numSamples / centers.length;
+  centers.forEach(([cx, cy, lbl]) => {
+    for (let i = 0; i < per; i++) {
+      let a = randUniform(0, 2 * Math.PI);
+      let r = 1.5;
+      points.push({x: cx + r * Math.cos(a) + randUniform(-1, 1) * noise,
+        y: cy + r * Math.sin(a) + randUniform(-1, 1) * noise, label: lbl});
+    }
+  });
+  return points;
+}
+
+/** Finer 4x4 checkerboard. */
+export function classifyChecker4(numSamples: number, noise: number): Example2D[] {
+  let points: Example2D[] = [];
+  let size = 3;
+  for (let i = 0; i < numSamples; i++) {
+    let x = randUniform(-6, 6);
+    let y = randUniform(-6, 6);
+    let nx = randUniform(-1, 1) * noise;
+    let ny = randUniform(-1, 1) * noise;
+    let cx = Math.floor((x + 6 + nx) / size);
+    let cy = Math.floor((y + 6 + ny) / size);
+    points.push({x, y, label: (cx + cy) % 2 === 0 ? 1 : -1});
+  }
+  return points;
+}
+
+/** Radial petals (flower): label by angular petals. */
+export function classifyRadialPetals(numSamples: number, noise: number): Example2D[] {
+  let points: Example2D[] = [];
+  let petals = 6;
+  for (let i = 0; i < numSamples; i++) {
+    let x = randUniform(-6, 6);
+    let y = randUniform(-6, 6);
+    let nx = randUniform(-1, 1) * noise;
+    let ny = randUniform(-1, 1) * noise;
+    let r = Math.sqrt((x + nx) * (x + nx) + (y + ny) * (y + ny));
+    let a = Math.atan2(y + ny, x + nx);
+    let bound = 4 * Math.abs(Math.cos(petals / 2 * a));
+    points.push({x, y, label: r < bound ? 1 : -1});
+  }
+  return points;
+}
+
+/** Heart shape boundary. */
+export function classifyHeartShape(numSamples: number, noise: number): Example2D[] {
+  let points: Example2D[] = [];
+  function inHeart(x: number, y: number): boolean {
+    let xs = x / 3.5;
+    let ys = y / 3.5;
+    let v = Math.pow(xs * xs + ys * ys - 1, 3) - xs * xs * ys * ys * ys;
+    return v < 0;
+  }
+  for (let i = 0; i < numSamples; i++) {
+    let x = randUniform(-6, 6);
+    let y = randUniform(-6, 6);
+    let nx = randUniform(-1, 1) * noise;
+    let ny = randUniform(-1, 1) * noise;
+    points.push({x, y, label: inHeart(x + nx, y + ny) ? 1 : -1});
+  }
+  return points;
+}
+
+/** Wave interference: product of two sine waves. */
+export function classifyWaveInterference(numSamples: number, noise: number): Example2D[] {
+  let points: Example2D[] = [];
+  for (let i = 0; i < numSamples; i++) {
+    let x = randUniform(-6, 6);
+    let y = randUniform(-6, 6);
+    let nx = randUniform(-1, 1) * noise;
+    let ny = randUniform(-1, 1) * noise;
+    let v = Math.sin(1.2 * (x + nx)) * Math.sin(1.2 * (y + ny));
+    points.push({x, y, label: v >= 0 ? 1 : -1});
+  }
+  return points;
+}
+
+/** Gradient blobs: probability of label varies with x. */
+export function classifyGradientBlobs(numSamples: number, noise: number): Example2D[] {
+  let points: Example2D[] = [];
+  for (let i = 0; i < numSamples; i++) {
+    let x = randUniform(-6, 6);
+    let y = randUniform(-6, 6);
+    let p = (x + 6) / 12;
+    let nx = randUniform(-1, 1) * noise;
+    points.push({x, y, label: (Math.random() + nx * 0.3) < p ? 1 : -1});
+  }
+  return points;
+}
+
+/** Three Gaussian classes collapsed to binary labels. */
+export function classifyThreeClassBinary(numSamples: number, noise: number): Example2D[] {
+  let points: Example2D[] = [];
+  let variance = 0.5 + noise * 1.5;
+  let centers = [[0, 4, 1], [-4, -3, -1], [4, -3, 1]];
+  let per = numSamples / centers.length;
+  centers.forEach(([cx, cy, lbl]) => {
+    for (let i = 0; i < per; i++) {
+      points.push({x: normalRandom(cx, variance), y: normalRandom(cy, variance), label: lbl});
+    }
+  });
+  return points;
+}
+
+/** Noisy three concentric circles. */
+export function classifyNoisyConcentric3(numSamples: number, noise: number): Example2D[] {
+  let points: Example2D[] = [];
+  let radii = [1.5, 3.5, 5];
+  let per = numSamples / radii.length;
+  radii.forEach((radius, idx) => {
+    let label = idx % 2 === 0 ? 1 : -1;
+    for (let i = 0; i < per; i++) {
+      let a = randUniform(0, 2 * Math.PI);
+      points.push({x: radius * Math.cos(a) + randUniform(-1, 1) * (0.4 + noise),
+        y: radius * Math.sin(a) + randUniform(-1, 1) * (0.4 + noise), label});
+    }
+  });
+  return points;
+}
+
+/** Five diagonal bands. */
+export function classifyDiagonalBands5(numSamples: number, noise: number): Example2D[] {
+  let points: Example2D[] = [];
+  let width = 12 / 5;
+  for (let i = 0; i < numSamples; i++) {
+    let x = randUniform(-6, 6);
+    let y = randUniform(-6, 6);
+    let nx = randUniform(-1, 1) * noise;
+    let band = Math.floor((x + y + 12 + nx) / width);
+    points.push({x, y, label: band % 2 === 0 ? 1 : -1});
+  }
+  return points;
+}
+
+/** Blob constellation: many small blobs scattered, random labels. */
+export function classifyBlobConstellation(numSamples: number, noise: number): Example2D[] {
+  let points: Example2D[] = [];
+  let numBlobs = 12;
+  let per = numSamples / numBlobs;
+  let variance = 0.25 + noise * 0.4;
+  for (let b = 0; b < numBlobs; b++) {
+    let cx = randUniform(-5, 5);
+    let cy = randUniform(-5, 5);
+    let label = (b % 2 === 0) ? 1 : -1;
+    for (let i = 0; i < per; i++) {
+      points.push({x: normalRandom(cx, variance), y: normalRandom(cy, variance), label});
+    }
+  }
+  return points;
+}
+
+/** Sparse vs dense: dense cluster vs sparse spread. */
+export function classifySparseVsDense(numSamples: number, noise: number): Example2D[] {
+  let points: Example2D[] = [];
+  let half = numSamples / 2;
+  for (let i = 0; i < half; i++) {
+    points.push({x: normalRandom(-2, 0.7 + noise), y: normalRandom(-2, 0.7 + noise), label: 1});
+  }
+  for (let i = 0; i < half; i++) {
+    points.push({x: randUniform(-6, 6), y: randUniform(-6, 6), label: -1});
+  }
+  return points;
+}
+
+/** Half plane with noisy boundary. */
+export function classifyHalfPlaneNoisy(numSamples: number, noise: number): Example2D[] {
+  let points: Example2D[] = [];
+  for (let i = 0; i < numSamples; i++) {
+    let x = randUniform(-6, 6);
+    let y = randUniform(-6, 6);
+    let nx = randUniform(-1, 1) * (noise + 0.3);
+    let ny = randUniform(-1, 1) * (noise + 0.3);
+    points.push({x, y, label: (0.7 * (x + nx) + 0.7 * (y + ny)) > 0 ? 1 : -1});
+  }
+  return points;
+}
+
+/** Lens: intersection of two circles. */
+export function classifyLens(numSamples: number, noise: number): Example2D[] {
+  let points: Example2D[] = [];
+  for (let i = 0; i < numSamples; i++) {
+    let x = randUniform(-6, 6);
+    let y = randUniform(-6, 6);
+    let nx = randUniform(-1, 1) * noise;
+    let ny = randUniform(-1, 1) * noise;
+    let inA = dist({x: x + nx, y: y + ny}, {x: -1.8, y: 0}) < 3.5;
+    let inB = dist({x: x + nx, y: y + ny}, {x: 1.8, y: 0}) < 3.5;
+    points.push({x, y, label: (inA && inB) ? 1 : -1});
+  }
+  return points;
+}
+
+/** Hourglass: two opposing triangles meeting at center. */
+export function classifyHourglass(numSamples: number, noise: number): Example2D[] {
+  let points: Example2D[] = [];
+  for (let i = 0; i < numSamples; i++) {
+    let x = randUniform(-6, 6);
+    let y = randUniform(-6, 6);
+    let nx = randUniform(-1, 1) * noise;
+    let ny = randUniform(-1, 1) * noise;
+    let inside = Math.abs(x + nx) < Math.abs(y + ny) * 0.9 && Math.abs(y + ny) < 5;
+    points.push({x, y, label: inside ? 1 : -1});
+  }
+  return points;
+}
+
+/** Zigzag boundary classification. */
+export function classifyZigzagBoundary(numSamples: number, noise: number): Example2D[] {
+  let points: Example2D[] = [];
+  function tri(x: number): number {
+    let p = 4;
+    let t = ((x % p) + p) % p;
+    return (t < p / 2 ? t : p - t) * 2 - 2;
+  }
+  for (let i = 0; i < numSamples; i++) {
+    let x = randUniform(-6, 6);
+    let y = randUniform(-6, 6);
+    let ny = randUniform(-1, 1) * noise;
+    points.push({x, y, label: (y + ny) > tri(x) ? 1 : -1});
+  }
+  return points;
+}
+
+/** Comb teeth: vertical rectangular teeth from the bottom. */
+export function classifyCombTeeth(numSamples: number, noise: number): Example2D[] {
+  let points: Example2D[] = [];
+  let width = 1.5;
+  for (let i = 0; i < numSamples; i++) {
+    let x = randUniform(-6, 6);
+    let y = randUniform(-6, 6);
+    let nx = randUniform(-1, 1) * noise;
+    let tooth = Math.floor((x + 6 + nx) / width) % 2 === 0;
+    let inTooth = tooth && y < 2;
+    points.push({x, y, label: inTooth ? 1 : -1});
+  }
+  return points;
+}
+
+/** Target with three rings. */
+export function classifyTarget3Rings(numSamples: number, noise: number): Example2D[] {
+  let points: Example2D[] = [];
+  for (let i = 0; i < numSamples; i++) {
+    let x = randUniform(-6, 6);
+    let y = randUniform(-6, 6);
+    let nx = randUniform(-1, 1) * noise;
+    let ny = randUniform(-1, 1) * noise;
+    let r = dist({x: x + nx, y: y + ny}, {x: 0, y: 0});
+    let ring = Math.floor(r / 1.8);
+    points.push({x, y, label: ring % 2 === 0 ? 1 : -1});
+  }
+  return points;
+}
+
+/** Very tight double spiral. */
+export function classifyDoubleSpiralTight(numSamples: number, noise: number): Example2D[] {
+  let points: Example2D[] = [];
+  let n = numSamples / 2;
+  function genSpiral(deltaT: number, label: number) {
+    for (let i = 0; i < n; i++) {
+      let r = i / n * 5;
+      let t = 4.0 * i / n * 2 * Math.PI + deltaT;
+      points.push({x: r * Math.sin(t) + randUniform(-1, 1) * noise,
+        y: r * Math.cos(t) + randUniform(-1, 1) * noise, label});
+    }
+  }
+  genSpiral(0, 1);
+  genSpiral(Math.PI, -1);
+  return points;
+}
+
+/** Quadrant stripes: stripes within each quadrant. */
+export function classifyQuadrantStripes(numSamples: number, noise: number): Example2D[] {
+  let points: Example2D[] = [];
+  for (let i = 0; i < numSamples; i++) {
+    let x = randUniform(-6, 6);
+    let y = randUniform(-6, 6);
+    let nx = randUniform(-1, 1) * noise;
+    let q = ((x >= 0) ? 1 : 0) + ((y >= 0) ? 1 : 0);
+    let stripe = Math.floor(Math.abs(x + nx) / 1.5);
+    points.push({x, y, label: (q + stripe) % 2 === 0 ? 1 : -1});
+  }
+  return points;
+}
+
+/** Gaussian ring: gaussian-distributed radius around a circle. */
+export function classifyGaussianRing(numSamples: number, noise: number): Example2D[] {
+  let points: Example2D[] = [];
+  let half = numSamples / 2;
+  for (let i = 0; i < half; i++) {
+    let a = randUniform(0, 2 * Math.PI);
+    let r = normalRandom(3.5, 0.3 + noise);
+    points.push({x: r * Math.cos(a), y: r * Math.sin(a), label: 1});
+  }
+  for (let i = 0; i < half; i++) {
+    let a = randUniform(0, 2 * Math.PI);
+    let r = normalRandom(1.2, 0.3 + noise);
+    points.push({x: r * Math.cos(a), y: r * Math.sin(a), label: -1});
+  }
+  return points;
+}
+
+/** Regression: 2D sine sin(x)+sin(y) variant (distinct from reg-waves freq). */
+export function regressSin2D(numSamples: number, noise: number): Example2D[] {
+  let points: Example2D[] = [];
+  for (let i = 0; i < numSamples; i++) {
+    let x = randUniform(-6, 6);
+    let y = randUniform(-6, 6);
+    let label = Math.sin(0.8 * x + 0.8 * y) + randUniform(-1, 1) * noise;
+    points.push({x, y, label});
+  }
+  return points;
+}
+
+/** Regression: normalized product x*y. */
+export function regressProduct(numSamples: number, noise: number): Example2D[] {
+  let points: Example2D[] = [];
+  for (let i = 0; i < numSamples; i++) {
+    let x = randUniform(-6, 6);
+    let y = randUniform(-6, 6);
+    let label = (x * y) / 18 + randUniform(-1, 1) * noise;
+    points.push({x, y, label});
+  }
+  return points;
+}
+
+/** Regression: Euclidean distance to origin normalized. */
+export function regressDistance(numSamples: number, noise: number): Example2D[] {
+  let points: Example2D[] = [];
+  for (let i = 0; i < numSamples; i++) {
+    let x = randUniform(-6, 6);
+    let y = randUniform(-6, 6);
+    let label = Math.sqrt(x * x + y * y) / 4 - 1 + randUniform(-1, 1) * noise;
+    points.push({x, y, label});
+  }
+  return points;
+}
+
+/** Regression: a slice of the Rosenbrock function. */
+export function regressRosenbrockSlice(numSamples: number, noise: number): Example2D[] {
+  let points: Example2D[] = [];
+  for (let i = 0; i < numSamples; i++) {
+    let x = randUniform(-6, 6);
+    let y = randUniform(-6, 6);
+    let xs = x / 3;
+    let ys = y / 3;
+    let v = (1 - xs) * (1 - xs) + 100 * (ys - xs * xs) * (ys - xs * xs);
+    let label = Math.tanh(v / 200) + randUniform(-1, 1) * noise;
+    points.push({x, y, label});
+  }
+  return points;
+}
+
+/** Regression: smooth checkerboard surface. */
+export function regressCheckerboardSmooth(numSamples: number, noise: number): Example2D[] {
+  let points: Example2D[] = [];
+  for (let i = 0; i < numSamples; i++) {
+    let x = randUniform(-6, 6);
+    let y = randUniform(-6, 6);
+    let label = Math.sin(x) * Math.sin(y) * 0.9 + randUniform(-1, 1) * noise;
+    points.push({x, y, label});
+  }
+  return points;
+}
+
+/** Regression: MATLAB peaks surface. */
+export function regressPeaks(numSamples: number, noise: number): Example2D[] {
+  let points: Example2D[] = [];
+  for (let i = 0; i < numSamples; i++) {
+    let x = randUniform(-6, 6);
+    let y = randUniform(-6, 6);
+    let xs = x / 2;
+    let ys = y / 2;
+    let z = 3 * Math.pow(1 - xs, 2) * Math.exp(-(xs * xs) - Math.pow(ys + 1, 2))
+      - 10 * (xs / 5 - Math.pow(xs, 3) - Math.pow(ys, 5)) * Math.exp(-xs * xs - ys * ys)
+      - (1 / 3) * Math.exp(-Math.pow(xs + 1, 2) - ys * ys);
+    let label = z / 6 + randUniform(-1, 1) * noise;
+    points.push({x, y, label});
+  }
+  return points;
+}
+
+/** Regression: Mexican hat (ricker) wavelet. */
+export function regressMexicanHat(numSamples: number, noise: number): Example2D[] {
+  let points: Example2D[] = [];
+  for (let i = 0; i < numSamples; i++) {
+    let x = randUniform(-6, 6);
+    let y = randUniform(-6, 6);
+    let r2 = (x * x + y * y) / 4;
+    let label = (1 - r2) * Math.exp(-r2 / 2) + randUniform(-1, 1) * noise;
+    points.push({x, y, label});
+  }
+  return points;
+}
+
 /**
  * Returns a sample from a uniform [a, b] distribution.
  * Uses the seedrandom library as the random generator.

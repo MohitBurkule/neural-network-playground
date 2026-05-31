@@ -1,0 +1,227 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Variational Autoencoder Lab</title>
+  <style>
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    body {
+      font-family: 'Segoe UI', Arial, sans-serif;
+      background: #111827;
+      color: #e0e0f0;
+      min-height: 100vh;
+      padding: 16px;
+    }
+    h1 {
+      font-size: 1.6rem;
+      font-weight: 700;
+      color: #a78bfa;
+      margin-bottom: 4px;
+    }
+    .subtitle {
+      font-size: 0.85rem;
+      color: #6b7280;
+      margin-bottom: 16px;
+    }
+    /* ── layout ─────────────────────── */
+    .main-grid {
+      display: grid;
+      grid-template-columns: 320px 1fr;
+      grid-template-rows: auto auto auto;
+      gap: 14px;
+    }
+    .panel {
+      background: #1f2937;
+      border: 1px solid #374151;
+      border-radius: 8px;
+      padding: 12px;
+    }
+    .panel-title {
+      font-size: 0.78rem;
+      font-weight: 600;
+      text-transform: uppercase;
+      letter-spacing: 0.8px;
+      color: #9ca3af;
+      margin-bottom: 10px;
+    }
+    /* ── controls ───────────────────── */
+    .controls { grid-column: 1 / -1; }
+    .ctrl-row {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 12px;
+      align-items: center;
+    }
+    .ctrl-group {
+      display: flex;
+      flex-direction: column;
+      gap: 3px;
+      min-width: 120px;
+    }
+    .ctrl-label {
+      font-size: 0.72rem;
+      color: #9ca3af;
+    }
+    .ctrl-val {
+      font-size: 0.78rem;
+      color: #c4b5fd;
+      font-weight: 600;
+    }
+    input[type=range] {
+      width: 120px;
+      accent-color: #7c3aed;
+    }
+    .btn-row {
+      display: flex;
+      gap: 8px;
+      align-items: center;
+      flex-wrap: wrap;
+    }
+    button {
+      padding: 6px 14px;
+      border-radius: 6px;
+      border: none;
+      cursor: pointer;
+      font-size: 0.82rem;
+      font-weight: 600;
+      transition: opacity 0.15s;
+    }
+    button:hover { opacity: 0.85; }
+    .btn-play   { background: #7c3aed; color: #fff; }
+    .btn-pause  { background: #374151; color: #e5e7eb; }
+    .btn-step   { background: #1d4ed8; color: #fff; }
+    .btn-reset  { background: #991b1b; color: #fff; }
+    .btn-sample { background: #065f46; color: #d1fae5; }
+    /* ── stats ──────────────────────── */
+    .stats-row {
+      display: flex;
+      gap: 16px;
+      flex-wrap: wrap;
+      margin-top: 10px;
+    }
+    .stat-item { display: flex; flex-direction: column; align-items: center; }
+    .stat-val  { font-size: 1.1rem; font-weight: 700; color: #a78bfa; }
+    .stat-lbl  { font-size: 0.68rem; color: #6b7280; margin-top: 2px; }
+    /* ── recon panel ────────────────── */
+    .recon-panel { grid-column: 1; }
+    .recon-row   { margin-bottom: 8px; }
+    .recon-row .row-label {
+      font-size: 0.7rem; color: #6b7280; margin-bottom: 4px;
+    }
+    canvas { display: block; image-rendering: pixelated; border-radius: 4px; }
+    #canv-orig, #canv-recon {
+      width: 100%;
+      height: auto;
+      border: 1px solid #374151;
+    }
+    /* ── latent space ───────────────── */
+    .latent-panel { grid-column: 2; grid-row: 2; }
+    #svg-latent { width: 100%; height: 300px; display: block; }
+    /* ── grid decode ────────────────── */
+    .grid-panel { grid-column: 1; grid-row: 3; }
+    #svg-grid { display: block; width: 100%; }
+    /* ── probe ──────────────────────── */
+    .probe-panel { grid-column: 2; grid-row: 3; }
+    #canv-sample {
+      width: 120px; height: 120px;
+      border: 1px solid #4b5563;
+      image-rendering: pixelated;
+    }
+    #probe-coords { font-size: 0.78rem; color: #9ca3af; margin-top: 6px; }
+    /* ── loss ───────────────────────── */
+    .loss-panel { grid-column: 1 / -1; }
+    #svg-loss { width: 100%; height: 160px; display: block; }
+    /* SVG axis text */
+    .tick text { fill: #6b7280 !important; font-size: 10px; }
+    .tick line, .domain { stroke: #374151 !important; }
+  </style>
+</head>
+<body>
+
+<h1>Variational Autoencoder</h1>
+<p class="subtitle">
+  8×8 binary glyphs · 2D latent · ELBO = Recon + β·KL · click/drag latent space to decode
+</p>
+
+<div class="main-grid">
+
+  <!-- Controls -->
+  <div class="panel controls">
+    <div class="panel-title">Controls</div>
+    <div class="ctrl-row">
+      <div class="btn-row">
+        <button class="btn-play"   id="btn-play">▶ Play</button>
+        <button class="btn-pause"  id="btn-pause">⏸ Pause</button>
+        <button class="btn-step"   id="btn-step">⏭ Step</button>
+        <button class="btn-reset"  id="btn-reset">↺ Reset</button>
+        <button class="btn-sample" id="btn-sample">⚄ Prior Sample</button>
+      </div>
+      <div class="ctrl-group">
+        <span class="ctrl-label">Learning Rate: <span id="lbl-lr" class="ctrl-val">0.0030</span></span>
+        <input type="range" id="ctrl-lr" min="0.0001" max="0.01" step="0.0001" value="0.003">
+      </div>
+      <div class="ctrl-group">
+        <span class="ctrl-label">Beta (KL weight): <span id="lbl-beta" class="ctrl-val">1.00</span></span>
+        <input type="range" id="ctrl-beta" min="0" max="4" step="0.05" value="1">
+      </div>
+      <div class="ctrl-group">
+        <span class="ctrl-label">Batch Size: <span id="lbl-batch" class="ctrl-val">20</span></span>
+        <input type="range" id="ctrl-batch" min="5" max="50" step="5" value="20">
+      </div>
+      <div class="ctrl-group">
+        <span class="ctrl-label">Hidden Size: <span id="lbl-hidden" class="ctrl-val">32</span></span>
+        <input type="range" id="ctrl-hidden" min="16" max="128" step="16" value="32">
+      </div>
+    </div>
+    <div class="stats-row">
+      <div class="stat-item"><span class="stat-val" id="stat-elbo">—</span><span class="stat-lbl">ELBO</span></div>
+      <div class="stat-item"><span class="stat-val" id="stat-recon">—</span><span class="stat-lbl">Recon</span></div>
+      <div class="stat-item"><span class="stat-val" id="stat-kl">—</span><span class="stat-lbl">β·KL</span></div>
+      <div class="stat-item"><span class="stat-val" id="stat-step">0</span><span class="stat-lbl">Step</span></div>
+    </div>
+  </div>
+
+  <!-- Original vs Reconstruction -->
+  <div class="panel recon-panel">
+    <div class="panel-title">Original vs Reconstruction</div>
+    <div class="recon-row">
+      <div class="row-label">Originals (one per class)</div>
+      <canvas id="canv-orig" width="960" height="192"></canvas>
+    </div>
+    <div class="recon-row">
+      <div class="row-label">Reconstructions</div>
+      <canvas id="canv-recon" width="960" height="192"></canvas>
+    </div>
+  </div>
+
+  <!-- 2D Latent Space -->
+  <div class="panel latent-panel">
+    <div class="panel-title">2D Latent Space — click/drag to probe</div>
+    <svg id="svg-latent"></svg>
+  </div>
+
+  <!-- Generative Grid -->
+  <div class="panel grid-panel">
+    <div class="panel-title">Generative Manifold (latent grid decode)</div>
+    <svg id="svg-grid"></svg>
+  </div>
+
+  <!-- Probe -->
+  <div class="panel probe-panel">
+    <div class="panel-title">Latent Probe / Prior Sample</div>
+    <canvas id="canv-sample" width="192" height="192"></canvas>
+    <div id="probe-coords">Click latent space or use Prior Sample</div>
+  </div>
+
+  <!-- Loss Curve -->
+  <div class="panel loss-panel">
+    <div class="panel-title">Loss Curve (last 400 steps)</div>
+    <svg id="svg-loss"></svg>
+  </div>
+
+</div>
+
+<script src="bundlevae.js"></script>
+</body>
+</html>

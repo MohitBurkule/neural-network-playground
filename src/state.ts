@@ -154,6 +154,30 @@ export let datasets: {[key: string]: dataset.DataGenerator} = {
   "comb": dataset.classifyComb,
   "diagonal-checker": dataset.classifyDiagonalChecker,
   "cluster-chain": dataset.classifyClusterChain,
+  "nested-squares": dataset.classifyNestedSquares,
+  "polygon-boundary": dataset.classifyPolygonBoundary,
+  "voronoi-regions": dataset.classifyVoronoiRegions,
+  "gaussian-grid-9": dataset.classifyGaussianGrid9,
+  "two-rings-xor": dataset.classifyTwoRingsXor,
+  "checker4": dataset.classifyChecker4,
+  "radial-petals": dataset.classifyRadialPetals,
+  "heart-shape": dataset.classifyHeartShape,
+  "wave-interference": dataset.classifyWaveInterference,
+  "gradient-blobs": dataset.classifyGradientBlobs,
+  "three-class-binary": dataset.classifyThreeClassBinary,
+  "noisy-concentric-3": dataset.classifyNoisyConcentric3,
+  "diagonal-bands-5": dataset.classifyDiagonalBands5,
+  "blob-constellation": dataset.classifyBlobConstellation,
+  "sparse-vs-dense": dataset.classifySparseVsDense,
+  "half-plane-noisy": dataset.classifyHalfPlaneNoisy,
+  "lens": dataset.classifyLens,
+  "hourglass": dataset.classifyHourglass,
+  "zigzag-boundary": dataset.classifyZigzagBoundary,
+  "comb-teeth": dataset.classifyCombTeeth,
+  "target-3rings": dataset.classifyTarget3Rings,
+  "double-spiral-tight": dataset.classifyDoubleSpiralTight,
+  "quadrant-stripes": dataset.classifyQuadrantStripes,
+  "gaussian-ring": dataset.classifyGaussianRing,
 };
 
 /** A map between dataset names and functions that generate regression data. */
@@ -174,7 +198,14 @@ export let regDatasets: {[key: string]: dataset.DataGenerator} = {
   "reg-radial": dataset.regressRadial,
   "reg-abs": dataset.regressAbs,
   "reg-step-circle": dataset.regressStepCircle,
-  "reg-waves": dataset.regressWaves
+  "reg-waves": dataset.regressWaves,
+  "reg-sin2d": dataset.regressSin2D,
+  "reg-product": dataset.regressProduct,
+  "reg-distance": dataset.regressDistance,
+  "reg-rosenbrock-slice": dataset.regressRosenbrockSlice,
+  "reg-checkerboard-smooth": dataset.regressCheckerboardSmooth,
+  "reg-peaks": dataset.regressPeaks,
+  "reg-mexican-hat": dataset.regressMexicanHat
 };
 
 export function getKeyFromValue(obj: any, value: any): string {
