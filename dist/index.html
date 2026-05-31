@@ -149,6 +149,10 @@ Modified by David Cato
                         <option value="logloss">Log loss / Cross-entropy</option>
                         <option value="huber">Huber</option>
                         <option value="absolute">Absolute (L1)</option>
+                        <option value="logcosh">Log-cosh</option>
+                        <option value="quantile">Quantile (tau=0.9)</option>
+                        <option value="epsilon-insensitive">Epsilon-insensitive (SVR)</option>
+                        <option value="cauchy">Cauchy / Lorentzian</option>
                     </select>
                 </label>
                 <label class="ux-inline" title="Weight loss/gradient by inverse class frequency">
@@ -299,6 +303,24 @@ Modified by David Cato
                         <option value="arctan">ArcTan</option>
                         <option value="isru">ISRU</option>
                         <option value="exp-linear">Exponential Linear</option>
+                        <option value="celu">CELU</option>
+                        <option value="gelu-exact">GELU (exact/erf)</option>
+                        <option value="swish-beta">Swish-beta (1.5)</option>
+                        <option value="tanh-shrink">Tanh-shrink</option>
+                        <option value="log-sigmoid">Log-Sigmoid</option>
+                        <option value="softclip">Softclip</option>
+                        <option value="sin-residual">Sinusoid Residual (x+sin x)</option>
+                        <option value="triangular">Triangular</option>
+                        <option value="square-nonlin">Square (x^2)</option>
+                        <option value="absolute">Absolute</option>
+                        <option value="cube">Cube (x^3)</option>
+                        <option value="reciprocal-smooth">Reciprocal Smooth</option>
+                        <option value="softplus-beta">Softplus-beta (2)</option>
+                        <option value="isrlu">ISRLU</option>
+                        <option value="maxout2">Maxout-2 (approx)</option>
+                        <option value="bipolar-sigmoid">Bipolar Sigmoid</option>
+                        <option value="hard-sigmoid2">Hard Sigmoid (1/6)</option>
+                        <option value="gaussian-narrow">Gaussian (narrow)</option>
                     </select>
                 </div>
             </div>
@@ -382,6 +404,8 @@ Modified by David Cato
                         <option value="none">None</option>
                         <option value="L1">L1</option>
                         <option value="L2">L2</option>
+                        <option value="elastic-net">Elastic-net (L1+L2)</option>
+                        <option value="L-half">L0.5</option>
                     </select>
                 </div>
             </div>
@@ -921,7 +945,7 @@ Modified by David Cato
                     </label>
                 </div>
                 <div class="adv-labs-link" style="margin-top:10px;font-size:12px;opacity:.8;">
-                    🧪 <b>30 interactive labs</b> — CNN, Transformer, RNN, Autoencoder, VAE, GAN, Diffusion, Word2Vec, Bayesian NN, Decision Tree, SVM, GLM, Gaussian Process, Clustering, PCA/t-SNE, SOM, RBM, RL, Hopfield, Genetic Algorithm, PSO, Multi-Armed Bandit, Optimizer Visualizer, Markov Chains, MCMC, Cellular Automata, Reaction-Diffusion, Fourier, Kalman Filter, Spiking NN &nbsp;→&nbsp; <a href="labs.html"><b>Browse the lab gallery</b></a>
+                    🧪 <b>34 interactive labs</b> — CNN, Transformer, RNN, Autoencoder, VAE, GAN, Diffusion, Word2Vec, Bayesian NN, Decision Tree, SVM, GLM, Gaussian Process, Clustering, PCA/t-SNE, SOM, RBM, RL, Hopfield, Genetic Algorithm, PSO, Multi-Armed Bandit, Optimizer Visualizer, Markov Chains, MCMC, Cellular Automata, Neural CA, Reaction-Diffusion, Fourier, Kalman Filter, Spiking NN, Boids, Ant Colony, k-NN &nbsp;→&nbsp; <a href="labs.html"><b>Browse the lab gallery</b></a>
                 </div>
             </div>
         </div>

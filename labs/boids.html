@@ -1,0 +1,330 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Boids Flocking Simulation</title>
+  <style>
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+    body {
+      background: #0d1117;
+      color: #c9d1d9;
+      font-family: 'Segoe UI', system-ui, sans-serif;
+      font-size: 14px;
+      height: 100vh;
+      display: flex;
+      flex-direction: column;
+      overflow: hidden;
+    }
+
+    header {
+      display: flex;
+      align-items: center;
+      gap: 12px;
+      padding: 8px 16px;
+      background: #161b22;
+      border-bottom: 1px solid #21262d;
+      flex-shrink: 0;
+    }
+
+    h1 {
+      font-size: 1.15rem;
+      font-weight: 600;
+      color: #e6edf3;
+      letter-spacing: 0.04em;
+    }
+
+    .tag {
+      font-size: 11px;
+      background: #388bfd22;
+      color: #58a6ff;
+      border: 1px solid #388bfd55;
+      border-radius: 4px;
+      padding: 1px 7px;
+    }
+
+    #main {
+      display: flex;
+      flex: 1;
+      overflow: hidden;
+    }
+
+    /* Sidebar */
+    #sidebar {
+      width: 230px;
+      flex-shrink: 0;
+      background: #161b22;
+      border-right: 1px solid #21262d;
+      overflow-y: auto;
+      padding: 10px 12px;
+      display: flex;
+      flex-direction: column;
+      gap: 10px;
+    }
+
+    .section-title {
+      font-size: 11px;
+      font-weight: 600;
+      color: #8b949e;
+      text-transform: uppercase;
+      letter-spacing: 0.08em;
+      margin-bottom: 2px;
+    }
+
+    .ctrl-group {
+      display: flex;
+      flex-direction: column;
+      gap: 6px;
+    }
+
+    .ctrl-row {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 6px;
+    }
+
+    .ctrl-row label {
+      color: #8b949e;
+      font-size: 12px;
+      flex: 1;
+      white-space: nowrap;
+    }
+
+    input[type=range] {
+      flex: 1;
+      accent-color: #58a6ff;
+      cursor: pointer;
+      min-width: 70px;
+    }
+
+    input[type=number] {
+      width: 56px;
+      background: #0d1117;
+      border: 1px solid #30363d;
+      color: #c9d1d9;
+      border-radius: 5px;
+      padding: 3px 6px;
+      font-size: 12px;
+      outline: none;
+    }
+    input[type=number]:hover { border-color: #58a6ff; }
+
+    select {
+      background: #0d1117;
+      border: 1px solid #30363d;
+      color: #c9d1d9;
+      border-radius: 5px;
+      padding: 3px 6px;
+      font-size: 12px;
+      outline: none;
+      cursor: pointer;
+      flex: 1;
+    }
+    select:hover { border-color: #58a6ff; }
+
+    .badge {
+      background: #21262d;
+      border: 1px solid #30363d;
+      border-radius: 4px;
+      padding: 1px 6px;
+      font-size: 11px;
+      color: #8b949e;
+      min-width: 30px;
+      text-align: right;
+      font-variant-numeric: tabular-nums;
+    }
+
+    .toggle-row {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 6px;
+    }
+    .toggle-row label { color: #8b949e; font-size: 12px; }
+
+    input[type=checkbox] {
+      accent-color: #58a6ff;
+      width: 14px;
+      height: 14px;
+      cursor: pointer;
+    }
+
+    .sep {
+      height: 1px;
+      background: #21262d;
+      margin: 2px 0;
+    }
+
+    /* Playback */
+    .btn-row {
+      display: flex;
+      gap: 6px;
+    }
+
+    button {
+      background: #21262d;
+      border: 1px solid #30363d;
+      color: #c9d1d9;
+      border-radius: 6px;
+      padding: 5px 10px;
+      font-size: 12px;
+      cursor: pointer;
+      transition: background 0.12s, border-color 0.12s;
+      flex: 1;
+    }
+    button:hover { background: #30363d; border-color: #58a6ff; color: #e6edf3; }
+    button:active { background: #388bfd22; }
+    button.accent { border-color: #388bfd; color: #58a6ff; }
+    button.accent:hover { background: #388bfd22; }
+
+    /* Canvas */
+    #canvas-wrap {
+      flex: 1;
+      position: relative;
+      overflow: hidden;
+      background: #0d1117;
+    }
+
+    #boids-canvas {
+      display: block;
+      width: 100%;
+      height: 100%;
+      cursor: crosshair;
+    }
+
+    #mouse-hint {
+      position: absolute;
+      bottom: 8px;
+      right: 12px;
+      font-size: 11px;
+      color: #484f58;
+      pointer-events: none;
+    }
+
+    @media (max-width: 600px) {
+      #sidebar { width: 180px; }
+    }
+  </style>
+</head>
+<body>
+
+<header>
+  <h1>Boids Flocking Simulation</h1>
+  <span class="tag">Reynolds 1987</span>
+</header>
+
+<div id="main">
+  <!-- Sidebar controls -->
+  <div id="sidebar">
+
+    <!-- Playback -->
+    <div class="ctrl-group">
+      <div class="section-title">Playback</div>
+      <div class="btn-row">
+        <button id="btn-playpause" class="accent">⏸ Pause</button>
+        <button id="btn-reset">↺ Reset</button>
+      </div>
+      <div class="ctrl-row">
+        <label>Speed</label>
+        <input type="range" id="sim-speed" min="1" max="5" step="1" value="1" />
+        <span class="badge" id="sim-speed-val">1</span>
+      </div>
+    </div>
+
+    <div class="sep"></div>
+
+    <!-- Population -->
+    <div class="ctrl-group">
+      <div class="section-title">Population</div>
+      <div class="ctrl-row">
+        <label># Boids</label>
+        <input type="number" id="num-boids" min="10" max="500" value="150" />
+      </div>
+      <div class="toggle-row">
+        <label>Predator</label>
+        <input type="checkbox" id="predator-on" />
+      </div>
+    </div>
+
+    <div class="sep"></div>
+
+    <!-- Rules -->
+    <div class="ctrl-group">
+      <div class="section-title">Flocking Rules</div>
+      <div class="ctrl-row">
+        <label>Separation</label>
+        <input type="range" id="sep-weight" min="0" max="4" step="0.05" value="1.5" />
+        <span class="badge" id="sep-val">1.5</span>
+      </div>
+      <div class="ctrl-row">
+        <label>Alignment</label>
+        <input type="range" id="ali-weight" min="0" max="4" step="0.05" value="1.0" />
+        <span class="badge" id="ali-val">1</span>
+      </div>
+      <div class="ctrl-row">
+        <label>Cohesion</label>
+        <input type="range" id="coh-weight" min="0" max="4" step="0.05" value="1.0" />
+        <span class="badge" id="coh-val">1</span>
+      </div>
+    </div>
+
+    <div class="sep"></div>
+
+    <!-- Physics -->
+    <div class="ctrl-group">
+      <div class="section-title">Physics</div>
+      <div class="ctrl-row">
+        <label>Perception R</label>
+        <input type="range" id="perception" min="10" max="150" step="1" value="60" />
+        <span class="badge" id="perception-val">60</span>
+      </div>
+      <div class="ctrl-row">
+        <label>Max Speed</label>
+        <input type="range" id="max-speed" min="0.5" max="8" step="0.1" value="3.5" />
+        <span class="badge" id="max-speed-val">3.5</span>
+      </div>
+    </div>
+
+    <div class="sep"></div>
+
+    <!-- Display -->
+    <div class="ctrl-group">
+      <div class="section-title">Display</div>
+      <div class="ctrl-row">
+        <label>Edge Mode</label>
+        <select id="edge-mode">
+          <option value="wrap">Wrap</option>
+          <option value="bounce">Bounce</option>
+        </select>
+      </div>
+      <div class="ctrl-row">
+        <label>Color By</label>
+        <select id="color-mode">
+          <option value="speed">Speed</option>
+          <option value="density">Density</option>
+        </select>
+      </div>
+      <div class="toggle-row">
+        <label>Trails</label>
+        <input type="checkbox" id="trails-on" />
+      </div>
+      <div class="toggle-row">
+        <label>Debug Overlay</label>
+        <input type="checkbox" id="debug-on" />
+      </div>
+    </div>
+
+  </div>
+
+  <!-- Canvas -->
+  <div id="canvas-wrap">
+    <canvas id="boids-canvas"></canvas>
+    <div id="mouse-hint">Left-click: attract · Right-click: repel</div>
+  </div>
+</div>
+
+<script src="bundleboids.js"></script>
+</body>
+</html>

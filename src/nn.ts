@@ -193,6 +193,55 @@ export class Errors {
     der: (output: number, target: number) =>
                output > target ? 1 : (output < target ? -1 : 0)
   };
+  /** Log-cosh loss: smooth, ~MSE near 0 and ~MAE far out. */
+  public static LOGCOSH: ErrorFunction = {
+    error: (output: number, target: number) => {
+      let d = output - target;
+      // log(cosh(d)) computed stably.
+      return d + (Math as any).softplus(-2 * d) - Math.log(2);
+    },
+    der: (output: number, target: number) => (Math as any).tanh(output - target)
+  };
+  /** Quantile (pinball) loss with tau = 0.9. */
+  public static QUANTILE: ErrorFunction = {
+    error: (output: number, target: number) => {
+      let tau = 0.9;
+      let d = target - output;
+      return d >= 0 ? tau * d : (tau - 1) * d;
+    },
+    der: (output: number, target: number) => {
+      let tau = 0.9;
+      let d = target - output;
+      // d/d(output) of pinball: -tau if d>0 else (1-tau).
+      return d >= 0 ? -tau : (1 - tau);
+    }
+  };
+  /** Epsilon-insensitive (SVR) loss with epsilon = 0.1. */
+  public static EPSILON_INSENSITIVE: ErrorFunction = {
+    error: (output: number, target: number) => {
+      let eps = 0.1;
+      return Math.max(0, Math.abs(output - target) - eps);
+    },
+    der: (output: number, target: number) => {
+      let eps = 0.1;
+      let d = output - target;
+      if (Math.abs(d) <= eps) return 0;
+      return d > 0 ? 1 : -1;
+    }
+  };
+  /** Cauchy / Lorentzian robust loss with scale c = 1. */
+  public static CAUCHY: ErrorFunction = {
+    error: (output: number, target: number) => {
+      let c = 1;
+      let d = output - target;
+      return 0.5 * c * c * Math.log(1 + (d * d) / (c * c));
+    },
+    der: (output: number, target: number) => {
+      let c = 1;
+      let d = output - target;
+      return d / (1 + (d * d) / (c * c));
+    }
+  };
 }
 
 /** Polyfill for TANH */
@@ -380,6 +429,155 @@ export class Activations {
     der: x => x >= 0 ? 1 : 0.5 * Math.exp(x),
     compileToJs: arg => `((${arg}) >= 0 ? (${arg}) : 0.5 * (Math.exp(${arg}) - 1))`
   };
+  /** CELU with alpha=1: x>=0 -> x, else alpha*(exp(x/alpha)-1). */
+  public static CELU: ActivationFunction = {
+    output: x => x >= 0 ? x : (Math.exp(x) - 1),
+    der: x => x >= 0 ? 1 : Math.exp(x),
+    compileToJs: arg => `((${arg}) >= 0 ? (${arg}) : (Math.exp(${arg}) - 1))`
+  };
+  /** Exact GELU using an erf approximation (Abramowitz-Stegun 7.1.26). */
+  public static GELU_EXACT: ActivationFunction = {
+    output: x => {
+      let erf = Activations._erf(x / Math.SQRT2);
+      return 0.5 * x * (1 + erf);
+    },
+    der: x => {
+      let erf = Activations._erf(x / Math.SQRT2);
+      let pdf = Math.exp(-0.5 * x * x) / Math.sqrt(2 * Math.PI);
+      return 0.5 * (1 + erf) + x * pdf;
+    },
+    compileToJs: arg => `geluexact(${arg})`
+  };
+  /** erf approximation helper (max error ~1.5e-7). */
+  public static _erf(x: number): number {
+    let sign = x < 0 ? -1 : 1;
+    let ax = Math.abs(x);
+    let t = 1 / (1 + 0.3275911 * ax);
+    let y = 1 - (((((1.061405429 * t - 1.453152027) * t) + 1.421413741) * t -
+        0.284496736) * t + 0.254829592) * t * Math.exp(-ax * ax);
+    return sign * y;
+  }
+  /** Parameterized Swish (SiLU) with beta=1.5. */
+  public static SWISH_BETA: ActivationFunction = {
+    output: x => x / (1 + Math.exp(-1.5 * x)),
+    der: x => {
+      let sig = 1 / (1 + Math.exp(-1.5 * x));
+      return sig + 1.5 * x * sig * (1 - sig);
+    },
+    compileToJs: arg => `((${arg}) / (1 + Math.exp(-1.5 * (${arg}))))`
+  };
+  /** Tanh-shrink: x - tanh(x). */
+  public static TANH_SHRINK: ActivationFunction = {
+    output: x => x - (Math as any).tanh(x),
+    der: x => {
+      let t = (Math as any).tanh(x);
+      return t * t;
+    },
+    compileToJs: arg => `((${arg}) - Math.tanh(${arg}))`
+  };
+  /** Log-sigmoid: log(sigmoid(x)) = -softplus(-x). */
+  public static LOG_SIGMOID: ActivationFunction = {
+    output: x => -(Math as any).softplus(-x),
+    der: x => 1 / (1 + Math.exp(x)),
+    compileToJs: arg => `(-Math.log(1 + Math.exp(-(${arg}))))`
+  };
+  /** Softclip: smoothly clamps to (-1, 1) via softplus. */
+  public static SOFTCLIP: ActivationFunction = {
+    output: x => {
+      let sp = (Math as any).softplus(x - 1) - (Math as any).softplus(x + 1);
+      return 1 + sp;
+    },
+    der: x => {
+      let s1 = 1 / (1 + Math.exp(-(x - 1)));
+      let s2 = 1 / (1 + Math.exp(-(x + 1)));
+      return s1 - s2;
+    },
+    compileToJs: arg => `(1 + Math.log(1 + Math.exp((${arg}) - 1)) - Math.log(1 + Math.exp((${arg}) + 1)))`
+  };
+  /** Sinusoid-residual: x + sin(x). */
+  public static SIN_RESIDUAL: ActivationFunction = {
+    output: x => x + Math.sin(x),
+    der: x => 1 + Math.cos(x),
+    compileToJs: arg => `((${arg}) + Math.sin(${arg}))`
+  };
+  /** Triangular wave (period 2, range [-1,1]); subgradient via slope sign. */
+  public static TRIANGULAR: ActivationFunction = {
+    output: x => {
+      let m = ((x + 1) % 2 + 2) % 2;  // in [0,2)
+      return 1 - Math.abs(m - 1);
+    },
+    der: x => {
+      let m = ((x + 1) % 2 + 2) % 2;
+      return m < 1 ? 1 : -1;
+    },
+    compileToJs: arg => `(1 - Math.abs(((((${arg}) + 1) % 2 + 2) % 2) - 1))`
+  };
+  /** Square nonlinearity: x^2. */
+  public static SQUARE_NONLIN: ActivationFunction = {
+    output: x => x * x,
+    der: x => 2 * x,
+    compileToJs: arg => `((${arg}) * (${arg}))`
+  };
+  /** Absolute value; subgradient sign(x). */
+  public static ABSOLUTE: ActivationFunction = {
+    output: x => Math.abs(x),
+    der: x => x < 0 ? -1 : (x > 0 ? 1 : 0),
+    compileToJs: arg => `Math.abs(${arg})`
+  };
+  /** Cube: x^3. */
+  public static CUBE: ActivationFunction = {
+    output: x => x * x * x,
+    der: x => 3 * x * x,
+    compileToJs: arg => `((${arg}) * (${arg}) * (${arg}))`
+  };
+  /** Smooth reciprocal: x / (1 + x^2) (bounded, odd). */
+  public static RECIPROCAL_SMOOTH: ActivationFunction = {
+    output: x => x / (1 + x * x),
+    der: x => (1 - x * x) / Math.pow(1 + x * x, 2),
+    compileToJs: arg => `((${arg}) / (1 + (${arg}) * (${arg})))`
+  };
+  /** Softplus with beta=2. */
+  public static SOFTPLUS_BETA: ActivationFunction = {
+    output: x => {
+      let beta = 2;
+      return beta * x > 20 ? x : Math.log(1 + Math.exp(beta * x)) / beta;
+    },
+    der: x => 1 / (1 + Math.exp(-2 * x)),
+    compileToJs: arg => `(Math.log(1 + Math.exp(2 * (${arg}))) / 2)`
+  };
+  /** ISRLU (alpha=1): x>=0 -> x, else x/sqrt(1+x^2). */
+  public static ISRLU: ActivationFunction = {
+    output: x => x >= 0 ? x : x / Math.sqrt(1 + x * x),
+    der: x => x >= 0 ? 1 : Math.pow(1 / Math.sqrt(1 + x * x), 3),
+    compileToJs: arg => `((${arg}) >= 0 ? (${arg}) : (${arg}) / Math.sqrt(1 + (${arg}) * (${arg})))`
+  };
+  /** Maxout-2 approximation: max(x, 0.25*x) (two affine pieces). */
+  public static MAXOUT2: ActivationFunction = {
+    output: x => Math.max(x, 0.25 * x),
+    der: x => x >= 0 ? 1 : 0.25,
+    compileToJs: arg => `Math.max(${arg}, 0.25 * (${arg}))`
+  };
+  /** Bipolar sigmoid: (1 - exp(-x)) / (1 + exp(-x)) = tanh(x/2). */
+  public static BIPOLAR_SIGMOID: ActivationFunction = {
+    output: x => (Math as any).tanh(x / 2),
+    der: x => {
+      let t = (Math as any).tanh(x / 2);
+      return 0.5 * (1 - t * t);
+    },
+    compileToJs: arg => `Math.tanh((${arg}) / 2)`
+  };
+  /** Hard-sigmoid variant (PyTorch-style, slope 1/6). */
+  public static HARD_SIGMOID2: ActivationFunction = {
+    output: x => Math.max(0, Math.min(1, x / 6 + 0.5)),
+    der: x => (x > -3 && x < 3) ? 1 / 6 : 0,
+    compileToJs: arg => `Math.max(0, Math.min(1, (${arg}) / 6 + 0.5))`
+  };
+  /** Gaussian variant: bump centered with width 0.5. */
+  public static GAUSSIAN_NARROW: ActivationFunction = {
+    output: x => Math.exp(-0.5 * x * x),
+    der: x => -x * Math.exp(-0.5 * x * x),
+    compileToJs: arg => `Math.exp(-0.5 * (${arg}) * (${arg}))`
+  };
 }
 
 /** Build-in regularization functions */
@@ -391,6 +589,19 @@ export class RegularizationFunction {
   public static L2: RegularizationFunction = {
     output: w => 0.5 * w * w,
     der: w => w
+  };
+  /** Elastic-net: mix of L1 and L2 (50/50). */
+  public static ELASTIC_NET: RegularizationFunction = {
+    output: w => 0.5 * Math.abs(w) + 0.5 * (0.5 * w * w),
+    der: w => 0.5 * (w < 0 ? -1 : (w > 0 ? 1 : 0)) + 0.5 * w
+  };
+  /** L0.5 (square-root) sparsity-promoting penalty (smoothed near 0). */
+  public static L_HALF: RegularizationFunction = {
+    output: w => Math.sqrt(Math.abs(w) + 1e-8),
+    der: w => {
+      let s = w < 0 ? -1 : (w > 0 ? 1 : 0);
+      return 0.5 * s / Math.sqrt(Math.abs(w) + 1e-8);
+    }
   };
 }
 
@@ -960,6 +1171,13 @@ const JS_HELPERS: {token: string, def: string}[] = [
    def: "const leakyrelu = x => x >= 0 ? x : 0.01 * x;"},
   {token: "sinc",
    def: "const sinc = x => (x * x) < 0.000001 ? 1 : Math.sin(x) / x;"},
+  {token: "erfapprox",
+   def: "const erfapprox = x => { const s = x < 0 ? -1 : 1, ax = Math.abs(x), " +
+        "t = 1 / (1 + 0.3275911 * ax); return s * (1 - (((((1.061405429 * t - " +
+        "1.453152027) * t) + 1.421413741) * t - 0.284496736) * t + 0.254829592) " +
+        "* t * Math.exp(-ax * ax)); };"},
+  {token: "geluexact",
+   def: "const geluexact = x => 0.5 * x * (1 + erfapprox(x / Math.SQRT2));"},
 ];
 
 /**
@@ -970,11 +1188,13 @@ const JS_HELPERS: {token: string, def: string}[] = [
  */
 function compileJsHelperPrelude(body: string): string {
   let needsSoftplus = body.indexOf("mish(") !== -1;
+  let needsErf = body.indexOf("geluexact(") !== -1;
   let lines: string[] = [];
   for (let i = 0; i < JS_HELPERS.length; i++) {
     let helper = JS_HELPERS[i];
     let used = body.indexOf(helper.token + "(") !== -1 ||
-        (helper.token === "softplus" && needsSoftplus);
+        (helper.token === "softplus" && needsSoftplus) ||
+        (helper.token === "erfapprox" && needsErf);
     if (used) {
       lines.push(helper.def);
     }

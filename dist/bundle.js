@@ -89722,6 +89722,50 @@ var Errors = (function () {
             return output > target ? 1 : (output < target ? -1 : 0);
         }
     };
+    Errors.LOGCOSH = {
+        error: function (output, target) {
+            var d = output - target;
+            return d + Math.softplus(-2 * d) - Math.log(2);
+        },
+        der: function (output, target) { return Math.tanh(output - target); }
+    };
+    Errors.QUANTILE = {
+        error: function (output, target) {
+            var tau = 0.9;
+            var d = target - output;
+            return d >= 0 ? tau * d : (tau - 1) * d;
+        },
+        der: function (output, target) {
+            var tau = 0.9;
+            var d = target - output;
+            return d >= 0 ? -tau : (1 - tau);
+        }
+    };
+    Errors.EPSILON_INSENSITIVE = {
+        error: function (output, target) {
+            var eps = 0.1;
+            return Math.max(0, Math.abs(output - target) - eps);
+        },
+        der: function (output, target) {
+            var eps = 0.1;
+            var d = output - target;
+            if (Math.abs(d) <= eps)
+                return 0;
+            return d > 0 ? 1 : -1;
+        }
+    };
+    Errors.CAUCHY = {
+        error: function (output, target) {
+            var c = 1;
+            var d = output - target;
+            return 0.5 * c * c * Math.log(1 + (d * d) / (c * c));
+        },
+        der: function (output, target) {
+            var c = 1;
+            var d = output - target;
+            return d / (1 + (d * d) / (c * c));
+        }
+    };
     return Errors;
 }());
 exports.Errors = Errors;
@@ -89753,6 +89797,14 @@ Math.softplus = Math.softplus || function (x) {
 var Activations = (function () {
     function Activations() {
     }
+    Activations._erf = function (x) {
+        var sign = x < 0 ? -1 : 1;
+        var ax = Math.abs(x);
+        var t = 1 / (1 + 0.3275911 * ax);
+        var y = 1 - (((((1.061405429 * t - 1.453152027) * t) + 1.421413741) * t -
+            0.284496736) * t + 0.254829592) * t * Math.exp(-ax * ax);
+        return sign * y;
+    };
     Activations.TANH = {
         output: function (x) { return Math.tanh(x); },
         der: function (x) {
@@ -89906,6 +89958,128 @@ var Activations = (function () {
         der: function (x) { return x >= 0 ? 1 : 0.5 * Math.exp(x); },
         compileToJs: function (arg) { return "((".concat(arg, ") >= 0 ? (").concat(arg, ") : 0.5 * (Math.exp(").concat(arg, ") - 1))"); }
     };
+    Activations.CELU = {
+        output: function (x) { return x >= 0 ? x : (Math.exp(x) - 1); },
+        der: function (x) { return x >= 0 ? 1 : Math.exp(x); },
+        compileToJs: function (arg) { return "((".concat(arg, ") >= 0 ? (").concat(arg, ") : (Math.exp(").concat(arg, ") - 1))"); }
+    };
+    Activations.GELU_EXACT = {
+        output: function (x) {
+            var erf = Activations._erf(x / Math.SQRT2);
+            return 0.5 * x * (1 + erf);
+        },
+        der: function (x) {
+            var erf = Activations._erf(x / Math.SQRT2);
+            var pdf = Math.exp(-0.5 * x * x) / Math.sqrt(2 * Math.PI);
+            return 0.5 * (1 + erf) + x * pdf;
+        },
+        compileToJs: function (arg) { return "geluexact(".concat(arg, ")"); }
+    };
+    Activations.SWISH_BETA = {
+        output: function (x) { return x / (1 + Math.exp(-1.5 * x)); },
+        der: function (x) {
+            var sig = 1 / (1 + Math.exp(-1.5 * x));
+            return sig + 1.5 * x * sig * (1 - sig);
+        },
+        compileToJs: function (arg) { return "((".concat(arg, ") / (1 + Math.exp(-1.5 * (").concat(arg, "))))"); }
+    };
+    Activations.TANH_SHRINK = {
+        output: function (x) { return x - Math.tanh(x); },
+        der: function (x) {
+            var t = Math.tanh(x);
+            return t * t;
+        },
+        compileToJs: function (arg) { return "((".concat(arg, ") - Math.tanh(").concat(arg, "))"); }
+    };
+    Activations.LOG_SIGMOID = {
+        output: function (x) { return -Math.softplus(-x); },
+        der: function (x) { return 1 / (1 + Math.exp(x)); },
+        compileToJs: function (arg) { return "(-Math.log(1 + Math.exp(-(".concat(arg, "))))"); }
+    };
+    Activations.SOFTCLIP = {
+        output: function (x) {
+            var sp = Math.softplus(x - 1) - Math.softplus(x + 1);
+            return 1 + sp;
+        },
+        der: function (x) {
+            var s1 = 1 / (1 + Math.exp(-(x - 1)));
+            var s2 = 1 / (1 + Math.exp(-(x + 1)));
+            return s1 - s2;
+        },
+        compileToJs: function (arg) { return "(1 + Math.log(1 + Math.exp((".concat(arg, ") - 1)) - Math.log(1 + Math.exp((").concat(arg, ") + 1)))"); }
+    };
+    Activations.SIN_RESIDUAL = {
+        output: function (x) { return x + Math.sin(x); },
+        der: function (x) { return 1 + Math.cos(x); },
+        compileToJs: function (arg) { return "((".concat(arg, ") + Math.sin(").concat(arg, "))"); }
+    };
+    Activations.TRIANGULAR = {
+        output: function (x) {
+            var m = ((x + 1) % 2 + 2) % 2;
+            return 1 - Math.abs(m - 1);
+        },
+        der: function (x) {
+            var m = ((x + 1) % 2 + 2) % 2;
+            return m < 1 ? 1 : -1;
+        },
+        compileToJs: function (arg) { return "(1 - Math.abs(((((".concat(arg, ") + 1) % 2 + 2) % 2) - 1))"); }
+    };
+    Activations.SQUARE_NONLIN = {
+        output: function (x) { return x * x; },
+        der: function (x) { return 2 * x; },
+        compileToJs: function (arg) { return "((".concat(arg, ") * (").concat(arg, "))"); }
+    };
+    Activations.ABSOLUTE = {
+        output: function (x) { return Math.abs(x); },
+        der: function (x) { return x < 0 ? -1 : (x > 0 ? 1 : 0); },
+        compileToJs: function (arg) { return "Math.abs(".concat(arg, ")"); }
+    };
+    Activations.CUBE = {
+        output: function (x) { return x * x * x; },
+        der: function (x) { return 3 * x * x; },
+        compileToJs: function (arg) { return "((".concat(arg, ") * (").concat(arg, ") * (").concat(arg, "))"); }
+    };
+    Activations.RECIPROCAL_SMOOTH = {
+        output: function (x) { return x / (1 + x * x); },
+        der: function (x) { return (1 - x * x) / Math.pow(1 + x * x, 2); },
+        compileToJs: function (arg) { return "((".concat(arg, ") / (1 + (").concat(arg, ") * (").concat(arg, ")))"); }
+    };
+    Activations.SOFTPLUS_BETA = {
+        output: function (x) {
+            var beta = 2;
+            return beta * x > 20 ? x : Math.log(1 + Math.exp(beta * x)) / beta;
+        },
+        der: function (x) { return 1 / (1 + Math.exp(-2 * x)); },
+        compileToJs: function (arg) { return "(Math.log(1 + Math.exp(2 * (".concat(arg, "))) / 2)"); }
+    };
+    Activations.ISRLU = {
+        output: function (x) { return x >= 0 ? x : x / Math.sqrt(1 + x * x); },
+        der: function (x) { return x >= 0 ? 1 : Math.pow(1 / Math.sqrt(1 + x * x), 3); },
+        compileToJs: function (arg) { return "((".concat(arg, ") >= 0 ? (").concat(arg, ") : (").concat(arg, ") / Math.sqrt(1 + (").concat(arg, ") * (").concat(arg, ")))"); }
+    };
+    Activations.MAXOUT2 = {
+        output: function (x) { return Math.max(x, 0.25 * x); },
+        der: function (x) { return x >= 0 ? 1 : 0.25; },
+        compileToJs: function (arg) { return "Math.max(".concat(arg, ", 0.25 * (").concat(arg, "))"); }
+    };
+    Activations.BIPOLAR_SIGMOID = {
+        output: function (x) { return Math.tanh(x / 2); },
+        der: function (x) {
+            var t = Math.tanh(x / 2);
+            return 0.5 * (1 - t * t);
+        },
+        compileToJs: function (arg) { return "Math.tanh((".concat(arg, ") / 2)"); }
+    };
+    Activations.HARD_SIGMOID2 = {
+        output: function (x) { return Math.max(0, Math.min(1, x / 6 + 0.5)); },
+        der: function (x) { return (x > -3 && x < 3) ? 1 / 6 : 0; },
+        compileToJs: function (arg) { return "Math.max(0, Math.min(1, (".concat(arg, ") / 6 + 0.5))"); }
+    };
+    Activations.GAUSSIAN_NARROW = {
+        output: function (x) { return Math.exp(-0.5 * x * x); },
+        der: function (x) { return -x * Math.exp(-0.5 * x * x); },
+        compileToJs: function (arg) { return "Math.exp(-0.5 * (".concat(arg, ") * (").concat(arg, "))"); }
+    };
     return Activations;
 }());
 exports.Activations = Activations;
@@ -89919,6 +90093,17 @@ var RegularizationFunction = (function () {
     RegularizationFunction.L2 = {
         output: function (w) { return 0.5 * w * w; },
         der: function (w) { return w; }
+    };
+    RegularizationFunction.ELASTIC_NET = {
+        output: function (w) { return 0.5 * Math.abs(w) + 0.5 * (0.5 * w * w); },
+        der: function (w) { return 0.5 * (w < 0 ? -1 : (w > 0 ? 1 : 0)) + 0.5 * w; }
+    };
+    RegularizationFunction.L_HALF = {
+        output: function (w) { return Math.sqrt(Math.abs(w) + 1e-8); },
+        der: function (w) {
+            var s = w < 0 ? -1 : (w > 0 ? 1 : 0);
+            return 0.5 * s / Math.sqrt(Math.abs(w) + 1e-8);
+        }
     };
     return RegularizationFunction;
 }());
@@ -90342,14 +90527,23 @@ var JS_HELPERS = [
         def: "const leakyrelu = x => x >= 0 ? x : 0.01 * x;" },
     { token: "sinc",
         def: "const sinc = x => (x * x) < 0.000001 ? 1 : Math.sin(x) / x;" },
+    { token: "erfapprox",
+        def: "const erfapprox = x => { const s = x < 0 ? -1 : 1, ax = Math.abs(x), " +
+            "t = 1 / (1 + 0.3275911 * ax); return s * (1 - (((((1.061405429 * t - " +
+            "1.453152027) * t) + 1.421413741) * t - 0.284496736) * t + 0.254829592) " +
+            "* t * Math.exp(-ax * ax)); };" },
+    { token: "geluexact",
+        def: "const geluexact = x => 0.5 * x * (1 + erfapprox(x / Math.SQRT2));" },
 ];
 function compileJsHelperPrelude(body) {
     var needsSoftplus = body.indexOf("mish(") !== -1;
+    var needsErf = body.indexOf("geluexact(") !== -1;
     var lines = [];
     for (var i = 0; i < JS_HELPERS.length; i++) {
         var helper = JS_HELPERS[i];
         var used = body.indexOf(helper.token + "(") !== -1 ||
-            (helper.token === "softplus" && needsSoftplus);
+            (helper.token === "softplus" && needsSoftplus) ||
+            (helper.token === "erfapprox" && needsErf);
         if (used) {
             lines.push(helper.def);
         }
@@ -95673,7 +95867,11 @@ exports.lossFunctions = {
     "hinge": nn.Errors.HINGE,
     "logloss": nn.Errors.LOGLOSS,
     "huber": nn.Errors.HUBER,
-    "absolute": nn.Errors.ABSOLUTE
+    "absolute": nn.Errors.ABSOLUTE,
+    "logcosh": nn.Errors.LOGCOSH,
+    "quantile": nn.Errors.QUANTILE,
+    "epsilon-insensitive": nn.Errors.EPSILON_INSENSITIVE,
+    "cauchy": nn.Errors.CAUCHY
 };
 exports.weightInits = {
     "random-uniform": nn.WeightInit.RANDOM_UNIFORM,
@@ -95716,12 +95914,32 @@ exports.activations = {
     "snake": nn.Activations.SNAKE,
     "arctan": nn.Activations.ARCTAN,
     "isru": nn.Activations.ISRU,
-    "exp-linear": nn.Activations.EXPONENTIAL_LINEAR
+    "exp-linear": nn.Activations.EXPONENTIAL_LINEAR,
+    "celu": nn.Activations.CELU,
+    "gelu-exact": nn.Activations.GELU_EXACT,
+    "swish-beta": nn.Activations.SWISH_BETA,
+    "tanh-shrink": nn.Activations.TANH_SHRINK,
+    "log-sigmoid": nn.Activations.LOG_SIGMOID,
+    "softclip": nn.Activations.SOFTCLIP,
+    "sin-residual": nn.Activations.SIN_RESIDUAL,
+    "triangular": nn.Activations.TRIANGULAR,
+    "square-nonlin": nn.Activations.SQUARE_NONLIN,
+    "absolute": nn.Activations.ABSOLUTE,
+    "cube": nn.Activations.CUBE,
+    "reciprocal-smooth": nn.Activations.RECIPROCAL_SMOOTH,
+    "softplus-beta": nn.Activations.SOFTPLUS_BETA,
+    "isrlu": nn.Activations.ISRLU,
+    "maxout2": nn.Activations.MAXOUT2,
+    "bipolar-sigmoid": nn.Activations.BIPOLAR_SIGMOID,
+    "hard-sigmoid2": nn.Activations.HARD_SIGMOID2,
+    "gaussian-narrow": nn.Activations.GAUSSIAN_NARROW
 };
 exports.regularizations = {
     "none": null,
     "L1": nn.RegularizationFunction.L1,
-    "L2": nn.RegularizationFunction.L2
+    "L2": nn.RegularizationFunction.L2,
+    "elastic-net": nn.RegularizationFunction.ELASTIC_NET,
+    "L-half": nn.RegularizationFunction.L_HALF
 };
 exports.weightQuantizations = {
     "none": null,

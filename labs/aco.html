@@ -1,0 +1,259 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Ant Colony Optimization — TSP Lab</title>
+  <style>
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+
+    body {
+      font-family: 'Segoe UI', Arial, sans-serif;
+      background: #0f0f1a;
+      color: #e0e0f0;
+      min-height: 100vh;
+      padding: 16px;
+    }
+
+    h1 {
+      font-size: 1.6rem;
+      font-weight: 700;
+      color: #38bdf8;
+      margin-bottom: 4px;
+      letter-spacing: 0.5px;
+    }
+
+    .subtitle {
+      font-size: 0.85rem;
+      color: #8888aa;
+      margin-bottom: 16px;
+    }
+
+    .layout {
+      display: flex;
+      gap: 16px;
+      flex-wrap: wrap;
+      align-items: flex-start;
+    }
+
+    .canvas-wrap {
+      position: relative;
+      flex-shrink: 0;
+    }
+
+    #main-canvas {
+      display: block;
+      border: 1px solid #334;
+      border-radius: 6px;
+      background: #0a0a14;
+      cursor: crosshair;
+    }
+
+    .right-panel {
+      display: flex;
+      flex-direction: column;
+      gap: 14px;
+      min-width: 300px;
+      flex: 1;
+    }
+
+    .card {
+      background: #1a1a2e;
+      border: 1px solid #2a2a44;
+      border-radius: 8px;
+      padding: 14px 16px;
+    }
+
+    .card h2 {
+      font-size: 0.8rem;
+      text-transform: uppercase;
+      letter-spacing: 1px;
+      color: #7777aa;
+      margin-bottom: 10px;
+    }
+
+    .control-row {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      margin-bottom: 8px;
+    }
+
+    .control-row label {
+      font-size: 0.82rem;
+      color: #aaa;
+      width: 120px;
+      flex-shrink: 0;
+    }
+
+    .control-row input[type=range] {
+      flex: 1;
+      accent-color: #38bdf8;
+    }
+
+    .control-row .val {
+      font-size: 0.78rem;
+      color: #38bdf8;
+      width: 42px;
+      text-align: right;
+      font-family: monospace;
+    }
+
+    .btn-row {
+      display: flex;
+      gap: 8px;
+      flex-wrap: wrap;
+      align-items: center;
+    }
+
+    button {
+      padding: 7px 16px;
+      border-radius: 5px;
+      border: none;
+      cursor: pointer;
+      font-size: 0.85rem;
+      font-weight: 600;
+      transition: background 0.15s;
+    }
+
+    #btn-play  { background: #0ea5e9; color: #fff; }
+    #btn-play:hover { background: #38bdf8; }
+    #btn-step  { background: #334; color: #e0e0f0; }
+    #btn-step:hover { background: #445; }
+    #btn-reset { background: #7c3aed; color: #fff; }
+    #btn-reset:hover { background: #8b5cf6; }
+
+    #iter-label {
+      font-size: 0.78rem;
+      color: #7777aa;
+      font-family: monospace;
+      margin-left: 4px;
+    }
+
+    #chart-canvas {
+      display: block;
+      border: 1px solid #2a2a44;
+      border-radius: 6px;
+      width: 100%;
+      height: 160px;
+      background: #0a0a14;
+    }
+
+    .legend {
+      display: flex;
+      gap: 14px;
+      flex-wrap: wrap;
+      margin-top: 8px;
+    }
+
+    .legend-item {
+      display: flex;
+      align-items: center;
+      gap: 5px;
+      font-size: 0.75rem;
+      color: #aaa;
+    }
+
+    .dot { width: 10px; height: 10px; border-radius: 50%; }
+    .dot-city  { background: #f0f0ff; border: 1.5px solid #38bdf8; }
+    .swatch-phero { width: 20px; height: 3px; background: rgba(56,189,248,0.7); border-radius: 2px; }
+    .swatch-best  { width: 20px; height: 2px; background: #fbbf24; border-radius: 2px; }
+
+    .hint {
+      font-size: 0.75rem;
+      color: #555577;
+      margin-top: 6px;
+    }
+  </style>
+</head>
+<body>
+
+  <h1>Ant Colony Optimization — TSP</h1>
+  <p class="subtitle">
+    Watch pheromone trails emerge and converge on the shortest tour. Click the canvas to place cities manually.
+  </p>
+
+  <div class="layout">
+
+    <!-- Main canvas -->
+    <div class="canvas-wrap">
+      <canvas id="main-canvas" width="560" height="520"></canvas>
+      <div class="legend">
+        <div class="legend-item"><div class="dot dot-city"></div> City</div>
+        <div class="legend-item"><div class="swatch-phero"></div> Pheromone trail</div>
+        <div class="legend-item"><div class="swatch-best"></div> Best tour</div>
+      </div>
+      <p class="hint">Click canvas to add a city (resets search)</p>
+    </div>
+
+    <!-- Right panel -->
+    <div class="right-panel">
+
+      <!-- Playback -->
+      <div class="card">
+        <h2>Playback</h2>
+        <div class="btn-row">
+          <button id="btn-play">▶ Play</button>
+          <button id="btn-step">⏭ Step</button>
+          <button id="btn-reset">↺ Reset</button>
+          <span id="iter-label">Iter 0  |  Best: –</span>
+        </div>
+        <div class="control-row" style="margin-top:10px">
+          <label>Speed (ms/iter)</label>
+          <input type="range" id="inp-speed" min="10" max="500" step="10" value="80">
+          <span class="val" id="lbl-speed">80</span>
+        </div>
+      </div>
+
+      <!-- Colony parameters -->
+      <div class="card">
+        <h2>Colony Parameters</h2>
+        <div class="control-row">
+          <label># Cities</label>
+          <input type="range" id="inp-cities" min="4" max="60" step="1" value="20">
+          <span class="val" id="lbl-cities">20</span>
+        </div>
+        <div class="control-row">
+          <label># Ants</label>
+          <input type="range" id="inp-ants" min="5" max="100" step="1" value="30">
+          <span class="val" id="lbl-ants">30</span>
+        </div>
+      </div>
+
+      <!-- ACO hyper-parameters -->
+      <div class="card">
+        <h2>ACO Hyper-parameters</h2>
+        <div class="control-row">
+          <label>Alpha α (phero)</label>
+          <input type="range" id="inp-alpha" min="0.1" max="5" step="0.1" value="1.0">
+          <span class="val" id="lbl-alpha">1.0</span>
+        </div>
+        <div class="control-row">
+          <label>Beta β (heuristic)</label>
+          <input type="range" id="inp-beta" min="0.1" max="8" step="0.1" value="3.0">
+          <span class="val" id="lbl-beta">3.0</span>
+        </div>
+        <div class="control-row">
+          <label>Evaporation ρ</label>
+          <input type="range" id="inp-rho" min="0.01" max="0.5" step="0.01" value="0.1">
+          <span class="val" id="lbl-rho">0.10</span>
+        </div>
+        <div class="control-row">
+          <label>Deposit Q</label>
+          <input type="range" id="inp-q" min="10" max="500" step="10" value="100">
+          <span class="val" id="lbl-q">100</span>
+        </div>
+      </div>
+
+      <!-- Best-distance chart -->
+      <div class="card">
+        <h2>Best Distance vs Iteration</h2>
+        <canvas id="chart-canvas" width="280" height="160"></canvas>
+      </div>
+
+    </div><!-- right-panel -->
+  </div><!-- layout -->
+
+  <script src="bundleaco.js"></script>
+</body>
+</html>

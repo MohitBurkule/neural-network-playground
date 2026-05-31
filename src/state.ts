@@ -42,6 +42,10 @@ export let lossFunctions: {[key: string]: nn.ErrorFunction} = {
   "logloss": nn.Errors.LOGLOSS,
   "huber": nn.Errors.HUBER,
   "absolute": nn.Errors.ABSOLUTE,
+  "logcosh": nn.Errors.LOGCOSH,
+  "quantile": nn.Errors.QUANTILE,
+  "epsilon-insensitive": nn.Errors.EPSILON_INSENSITIVE,
+  "cauchy": nn.Errors.CAUCHY,
 };
 
 /** A map between names and weight initialization schemes. */
@@ -91,12 +95,32 @@ export let activations: {[key: string]: nn.ActivationFunction} = {
   "arctan": nn.Activations.ARCTAN,
   "isru": nn.Activations.ISRU,
   "exp-linear": nn.Activations.EXPONENTIAL_LINEAR,
+  "celu": nn.Activations.CELU,
+  "gelu-exact": nn.Activations.GELU_EXACT,
+  "swish-beta": nn.Activations.SWISH_BETA,
+  "tanh-shrink": nn.Activations.TANH_SHRINK,
+  "log-sigmoid": nn.Activations.LOG_SIGMOID,
+  "softclip": nn.Activations.SOFTCLIP,
+  "sin-residual": nn.Activations.SIN_RESIDUAL,
+  "triangular": nn.Activations.TRIANGULAR,
+  "square-nonlin": nn.Activations.SQUARE_NONLIN,
+  "absolute": nn.Activations.ABSOLUTE,
+  "cube": nn.Activations.CUBE,
+  "reciprocal-smooth": nn.Activations.RECIPROCAL_SMOOTH,
+  "softplus-beta": nn.Activations.SOFTPLUS_BETA,
+  "isrlu": nn.Activations.ISRLU,
+  "maxout2": nn.Activations.MAXOUT2,
+  "bipolar-sigmoid": nn.Activations.BIPOLAR_SIGMOID,
+  "hard-sigmoid2": nn.Activations.HARD_SIGMOID2,
+  "gaussian-narrow": nn.Activations.GAUSSIAN_NARROW,
 };
 /** A map between names and regularization functions. */
 export let regularizations: {[key: string]: nn.RegularizationFunction} = {
   "none": null,
   "L1": nn.RegularizationFunction.L1,
-  "L2": nn.RegularizationFunction.L2
+  "L2": nn.RegularizationFunction.L2,
+  "elastic-net": nn.RegularizationFunction.ELASTIC_NET,
+  "L-half": nn.RegularizationFunction.L_HALF
 };
 
 /** Whether to quantize the weights. */
