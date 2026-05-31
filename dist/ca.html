@@ -1,0 +1,213 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Cellular Automata Lab</title>
+  <style>
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+    body {
+      background: #0d1117;
+      color: #c9d1d9;
+      font-family: 'Segoe UI', system-ui, sans-serif;
+      font-size: 14px;
+      min-height: 100vh;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      padding: 16px;
+      gap: 12px;
+    }
+
+    h1 {
+      font-size: 1.4rem;
+      font-weight: 600;
+      color: #e6edf3;
+      letter-spacing: 0.04em;
+    }
+
+    /* Top bar: mode selector */
+    #top-bar {
+      display: flex;
+      align-items: center;
+      gap: 12px;
+    }
+
+    label { color: #8b949e; font-size: 13px; }
+
+    select, input[type=number], input[type=range] {
+      background: #161b22;
+      border: 1px solid #30363d;
+      color: #c9d1d9;
+      border-radius: 6px;
+      padding: 4px 8px;
+      font-size: 13px;
+      outline: none;
+      cursor: pointer;
+    }
+    select:hover, input[type=number]:hover { border-color: #58a6ff; }
+    input[type=range] { padding: 0; cursor: pointer; accent-color: #58a6ff; }
+    input[type=number] { width: 64px; }
+
+    /* Canvas */
+    #canvas-wrap {
+      border: 1px solid #21262d;
+      border-radius: 8px;
+      overflow: hidden;
+      box-shadow: 0 4px 24px rgba(0,0,0,0.5);
+    }
+
+    canvas { display: block; }
+
+    /* Control strip */
+    #controls {
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      gap: 8px;
+      width: 100%;
+      max-width: 820px;
+    }
+
+    .ctrl-row {
+      display: flex;
+      align-items: center;
+      flex-wrap: wrap;
+      gap: 8px;
+      width: 100%;
+      justify-content: center;
+    }
+
+    button {
+      background: #21262d;
+      border: 1px solid #30363d;
+      color: #c9d1d9;
+      border-radius: 6px;
+      padding: 5px 14px;
+      font-size: 13px;
+      cursor: pointer;
+      transition: background 0.15s, border-color 0.15s;
+    }
+    button:hover { background: #30363d; border-color: #58a6ff; color: #e6edf3; }
+    button:active { background: #388bfd22; }
+
+    button.accent {
+      border-color: #388bfd;
+      color: #58a6ff;
+    }
+    button.accent:hover { background: #388bfd22; }
+
+    .famous-btns { display: flex; gap: 6px; align-items: center; }
+
+    .sep { width: 1px; height: 24px; background: #21262d; margin: 0 4px; }
+
+    #speed-wrap { display: flex; align-items: center; gap: 6px; }
+
+    .badge {
+      background: #21262d;
+      border: 1px solid #30363d;
+      border-radius: 4px;
+      padding: 2px 8px;
+      font-size: 12px;
+      color: #8b949e;
+      min-width: 28px;
+      text-align: center;
+    }
+
+    #eca-rule-label-wrap {
+      display: flex;
+      align-items: center;
+      gap: 6px;
+    }
+
+    footer {
+      color: #484f58;
+      font-size: 12px;
+      margin-top: 4px;
+    }
+
+    @media (max-width: 860px) {
+      #ca-canvas { width: 100%; height: auto; }
+    }
+  </style>
+</head>
+<body>
+  <h1>Cellular Automata Lab</h1>
+
+  <!-- Mode selector -->
+  <div id="top-bar">
+    <label for="mode-select">Mode:</label>
+    <select id="mode-select">
+      <option value="life">Conway's Game of Life</option>
+      <option value="elementary">Elementary CA (Wolfram)</option>
+    </select>
+  </div>
+
+  <!-- Canvas -->
+  <div id="canvas-wrap">
+    <canvas id="ca-canvas"></canvas>
+  </div>
+
+  <!-- Controls -->
+  <div id="controls">
+
+    <!-- Universal playback row -->
+    <div class="ctrl-row">
+      <button id="btn-playpause" class="accent">▶ Play</button>
+      <button id="btn-step">⏭ Step</button>
+      <div class="sep"></div>
+      <div id="speed-wrap">
+        <label for="speed-range">Speed:</label>
+        <input type="range" id="speed-range" min="1" max="10" value="5" style="width:90px" />
+        <span class="badge" id="speed-label">5</span>
+      </div>
+    </div>
+
+    <!-- Life-specific controls -->
+    <div id="life-controls" class="ctrl-row" style="display:flex">
+      <button id="btn-clear">🗑 Clear</button>
+      <button id="btn-random">🎲 Random</button>
+      <div class="sep"></div>
+      <label for="pattern-select">Pattern:</label>
+      <select id="pattern-select"></select>
+      <button id="btn-place">Place</button>
+      <div class="sep"></div>
+      <label for="grid-size">Grid:</label>
+      <select id="grid-size">
+        <option value="80x60">80×60</option>
+        <option value="60x45">60×45</option>
+        <option value="40x30">40×30</option>
+        <option value="120x90">120×90</option>
+      </select>
+    </div>
+
+    <!-- ECA-specific controls -->
+    <div id="eca-controls" class="ctrl-row" style="display:none">
+      <label for="eca-rule">Rule (0–255):</label>
+      <input type="number" id="eca-rule" min="0" max="255" value="30" />
+      <span class="badge" id="eca-rule-label">30</span>
+      <div class="sep"></div>
+      <span style="color:#8b949e;font-size:12px">Famous:</span>
+      <div class="famous-btns">
+        <button id="eca-rule-30" class="accent">Rule 30</button>
+        <button id="eca-rule-90" class="accent">Rule 90</button>
+        <button id="eca-rule-110" class="accent">Rule 110</button>
+        <button id="eca-rule-184" class="accent">Rule 184</button>
+      </div>
+      <div class="sep"></div>
+      <label for="eca-init">Init:</label>
+      <select id="eca-init">
+        <option value="single">Single cell</option>
+        <option value="random">Random</option>
+      </select>
+      <button id="btn-eca-reset">↺ Reset</button>
+    </div>
+
+  </div>
+
+  <footer>Draw on canvas to toggle cells (Life mode) · Toroidal boundary · Built with TypeScript + Canvas</footer>
+
+  <script src="bundleca.js"></script>
+</body>
+</html>

@@ -1,0 +1,250 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Kalman Filter Lab</title>
+  <style>
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    body {
+      background: #0a0a0a;
+      color: #ccc;
+      font-family: 'Segoe UI', system-ui, sans-serif;
+      min-height: 100vh;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      padding: 18px 12px 32px;
+    }
+    h1 {
+      font-size: 1.5rem;
+      font-weight: 600;
+      color: #eee;
+      margin-bottom: 4px;
+      letter-spacing: 0.02em;
+    }
+    .subtitle {
+      font-size: 0.82rem;
+      color: #666;
+      margin-bottom: 16px;
+    }
+    .layout {
+      display: flex;
+      gap: 16px;
+      align-items: flex-start;
+      flex-wrap: wrap;
+      justify-content: center;
+      width: 100%;
+      max-width: 1100px;
+    }
+    .canvases {
+      display: flex;
+      flex-direction: column;
+      gap: 10px;
+    }
+    canvas {
+      border: 1px solid #222;
+      border-radius: 6px;
+      display: block;
+    }
+    #mainCanvas { cursor: crosshair; }
+    .panel {
+      background: #111;
+      border: 1px solid #222;
+      border-radius: 8px;
+      padding: 18px 16px;
+      width: 240px;
+      display: flex;
+      flex-direction: column;
+      gap: 14px;
+    }
+    .panel h2 {
+      font-size: 0.9rem;
+      color: #aaa;
+      text-transform: uppercase;
+      letter-spacing: 0.08em;
+      border-bottom: 1px solid #222;
+      padding-bottom: 8px;
+    }
+    .ctrl-row {
+      display: flex;
+      flex-direction: column;
+      gap: 4px;
+    }
+    .ctrl-row label {
+      font-size: 0.78rem;
+      color: #888;
+      display: flex;
+      justify-content: space-between;
+    }
+    .ctrl-row label span {
+      color: #bbb;
+      font-variant-numeric: tabular-nums;
+    }
+    input[type=range] {
+      width: 100%;
+      accent-color: #64b4ff;
+      cursor: pointer;
+    }
+    select {
+      width: 100%;
+      background: #1a1a1a;
+      color: #ccc;
+      border: 1px solid #333;
+      border-radius: 4px;
+      padding: 5px 8px;
+      font-size: 0.85rem;
+      cursor: pointer;
+    }
+    .btn-row {
+      display: flex;
+      gap: 6px;
+    }
+    button {
+      flex: 1;
+      background: #1a1a1a;
+      color: #ccc;
+      border: 1px solid #333;
+      border-radius: 4px;
+      padding: 7px 4px;
+      font-size: 0.8rem;
+      cursor: pointer;
+      transition: background 0.15s;
+    }
+    button:hover { background: #262626; }
+    #playBtn { color: #64b4ff; border-color: #2a4060; }
+    .explainer {
+      background: #111;
+      border: 1px solid #222;
+      border-radius: 8px;
+      padding: 16px;
+      max-width: 1100px;
+      width: 100%;
+      margin-top: 14px;
+      font-size: 0.82rem;
+      line-height: 1.65;
+      color: #888;
+    }
+    .explainer h3 {
+      color: #aaa;
+      font-size: 0.88rem;
+      margin-bottom: 8px;
+      letter-spacing: 0.05em;
+      text-transform: uppercase;
+    }
+    .explainer code {
+      font-family: monospace;
+      background: #181818;
+      padding: 1px 5px;
+      border-radius: 3px;
+      color: #9dc;
+      font-size: 0.85em;
+    }
+    .eq-block {
+      margin: 10px 0;
+      padding: 10px 14px;
+      background: #0d0d0d;
+      border-left: 3px solid #2a3a4a;
+      border-radius: 0 4px 4px 0;
+      font-family: monospace;
+      font-size: 0.8rem;
+      color: #7ab;
+      line-height: 1.9;
+    }
+    .cols { display: flex; gap: 24px; flex-wrap: wrap; }
+    .cols > div { flex: 1; min-width: 200px; }
+  </style>
+</head>
+<body>
+
+  <h1>Kalman Filter — 2D Tracking Lab</h1>
+  <p class="subtitle">State: [x, y, vx, vy] · Constant-velocity model · Position measurements only</p>
+
+  <div class="layout">
+    <div class="canvases">
+      <canvas id="mainCanvas" width="640" height="420"></canvas>
+      <canvas id="plotCanvas" width="640" height="110"></canvas>
+    </div>
+
+    <div class="panel">
+      <h2>Controls</h2>
+
+      <div class="ctrl-row">
+        <label>Trajectory <span></span></label>
+        <select id="modeSelect">
+          <option value="circle">Circle</option>
+          <option value="figure8">Figure-eight</option>
+          <option value="draw">Draw (custom)</option>
+        </select>
+      </div>
+
+      <div class="ctrl-row">
+        <label>Measurement noise R <span id="rLabel">10.0</span></label>
+        <input type="range" id="rSlider" min="0.5" max="200" step="0.5" value="10" />
+      </div>
+
+      <div class="ctrl-row">
+        <label>Process noise Q <span id="qLabel">0.100</span></label>
+        <input type="range" id="qSlider" min="0.001" max="2" step="0.001" value="0.1" />
+      </div>
+
+      <div class="ctrl-row">
+        <label>Speed <span id="speedLabel">1.00</span></label>
+        <input type="range" id="speedSlider" min="0.1" max="4" step="0.05" value="1" />
+      </div>
+
+      <div class="btn-row">
+        <button id="playBtn">▶ Play</button>
+        <button id="stepBtn">⏭ Step</button>
+        <button id="resetBtn">↺ Reset</button>
+      </div>
+
+      <div style="font-size:0.75rem; color:#555; line-height:1.5; margin-top:2px;">
+        <b style="color:#666">Tips:</b><br>
+        · High R → filter trusts model more → smoother but slower.<br>
+        · High Q → filter trusts measurements more → noisier but responsive.<br>
+        · Ellipse = 95% position uncertainty.
+      </div>
+    </div>
+  </div>
+
+  <div class="explainer">
+    <h3>How the Kalman Filter Works</h3>
+    <div class="cols">
+      <div>
+        <p>The Kalman filter maintains a <b style="color:#bbb">Gaussian belief</b> over the hidden state
+        <code>x = [x, y, vx, vy]</code>. Each time-step has two phases:</p>
+        <div class="eq-block">
+          <b>Predict</b><br>
+          x̂⁻ = F · x̂<br>
+          P⁻  = F · P · Fᵀ + Q
+        </div>
+        <div class="eq-block">
+          <b>Update</b><br>
+          K = P⁻ · Hᵀ · (H · P⁻ · Hᵀ + R)⁻¹<br>
+          x̂ = x̂⁻ + K · (z − H · x̂⁻)<br>
+          P  = (I − K·H) · P⁻
+        </div>
+      </div>
+      <div>
+        <p><b style="color:#bbb">Matrices used here:</b></p>
+        <p style="margin-top:8px">
+          <code>F</code> — state transition (constant-velocity).<br>
+          <code>H</code> — measurement model: observes <i>x,y</i> only.<br>
+          <code>Q</code> — process noise covariance (controls model uncertainty).<br>
+          <code>R</code> — measurement noise covariance (sensor noise level).<br>
+          <code>P</code> — state covariance (the ellipse you see).<br>
+          <code>K</code> — Kalman gain: blends prediction vs. measurement.
+        </p>
+        <p style="margin-top:10px">
+          The <span style="color:#64b4ff">blue ellipse</span> is the 2σ contour of the
+          marginal position covariance — it shrinks when the filter is confident
+          and expands when measurements are noisy or absent.
+        </p>
+      </div>
+    </div>
+  </div>
+
+  <script src="bundlekalman.js"></script>
+</body>
+</html>
