@@ -18,7 +18,7 @@ const DIST = path.join(ROOT, 'dist');
 const LABS = [
   'cnn', 'transformer', 'rnn', 'autoencoder', 'gan', 'diffusion', 'word2vec',
   'bayesnn', 'dtree', 'svm', 'glm', 'gp', 'clustering', 'dimred', 'som',
-  'rl', 'hopfield', 'genetic'
+  'rl', 'hopfield', 'genetic', 'bandit', 'optviz', 'markov', 'mcmc'
 ];
 
 function makeCtx() {
